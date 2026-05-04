@@ -1,0 +1,112 @@
+{
+  "project_name": "Boulay Beach Resort (BBr) Reservation App",
+  "theme": "DARK",
+  "archetype": "5 (Jewel & Luxury)",
+  "emotional_tone": "Ultra-luxury, 5-star, exclusive, cinematic, tranquil, premium",
+  "design_principles": [
+    "Emotion First: The booking tunnel must feel like a red-carpet experience, not a sterile form.",
+    "Contrast & Lighting: Deep blacks rely on subtle gold accents and lighting effects, not flat blocks of color.",
+    "Typography as Art: Cormorant Garamond is used extensively for expressive headers.",
+    "Negative Space: Lavish spacing gives elements room to breathe, feeling expensive."
+  ],
+  "typography": {
+    "fonts": {
+      "heading": "Cormorant Garamond, serif",
+      "body": "Montserrat, sans-serif"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl font-light tracking-tight text-[#B8922A]",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-light tracking-tight text-[#F5F0E8]",
+      "h3": "text-xl sm:text-2xl font-normal text-[#F5F0E8]",
+      "body": "text-base font-light tracking-wide text-[#F5F0E8]/80",
+      "overline": "text-xs font-semibold uppercase tracking-[0.2em] text-[#B8922A]"
+    }
+  },
+  "color_palette": {
+    "background": {
+      "primary": "#0A0A0A",
+      "surface": "#141414",
+      "surface_elevated": "#1A1A1A"
+    },
+    "text": {
+      "primary": "#F5F0E8",
+      "secondary": "rgba(245, 240, 232, 0.7)",
+      "muted": "rgba(245, 240, 232, 0.4)"
+    },
+    "accent": {
+      "gold": "#B8922A",
+      "gold_hover": "#D4AF37",
+      "gold_muted": "rgba(184, 146, 42, 0.15)"
+    },
+    "borders": {
+      "subtle": "rgba(245, 240, 232, 0.1)",
+      "gold": "rgba(184, 146, 42, 0.3)"
+    }
+  },
+  "surfaces_and_micro_themes": {
+    "header": "Crystal Glassmorphism: backdrop-blur-2xl bg-[#0A0A0A]/60 border-b border-[#F5F0E8]/10",
+    "offer_cards": "Flat solid #141414 background, 1px border border-[#B8922A]/30, subtle gold hover glow, inside padding p-8.",
+    "dashboard_cards": "Neumorphic/Crisp: background matches parent, sharp 1px border-[#F5F0E8]/10, no heavy shadow.",
+    "buttons_primary": "bg-[#B8922A] text-[#0A0A0A] font-semibold tracking-widest uppercase hover:bg-[#D4AF37] transition-all",
+    "buttons_secondary": "bg-transparent border border-[#B8922A] text-[#B8922A] hover:bg-[#B8922A]/10 transition-all"
+  },
+  "spacing_and_layout": {
+    "system": "Generous Spacing Philosophy. Use 2-3x more padding than standard apps.",
+    "container": "max-w-7xl mx-auto px-6 md:px-12 lg:px-24",
+    "grid_marketing": "Bento Grid (Mode A) for the landing page offers to create asymmetry. 1 hero card spanning 2 columns, others 1 column.",
+    "grid_dashboard": "Control Room Grid (Mode B) for Manager back-office. Tight gap-6, utilized pixel space.",
+    "section_padding": "py-24 md:py-32"
+  },
+  "components": {
+    "landing_page": "Use pure HTML/Tailwind for structural layout to maintain creative freedom and asymmetry.",
+    "booking_tunnel": "Heavily customized Shadcn UI (Forms, DatePicker/Calendar, Select, Input) restyled with luxury dark theme variables.",
+    "dashboard": "Shadcn UI (Tables, Tabs, Dialogs) with border-collapse and technical grid look.",
+    "icons": "lucide-react with thin stroke widths to match elegant typography."
+  },
+  "media_and_images": {
+    "strategy": "Cinematic, dark and moody visuals with gold lighting. Overlays should be dark to ensure cream text contrast.",
+    "urls": {
+      "hero_background": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/cc908c9d164d56b323fe8dc47c688c4bf5222057ff477bdd3aa4f49ab2bc8c0c.png",
+        "role": "Landing page hero section background. Use bg-black/40 gradient overlay for text readability."
+      },
+      "texture_overlay": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/aa67134733d7a6706a9ea293b767533f9f79c11f8a2875cc4e1a3708aa13d969.png",
+        "role": "Global background texture mask for dark sections to give an expensive velvet/grain feel. Opacity 5-10%."
+      },
+      "offer_sunset": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/9e89b22524180e785f62f14ed8558a699ccd6bdf1259b8dea5c13cc732cb44c5.png",
+        "role": "Image for the 'Sunset' offer card."
+      },
+      "offer_brunch": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/bc2709bb2dada5c4c24ec8e6810953270275900ce7a3e0ed81969fc8cec04c96.png",
+        "role": "Image for the 'Brunch' offer card."
+      },
+      "offer_pass_day": {
+        "url": "https://images.unsplash.com/photo-1729707691048-722c1acf5c51?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxsdXh1cnklMjBiZWFjaCUyMHJlc29ydCUyMHBvb2x8ZW58MHx8fHwxNzc3ODkwNDA3fDA&ixlib=rb-4.1.0&q=85",
+        "role": "Image for the 'Pass Day' offer card (Aerial pool view)."
+      },
+      "staff_auth_background": {
+        "url": "https://images.unsplash.com/photo-1729717949780-46e511489c3f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHw0fHxsdXh1cnklMjBiZWFjaCUyMHJlc29ydCUyMHBvb2x8ZW58MHx8fHwxNzc3ODkwNDA3fDA&ixlib=rb-4.1.0&q=85",
+        "role": "Split-screen background for Staff/Admin Login page."
+      }
+    }
+  },
+  "motion_and_interaction": {
+    "libraries": "framer-motion for micro-interactions and smooth page transitions.",
+    "hover_states": "Interactive elements must transition color. Buttons get lighter gold. Cards lift slightly (-translate-y-1).",
+    "scroll_effects": "Fade-in up stagger for offer cards and tunnel steps."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure text over images has sufficient contrast using bg-black/50 or dark gradient overlays. Gold (#B8922A) on Black (#0A0A0A) passes APCA.",
+    "data_testid": "Mandatory on all interactive elements. E.g., data-testid='book-now-button', data-testid='language-toggle-fr'."
+  },
+  "instructions_to_main_agent": [
+    "Install and use Cormorant Garamond and Montserrat via Google Fonts.",
+    "Install framer-motion and lucide-react.",
+    "Implement the FR/EN toggle logic using a simple context or state, default to FR.",
+    "Set up Tailwind config with custom colors: primary (#0A0A0A), accent (#B8922A), and cream (#F5F0E8).",
+    "Never use generic white backgrounds. Everything must be anchored in the #0A0A0A luxury dark theme.",
+    "The booking tunnel should feel like a guided, step-by-step concierge service with smooth transitions between steps."
+  ]
+}
