@@ -1,12 +1,9 @@
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useLang } from "../context/LanguageContext";
-import { useAuth } from "../context/AuthContext";
 import { useState, useEffect } from "react";
 
 export default function Header() {
   const { lang, toggle, t } = useLang();
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -46,11 +43,6 @@ export default function Header() {
           <NavLink to="/events" className={linkClass} data-testid="nav-events">
             {t.nav.privatization}
           </NavLink>
-          {user && (
-            <NavLink to="/account" className={linkClass} data-testid="nav-account">
-              {t.nav.account}
-            </NavLink>
-          )}
         </nav>
 
         <div className="flex items-center gap-5">
@@ -64,27 +56,6 @@ export default function Header() {
             <span className={lang === "en" ? "text-[#B8922A]" : ""}>EN</span>
           </button>
 
-          {user ? (
-            <button
-              data-testid="logout-btn"
-              onClick={() => {
-                logout();
-                navigate("/");
-              }}
-              className="hidden md:block text-[0.7rem] uppercase tracking-[0.22em] text-[#F5F0E8]/60 hover:text-[#B8922A] transition-colors"
-            >
-              {t.nav.logout}
-            </button>
-          ) : (
-            <Link
-              to="/login"
-              data-testid="header-login-btn"
-              className="hidden md:block text-[0.7rem] uppercase tracking-[0.22em] text-[#B8922A] hover:text-[#D4AF37] transition-colors"
-            >
-              {t.nav.login}
-            </Link>
-          )}
-
           <button
             data-testid="menu-toggle"
             onClick={() => setOpen(!open)}
@@ -97,19 +68,12 @@ export default function Header() {
 
       {open && (
         <div className="md:hidden bg-[#0A0A0A]/95 backdrop-blur-xl border-t border-[#F5F0E8]/10 px-6 py-6 flex flex-col gap-5">
-          <Link to="/" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#F5F0E8]/80">{t.nav.offers}</Link>
-          <Link to="/events" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#F5F0E8]/80">{t.nav.privatization}</Link>
-          {user ? (
-            <>
-              <Link to="/account" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#F5F0E8]/80">{t.nav.account}</Link>
-              <button onClick={() => { logout(); setOpen(false); navigate("/"); }} className="text-[0.75rem] uppercase tracking-[0.22em] text-left text-[#B8922A]">{t.nav.logout}</button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#B8922A]">{t.nav.login}</Link>
-              <Link to="/register" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#F5F0E8]/80">{t.nav.register}</Link>
-            </>
-          )}
+          <Link to="/" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#F5F0E8]/80">
+            {t.nav.offers}
+          </Link>
+          <Link to="/events" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#F5F0E8]/80">
+            {t.nav.privatization}
+          </Link>
         </div>
       )}
     </header>
