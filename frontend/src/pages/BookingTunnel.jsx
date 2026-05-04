@@ -20,19 +20,17 @@ export default function BookingTunnel() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
+  const [participants, setParticipants] = useState([]);
   const [contact, setContact] = useState({
-    name: "",
-    surname: "",
-    nationality: "",
-    boat_time: "",
     phone: "",
     email: "",
     special_requests: "",
+    boat_time: "",
   });
   const [availability, setAvailability] = useState(null);
-  const [bookingResp, setBookingResp] = useState(null); // booking after creation
+  const [bookingResp, setBookingResp] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [paying, setPaying] = useState(null); // 'fineo' | 'cash' | null
+  const [paying, setPaying] = useState(null);
 
   useEffect(() => {
     api.get(`/offers/${offerId}`).then((r) => setOffer(r.data)).catch(() => navigate("/"));
@@ -61,10 +59,13 @@ export default function BookingTunnel() {
 
   const totalGuests = adults + children;
   const remaining = availability?.remaining ?? null;
+  const participantsValid =
+    participants.length === totalGuests &&
+    participants.every(
+      (p) => p.name.trim() && p.surname.trim() && p.nationality.trim()
+    );
   const contactValid =
-    contact.name.trim() &&
-    contact.surname.trim() &&
-    contact.nationality.trim() &&
+    participantsValid &&
     contact.boat_time &&
     contact.phone.trim() &&
     /\S+@\S+\.\S+/.test(contact.email);
@@ -89,9 +90,12 @@ export default function BookingTunnel() {
         date: iso,
         adults,
         children,
-        name: contact.name,
-        surname: contact.surname,
-        nationality: contact.nationality,
+        participants: participants.map((p) => ({
+          name: p.name.trim(),
+          surname: p.surname.trim(),
+          nationality: p.nationality.trim(),
+          kind: p.kind,
+        })),
         boat_time: contact.boat_time,
         phone: contact.phone,
         email: contact.email,
@@ -175,7 +179,12 @@ export default function BookingTunnel() {
                     mode="single"
                     selected={selectedDate}
                     onSelect={setSelectedDate}
-                    disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
+                    disabled={(d) => {
+                      if (d < new Date(new Date().setHours(0, 0, 0, 0))) return true;
+                      const pyWeekday = (d.getDay() + 6) % 7;
+                      if (offer.allowed_weekdays && !offer.allowed_weekdays.includes(pyWeekday)) return true;
+                      return false;
+                    }}
                     locale={lang === "fr" ? frLocale : enUS}
                     classNames={{
                       day_today:
@@ -237,23 +246,81 @@ export default function BookingTunnel() {
             )}
 
             {step === 3 && (
-              <div data-testid="booking-step-3" className="max-w-2xl">
+              <div data-testid="booking-step-3" className="max-w-3xl">
                 <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step3}
                 </h2>
                 <div className="gold-divider mb-8" />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Field label={t.booking.name} value={contact.name} onChange={setC("name")} testId="contact-name" />
-                  <Field label={t.booking.surname} value={contact.surname} onChange={setC("surname")} testId="contact-surname" />
-                  <Field label={t.booking.nationality} value={contact.nationality} onChange={setC("nationality")} testId="contact-nationality" />
-                  <Field label={t.booking.phone} value={contact.phone} onChange={setC("phone")} testId="contact-phone" />
-                  <div className="md:col-span-2">
+                {/* Participants */}
+                <div className="space-y-6">
+                  {participants.map((p, i) => {
+                    const isFirst = i === 0;
+                    const adultIndex = participants.slice(0, i + 1).filter((x) => x.kind === "adult").length;
+                    const childIndex = participants.slice(0, i + 1).filter((x) => x.kind === "child").length;
+                    const label =
+                      p.kind === "adult"
+                        ? `${t.booking.adults.replace(/s$/, "")} ${adultIndex}${isFirst ? ` · ${t.booking.primaryContact}` : ""}`
+                        : `${t.booking.children.replace(/s$/, "")} ${childIndex}`;
+                    return (
+                      <div
+                        key={i}
+                        data-testid={`participant-${i}`}
+                        className="border border-[#0A0A0A]/10 bg-[#FAFAF7] p-6 md:p-7"
+                      >
+                        <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-5">
+                          {label}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                          <Field
+                            label={t.booking.name}
+                            value={p.name}
+                            onChange={(e) => {
+                              const next = [...participants];
+                              next[i] = { ...next[i], name: e.target.value };
+                              setParticipants(next);
+                            }}
+                            testId={`participant-${i}-name`}
+                          />
+                          <Field
+                            label={t.booking.surname}
+                            value={p.surname}
+                            onChange={(e) => {
+                              const next = [...participants];
+                              next[i] = { ...next[i], surname: e.target.value };
+                              setParticipants(next);
+                            }}
+                            testId={`participant-${i}-surname`}
+                          />
+                          <Field
+                            label={t.booking.nationality}
+                            value={p.nationality}
+                            onChange={(e) => {
+                              const next = [...participants];
+                              next[i] = { ...next[i], nationality: e.target.value };
+                              setParticipants(next);
+                            }}
+                            testId={`participant-${i}-nationality`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Primary contact */}
+                <div className="mt-10 border border-[#B8922A]/30 bg-white p-6 md:p-7">
+                  <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-5">
+                    {t.booking.contactInfo}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <Field label={t.booking.phone} value={contact.phone} onChange={setC("phone")} testId="contact-phone" />
                     <Field type="email" label={t.booking.email} value={contact.email} onChange={setC("email")} testId="contact-email" />
                   </div>
                 </div>
 
-                <div className="mt-8">
+                {/* Boat time */}
+                <div className="mt-10">
                   <label className="label-luxury">{t.booking.boatTime}</label>
                   <p className="text-[0.75rem] text-[#0A0A0A]/50 mb-3 -mt-1">{t.booking.boatTimeHint}</p>
                   <div className="flex flex-wrap gap-2.5" data-testid="boat-time-group">
@@ -278,7 +345,8 @@ export default function BookingTunnel() {
                   </div>
                 </div>
 
-                <div className="mt-6">
+                {/* Special requests */}
+                <div className="mt-8">
                   <label className="label-luxury">{t.booking.specialRequests}</label>
                   <textarea
                     data-testid="special-requests-input"
@@ -299,21 +367,39 @@ export default function BookingTunnel() {
                 </h2>
                 <div className="gold-divider mb-8" />
 
-                <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-8 space-y-5">
+                <div className="bg-[#FAFAF7] border border-[#0A0A0A]/10 p-8 space-y-5">
                   <SummaryRow label={t.booking.offer} value={offerName} />
                   <SummaryRow
                     label={t.booking.date}
                     value={selectedDate ? format(selectedDate, "EEEE d MMMM yyyy", { locale: lang === "fr" ? frLocale : enUS }) : "—"}
                   />
+                  <SummaryRow label={t.booking.boatTime} value={contact.boat_time} />
                   <SummaryRow label={t.booking.adults} value={`${adults} × ${formatXOF(offer.price_adult)}`} />
                   {children > 0 && <SummaryRow label={t.booking.children} value={`${children} × ${formatXOF(offer.price_child)}`} />}
-                  <SummaryRow label={`${t.booking.name} / ${t.booking.surname}`} value={`${contact.name} ${contact.surname}`} />
-                  <SummaryRow label={t.booking.nationality} value={contact.nationality} />
-                  <SummaryRow label={t.booking.boatTime} value={contact.boat_time} />
+
+                  <div className="pt-4 border-t border-[#0A0A0A]/10">
+                    <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
+                      {t.booking.participantsLabel}
+                    </div>
+                    <ul className="space-y-2">
+                      {participants.map((p, i) => (
+                        <li key={i} className="flex items-start justify-between gap-6">
+                          <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50">
+                            {p.kind === "adult" ? t.booking.adults.replace(/s$/, "") : t.booking.children.replace(/s$/, "")}{" "}
+                            {participants.slice(0, i + 1).filter((x) => x.kind === p.kind).length}
+                          </span>
+                          <span className="text-sm text-[#0A0A0A] text-right">
+                            {p.name} {p.surname} · {p.nationality}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
                   <SummaryRow label={t.booking.phone} value={contact.phone} />
                   <SummaryRow label={t.booking.email} value={contact.email} />
                   {contact.special_requests && <SummaryRow label={t.booking.specialRequests} value={contact.special_requests} />}
-                  <div className="pt-5 border-t border-[#F5F0E8]/10 flex justify-between items-baseline">
+                  <div className="pt-5 border-t border-[#0A0A0A]/10 flex justify-between items-baseline">
                     <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A]">
                       {t.booking.total}
                     </span>
@@ -527,12 +613,18 @@ function ConfirmationView({ booking, t, lang, navigate }) {
             <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
               {lang === "fr" ? q.label_fr : q.label_en}
             </div>
-            <div className="text-[0.6rem] text-[#0A0A0A]/40 tracking-widest">
+            <div className="text-sm text-[#0A0A0A] font-medium text-center">
+              {q.guest_name} {q.guest_surname}
+            </div>
+            {q.guest_nationality && (
+              <div className="text-[0.7rem] text-[#0A0A0A]/50 mt-0.5">{q.guest_nationality}</div>
+            )}
+            <div className="text-[0.6rem] text-[#0A0A0A]/40 tracking-widest mt-2">
               #{q.qr_token.slice(0, 8).toUpperCase()}
             </div>
             <a
               href={q.qr_code}
-              download={`bbr-qr-${q.label_en.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.png`}
+              download={`bbr-qr-${(q.guest_name + "-" + q.guest_surname).replace(/[^a-z0-9]/gi, "-").toLowerCase()}.png`}
               className="mt-4 inline-flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
               data-testid={`qr-download-${i}`}
             >

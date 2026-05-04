@@ -81,6 +81,13 @@ BOAT_TIMES_BY_OFFER = {
     "brunch": ["10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H", "18H", "19H", "20H"],
 }
 
+# Python weekday(): Monday=0, Sunday=6
+ALLOWED_WEEKDAYS_BY_OFFER = {
+    "pass_day": [0, 1, 2, 3, 4],  # Monday to Friday
+    "sunset": [5],                  # Saturday only
+    "brunch": [6],                  # Sunday only
+}
+
 
 # ----- Models -----
 class StaffLogin(BaseModel):
@@ -94,15 +101,20 @@ class TokenResponse(BaseModel):
     user: dict
 
 
+class Participant(BaseModel):
+    name: str
+    surname: str
+    nationality: str
+    kind: Literal["adult", "child"]
+
+
 class BookingCreate(BaseModel):
     offer_type: OfferType
     date: str  # YYYY-MM-DD
     adults: int = Field(ge=0, le=20)
     children: int = Field(ge=0, le=20)
-    name: str
-    surname: str
-    nationality: str
     boat_time: str
+    participants: List[Participant]
     phone: str
     email: EmailStr
     special_requests: Optional[str] = ""
@@ -206,7 +218,11 @@ async def login_staff(body: StaffLogin):
 
 # ----- Offers -----
 def _with_boat_times(offer: dict) -> dict:
-    return {**offer, "boat_times": BOAT_TIMES_BY_OFFER.get(offer["id"], [])}
+    return {
+        **offer,
+        "boat_times": BOAT_TIMES_BY_OFFER.get(offer["id"], []),
+        "allowed_weekdays": ALLOWED_WEEKDAYS_BY_OFFER.get(offer["id"], []),
+    }
 
 
 @api.get("/offers")
@@ -265,9 +281,36 @@ async def create_booking(body: BookingCreate):
     if booking_date < datetime.now(timezone.utc).date():
         raise HTTPException(status_code=400, detail="Date must be in the future")
 
+    # Validate day-of-week matches the offer (Day Pass Mon-Fri, Sunset Sat, Brunch Sun)
+    allowed_weekdays = ALLOWED_WEEKDAYS_BY_OFFER.get(body.offer_type, [])
+    if booking_date.weekday() not in allowed_weekdays:
+        names = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+        allowed_names = [names[d] for d in allowed_weekdays]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Selected date is not available for {body.offer_type}. Allowed days: {', '.join(allowed_names)}",
+        )
+
     total_guests = body.adults + body.children
     if total_guests <= 0:
         raise HTTPException(status_code=400, detail="At least one guest required")
+
+    # Validate participants match the adult/child counts
+    if len(body.participants) != total_guests:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Expected {total_guests} participants, received {len(body.participants)}",
+        )
+    adult_count = sum(1 for p in body.participants if p.kind == "adult")
+    child_count = sum(1 for p in body.participants if p.kind == "child")
+    if adult_count != body.adults or child_count != body.children:
+        raise HTTPException(
+            status_code=400,
+            detail="Participants adult/child distribution does not match",
+        )
+    for p in body.participants:
+        if not p.name.strip() or not p.surname.strip() or not p.nationality.strip():
+            raise HTTPException(status_code=400, detail="All participant fields are required")
 
     # capacity check
     cursor = db.bookings.find(
@@ -283,6 +326,15 @@ async def create_booking(body: BookingCreate):
     bid = str(uuid.uuid4())
     reference_token = uuid.uuid4().hex
     total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
+    participants_docs = [
+        {
+            "name": p.name.strip(),
+            "surname": p.surname.strip(),
+            "nationality": p.nationality.strip(),
+            "kind": p.kind,
+        }
+        for p in body.participants
+    ]
     doc = {
         "id": bid,
         "reference_token": reference_token,
@@ -294,9 +346,7 @@ async def create_booking(body: BookingCreate):
         "total_amount": total,
         "status": "pending",
         "qr_codes": [],
-        "name": body.name.strip(),
-        "surname": body.surname.strip(),
-        "nationality": body.nationality.strip(),
+        "participants": participants_docs,
         "boat_time": body.boat_time,
         "phone": body.phone.strip(),
         "email": body.email.lower(),
@@ -322,6 +372,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
         raise HTTPException(status_code=400, detail="Booking already processed")
 
     offer = OFFERS[booking["offer_type"]]
+    participants = booking.get("participants", [])
     base_payload = {
         "v": 1,
         "issuer": "Boulay Beach Resort",
@@ -331,42 +382,52 @@ async def pay_booking(booking_id: str, body: PayBooking):
         "offer_name": offer["name_fr"],
         "schedule": offer["schedule_fr"],
         "date": booking["date"],
+        "boat_time": booking.get("boat_time", ""),
         "adults": int(booking.get("adults", 0)),
         "children": int(booking.get("children", 0)),
         "total_amount_fcfa": int(booking["total_amount"]),
-        "name": booking["name"],
-        "surname": booking["surname"],
-        "nationality": booking.get("nationality", ""),
         "phone": booking["phone"],
         "email": booking["email"],
         "special_requests": booking.get("special_requests", "") or "",
     }
 
     qr_codes = []
-
-    def build_qr(kind: str, idx: int, label_fr: str, label_en: str):
+    adult_i = 0
+    child_i = 0
+    for p in participants:
         token = uuid.uuid4().hex
+        if p["kind"] == "adult":
+            adult_i += 1
+            idx = adult_i
+            label_fr = f"Adulte #{idx}"
+            label_en = f"Adult #{idx}"
+        else:
+            child_i += 1
+            idx = child_i
+            label_fr = f"Enfant #{idx}"
+            label_en = f"Child #{idx}"
         guest_payload = {
             **base_payload,
-            "guest_kind": kind,
+            "guest_kind": p["kind"],
             "guest_index": idx,
             "guest_label": label_fr,
+            "guest_name": p["name"],
+            "guest_surname": p["surname"],
+            "guest_nationality": p["nationality"],
             "guest_token": token,
         }
         payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
-        return {
+        qr_codes.append({
             "label_fr": label_fr,
             "label_en": label_en,
-            "kind": kind,
+            "kind": p["kind"],
+            "guest_name": p["name"],
+            "guest_surname": p["surname"],
+            "guest_nationality": p["nationality"],
             "qr_token": token,
             "qr_payload": payload_str,
             "qr_code": make_qr(payload_str),
-        }
-
-    for i in range(int(booking.get("adults", 0))):
-        qr_codes.append(build_qr("adult", i + 1, f"Adulte #{i + 1}", f"Adult #{i + 1}"))
-    for i in range(int(booking.get("children", 0))):
-        qr_codes.append(build_qr("child", i + 1, f"Enfant #{i + 1}", f"Child #{i + 1}"))
+        })
 
     paid_at = now_iso()
     await db.bookings.update_one(
