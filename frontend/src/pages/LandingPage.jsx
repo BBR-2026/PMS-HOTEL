@@ -5,10 +5,10 @@ import api from "../lib/api";
 import { useLang } from "../context/LanguageContext";
 import OfferCard from "../components/OfferCard";
 
-const HERO_BG = "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/cc908c9d164d56b323fe8dc47c688c4bf5222057ff477bdd3aa4f49ab2bc8c0c.png";
-const IMG_PASS_DAY = "https://images.unsplash.com/photo-1729707691048-722c1acf5c51?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxsdXh1cnklMjBiZWFjaCUyMHJlc29ydCUyMHBvb2x8ZW58MHx8fHwxNzc3ODkwNDA3fDA&ixlib=rb-4.1.0&q=85";
+const HERO_BG = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/g5p3da0v_BBR%20_SHOOT%202_140.jpg";
+const IMG_PASS_DAY = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ivhtbefz_BBR%20_SHOOT%202_15.jpg";
 const IMG_SUNSET = "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/9e89b22524180e785f62f14ed8558a699ccd6bdf1259b8dea5c13cc732cb44c5.png";
-const IMG_BRUNCH = "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/bc2709bb2dada5c4c24ec8e6810953270275900ce7a3e0ed81969fc8cec04c96.png";
+const IMG_BRUNCH = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2hilix5p_BBR%20_SHOOT%202_29.jpg";
 
 const IMG_BY_ID = {
   pass_day: IMG_PASS_DAY,
@@ -36,7 +36,8 @@ export default function LandingPage() {
       <section className="relative h-[100vh] min-h-[640px] flex items-end overflow-hidden">
         <div className="absolute inset-0">
           <img src={HERO_BG} alt="Boulay Beach Resort" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A]/40 via-[#0A0A0A]/30 to-[#0A0A0A]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A]/55 via-[#0A0A0A]/55 to-[#0A0A0A]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/70 via-transparent to-transparent" />
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-6 md:px-12 lg:px-24 pb-24 md:pb-32 w-full">
@@ -56,7 +57,7 @@ export default function LandingPage() {
           >
             <span className="text-[#F5F0E8]">{t.hero.title}</span>
             <br />
-            <span className="text-[#B8922A] italic">{t.hero.titleAccent}</span>
+            <span className="text-[#B8922A] font-light">{t.hero.titleAccent}</span>
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -128,7 +129,7 @@ export default function LandingPage() {
           <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-5">
             {t.events.title}
           </div>
-          <h2 className="font-serif text-3xl md:text-5xl text-[#F5F0E8] tracking-tight leading-tight mb-7 italic font-light">
+          <h2 className="font-serif text-3xl md:text-5xl text-[#F5F0E8] tracking-tight leading-tight mb-7 font-light">
             {lang === "fr"
               ? "« L'évènement, à votre image. »"
               : "“The event, in your image.”"}

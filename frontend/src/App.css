@@ -65,7 +65,8 @@
     color: var(--bbr-cream);
     padding: 0.85rem 1rem;
     width: 100%;
-    font-family: 'Montserrat', sans-serif;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 300;
     font-size: 0.9rem;
     transition: border-color 0.3s ease;
 }

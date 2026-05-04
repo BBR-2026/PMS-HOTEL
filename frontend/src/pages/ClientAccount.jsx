@@ -64,7 +64,7 @@ export default function ClientAccount() {
           {t.account.welcome}
         </div>
         <h1 className="font-serif text-4xl md:text-6xl font-light tracking-tight">
-          {user?.name} <span className="italic text-[#B8922A]">{user?.surname}</span>
+          {user?.name} <span className="text-[#B8922A]">{user?.surname}</span>
         </h1>
         <div className="gold-divider mt-6 mb-16" />
 
@@ -106,7 +106,7 @@ export default function ClientAccount() {
                     <span className="text-[#B8922A]">{formatXOF(b.total_amount)}</span>
                   </div>
                   {b.special_requests && (
-                    <div className="text-sm text-[#F5F0E8]/40 mt-3 italic max-w-lg">"{b.special_requests}"</div>
+                    <div className="text-sm text-[#F5F0E8]/40 mt-3 max-w-lg">"{b.special_requests}"</div>
                   )}
                 </div>
 

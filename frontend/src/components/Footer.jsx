@@ -6,15 +6,11 @@ export default function Footer() {
     <footer data-testid="site-footer" className="border-t border-[#F5F0E8]/10 bg-[#0A0A0A] py-16 px-6 md:px-12 lg:px-24">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12">
         <div>
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-9 h-9 border border-[#B8922A] flex items-center justify-center">
-              <span className="font-serif text-[#B8922A] text-xl leading-none">B</span>
-            </div>
-            <div>
-              <div className="font-serif text-base text-[#F5F0E8]">Boulay</div>
-              <div className="text-[0.6rem] uppercase tracking-[0.3em] text-[#B8922A]">Beach Resort</div>
-            </div>
-          </div>
+          <img
+            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
+            alt="Boulay Beach Resort"
+            className="h-20 w-auto object-contain mb-5 -ml-2"
+          />
           <p className="text-sm text-[#F5F0E8]/50 max-w-xs leading-relaxed">{t.footer.addr}</p>
         </div>
         <div>

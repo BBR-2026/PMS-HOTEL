@@ -32,13 +32,11 @@ export default function Header() {
     >
       <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16 py-5 flex items-center justify-between">
         <Link to="/" data-testid="logo-link" className="flex items-center gap-3 group">
-          <div className="w-9 h-9 border border-[#B8922A] flex items-center justify-center">
-            <span className="font-serif text-[#B8922A] text-xl leading-none">B</span>
-          </div>
-          <div className="hidden sm:block leading-tight">
-            <div className="font-serif text-base text-[#F5F0E8] tracking-wide">Boulay</div>
-            <div className="text-[0.6rem] uppercase tracking-[0.3em] text-[#B8922A]">Beach Resort</div>
-          </div>
+          <img
+            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
+            alt="Boulay Beach Resort"
+            className="h-12 md:h-14 w-auto object-contain"
+          />
         </Link>
 
         <nav className="hidden md:flex items-center gap-10">

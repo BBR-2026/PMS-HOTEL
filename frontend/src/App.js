@@ -51,7 +51,7 @@ function App() {
                 background: "#141414",
                 border: "1px solid rgba(184, 146, 42, 0.3)",
                 color: "#F5F0E8",
-                fontFamily: "Montserrat, sans-serif",
+                fontFamily: "Poppins, sans-serif",
               },
             }}
           />
