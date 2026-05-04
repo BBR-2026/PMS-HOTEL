@@ -1,34 +1,85 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
-}
-
-.App-header {
-    background-color: #0f0f10;
+.App {
     min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+    background-color: var(--bbr-black);
+    color: var(--bbr-cream);
 }
 
-.App-link {
-    color: #61dafb;
+/* Hide scrollbar visual junk while keeping function */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bbr-black);
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(184, 146, 42, 0.3);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--bbr-gold);
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+/* Luxury button shimmer */
+.btn-gold {
+    position: relative;
+    overflow: hidden;
+    background: var(--bbr-gold);
+    color: var(--bbr-black);
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 0.9rem 2.25rem;
+    font-size: 0.78rem;
+    transition: background-color 0.3s ease, transform 0.3s ease;
+    border: 1px solid var(--bbr-gold);
+}
+.btn-gold:hover {
+    background: var(--bbr-gold-hover);
+    transform: translateY(-1px);
+}
+.btn-gold:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-ghost-gold {
+    background: transparent;
+    color: var(--bbr-gold);
+    border: 1px solid var(--bbr-gold);
+    padding: 0.85rem 2rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+.btn-ghost-gold:hover {
+    background: rgba(184, 146, 42, 0.1);
+}
+
+.input-luxury {
+    background: var(--bbr-surface);
+    border: 1px solid var(--bbr-cream-10);
+    color: var(--bbr-cream);
+    padding: 0.85rem 1rem;
+    width: 100%;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 0.9rem;
+    transition: border-color 0.3s ease;
+}
+.input-luxury:focus {
+    outline: none;
+    border-color: var(--bbr-gold);
+}
+
+.label-luxury {
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--bbr-gold);
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    display: block;
 }
