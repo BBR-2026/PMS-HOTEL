@@ -74,6 +74,13 @@ OFFERS = {
 OfferType = Literal["pass_day", "sunset", "brunch"]
 BookingStatus = Literal["pending", "confirmed", "arrived", "completed", "cancelled"]
 
+# Boat departure times available per offer
+BOAT_TIMES_BY_OFFER = {
+    "pass_day": ["10H", "12H", "14H", "16H", "18H", "20H"],
+    "sunset": ["10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H", "18H", "19H", "20H"],
+    "brunch": ["10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H", "18H", "19H", "20H"],
+}
+
 
 # ----- Models -----
 class StaffLogin(BaseModel):
@@ -95,7 +102,7 @@ class BookingCreate(BaseModel):
     name: str
     surname: str
     nationality: str
-    boat_time: Literal["10H", "12H", "14H", "16H", "18H", "20H"]
+    boat_time: str
     phone: str
     email: EmailStr
     special_requests: Optional[str] = ""
@@ -198,16 +205,20 @@ async def login_staff(body: StaffLogin):
 
 
 # ----- Offers -----
+def _with_boat_times(offer: dict) -> dict:
+    return {**offer, "boat_times": BOAT_TIMES_BY_OFFER.get(offer["id"], [])}
+
+
 @api.get("/offers")
 async def list_offers():
-    return list(OFFERS.values())
+    return [_with_boat_times(o) for o in OFFERS.values()]
 
 
 @api.get("/offers/{offer_id}")
 async def get_offer(offer_id: str):
     if offer_id not in OFFERS:
         raise HTTPException(status_code=404, detail="Offer not found")
-    return OFFERS[offer_id]
+    return _with_boat_times(OFFERS[offer_id])
 
 
 # ----- Availability -----
@@ -238,6 +249,14 @@ async def create_booking(body: BookingCreate):
     if body.offer_type not in OFFERS:
         raise HTTPException(status_code=400, detail="Invalid offer")
     offer = OFFERS[body.offer_type]
+
+    # Validate boat_time against offer-specific allowed times
+    allowed_times = BOAT_TIMES_BY_OFFER.get(body.offer_type, [])
+    if body.boat_time not in allowed_times:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid boat time for {body.offer_type}. Allowed: {', '.join(allowed_times)}",
+        )
 
     try:
         booking_date = datetime.strptime(body.date, "%Y-%m-%d").date()
@@ -425,5 +444,3 @@ app.add_middleware(
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-

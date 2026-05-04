@@ -257,7 +257,7 @@ export default function BookingTunnel() {
                   <label className="label-luxury">{t.booking.boatTime}</label>
                   <p className="text-[0.75rem] text-[#0A0A0A]/50 mb-3 -mt-1">{t.booking.boatTimeHint}</p>
                   <div className="flex flex-wrap gap-2.5" data-testid="boat-time-group">
-                    {["10H", "12H", "14H", "16H", "18H", "20H"].map((h) => {
+                    {(offer.boat_times || []).map((h) => {
                       const selected = contact.boat_time === h;
                       return (
                         <button
