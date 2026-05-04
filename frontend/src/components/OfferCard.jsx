@@ -29,7 +29,7 @@ export default function OfferCard({ offer, image, bullets = [], index = 0, featu
       </div>
 
       <div className="p-8 md:p-10 flex flex-col flex-1">
-        <h3 className="font-serif text-3xl md:text-4xl text-[#F5F0E8] mb-2 tracking-tight font-light">
+        <h3 className="font-display-serif text-3xl md:text-4xl text-[#F5F0E8] mb-2 tracking-tight">
           {name}
         </h3>
         {schedule && (

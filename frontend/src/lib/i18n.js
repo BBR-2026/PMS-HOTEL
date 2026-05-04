@@ -105,6 +105,8 @@ export const translations = {
     },
     events: {
       title: "Privatisation & Événements",
+      heroEyebrow: "Privatisation & Événements",
+      heroTitle: "L'évènement, à votre image.",
       subtitle:
         "Mariage, séminaire, anniversaire d'exception. Notre équipe orchestre l'évènement à votre image.",
       eventType: "Type d'événement",
@@ -230,7 +232,8 @@ export const translations = {
     },
     events: {
       title: "Privatization & Events",
-      heroTitle: "Privatization & Events",
+      heroEyebrow: "Privatization & Events",
+      heroTitle: "The event, in your image.",
       subtitle:
         "Wedding, seminar, exceptional birthday. Our team orchestrates the event in your image.",
       eventType: "Event type",

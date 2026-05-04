@@ -48,9 +48,9 @@ export default function EventPrivatization() {
         </div>
         <div className="relative z-10 max-w-7xl mx-auto px-6 md:px-12 lg:px-24 pb-20 w-full">
           <div className="text-[0.72rem] uppercase tracking-[0.4em] text-[#B8922A] mb-5">
-            Boulay Concierge
+            {t.events.heroEyebrow}
           </div>
-          <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-light text-[#F5F0E8] tracking-tight leading-[1.05] mb-6">
+          <h1 className="font-display-serif text-5xl md:text-6xl lg:text-7xl text-[#F5F0E8] tracking-tight leading-[1.05] mb-6">
             {t.events.heroTitle}
           </h1>
           <div className="gold-divider mb-7" />
