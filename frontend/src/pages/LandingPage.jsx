@@ -66,6 +66,22 @@ export default function LandingPage() {
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, delay: 0.45 }}
+            className="mt-8 max-w-xl space-y-2"
+          >
+            <p className="text-base md:text-lg text-[#F5F0E8] font-light leading-relaxed">
+              {t.hero.taglineLine1}
+            </p>
+            <p className="text-base md:text-lg text-[#F5F0E8] font-light leading-relaxed">
+              {t.hero.taglineLine2}
+            </p>
+            <p className="text-base md:text-lg text-[#F5F0E8]/85 font-light leading-relaxed">
+              {t.hero.taglineLine3}
+            </p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.55 }}
             className="mt-10 flex flex-wrap items-center gap-5"
           >

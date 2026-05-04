@@ -43,15 +43,20 @@ export default function EventPrivatization() {
       <section className="relative h-[60vh] min-h-[420px] flex items-end overflow-hidden">
         <div className="absolute inset-0">
           <img src={STAFF_BG} alt="Events" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A]/60 via-[#0A0A0A]/40 to-[#0A0A0A]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A]/55 via-[#0A0A0A]/55 to-[#0A0A0A]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/70 via-transparent to-transparent" />
         </div>
         <div className="relative z-10 max-w-7xl mx-auto px-6 md:px-12 lg:px-24 pb-20 w-full">
-          <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-5">
-            {t.events.title}
+          <div className="text-[0.72rem] uppercase tracking-[0.4em] text-[#B8922A] mb-5">
+            Boulay Concierge
           </div>
-          <h1 className="font-serif text-5xl md:text-7xl font-light text-[#F5F0E8] tracking-tight max-w-3xl leading-[1.05]">
-            {t.events.subtitle}
+          <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-light text-[#F5F0E8] tracking-tight leading-[1.05] mb-6">
+            {t.events.heroTitle}
           </h1>
+          <div className="gold-divider mb-7" />
+          <p className="max-w-2xl text-base md:text-lg text-[#F5F0E8]/80 font-light leading-relaxed">
+            {t.events.subtitle}
+          </p>
         </div>
       </section>
 

@@ -12,6 +12,9 @@ export const translations = {
     hero: {
       eyebrow: "Boulay Beach Resort",
       tagline: "Life Is Here",
+      taglineLine1: "Une île privée, à quelques minutes d'Abidjan.",
+      taglineLine2: "Un autre rythme. Une autre énergie.",
+      taglineLine3: "Des expériences premium inoubliables.",
       title: "",
       titleAccent: "",
       subtitle: "",
@@ -109,6 +112,11 @@ export const translations = {
     footer: {
       addr: "Boulay Beach Resort — Abidjan, Côte d'Ivoire",
       rights: "Tous droits réservés.",
+      contact: "Contact",
+      reservations: "Réservations",
+      follow: "Nous suivre",
+      legal_terms: "Conditions générales de vente",
+      legal_mentions: "Mentions légales",
     },
   },
   en: {
@@ -124,6 +132,9 @@ export const translations = {
     hero: {
       eyebrow: "Boulay Beach Resort",
       tagline: "Life Is Here",
+      taglineLine1: "A private island, just minutes from Abidjan.",
+      taglineLine2: "A different rhythm. A different energy.",
+      taglineLine3: "Unforgettable premium experiences.",
       title: "",
       titleAccent: "",
       subtitle: "",
@@ -209,6 +220,7 @@ export const translations = {
     },
     events: {
       title: "Privatization & Events",
+      heroTitle: "Privatization & Events",
       subtitle:
         "Wedding, seminar, exceptional birthday. Our team orchestrates the event in your image.",
       eventType: "Event type",
@@ -221,6 +233,11 @@ export const translations = {
     footer: {
       addr: "Boulay Beach Resort — Abidjan, Côte d'Ivoire",
       rights: "All rights reserved.",
+      contact: "Contact",
+      reservations: "Reservations",
+      follow: "Follow us",
+      legal_terms: "Terms & Conditions",
+      legal_mentions: "Legal notice",
     },
   },
 };
