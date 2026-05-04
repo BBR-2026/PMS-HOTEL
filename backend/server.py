@@ -102,6 +102,7 @@ class BookingCreate(BaseModel):
 
 class PayBooking(BaseModel):
     reference_token: str
+    payment_method: Optional[Literal["fineo", "cash"]] = "fineo"
 
 
 class EventPrivatization(BaseModel):
@@ -349,11 +350,17 @@ async def pay_booking(booking_id: str, body: PayBooking):
     paid_at = now_iso()
     await db.bookings.update_one(
         {"id": booking_id},
-        {"$set": {"status": "confirmed", "qr_codes": qr_codes, "paid_at": paid_at}},
+        {"$set": {
+            "status": "confirmed",
+            "qr_codes": qr_codes,
+            "paid_at": paid_at,
+            "payment_method": body.payment_method,
+        }},
     )
     booking["status"] = "confirmed"
     booking["qr_codes"] = qr_codes
     booking["paid_at"] = paid_at
+    booking["payment_method"] = body.payment_method
     return booking
 
 

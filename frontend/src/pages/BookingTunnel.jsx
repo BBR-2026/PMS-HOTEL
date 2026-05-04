@@ -31,7 +31,7 @@ export default function BookingTunnel() {
   const [availability, setAvailability] = useState(null);
   const [bookingResp, setBookingResp] = useState(null); // booking after creation
   const [creating, setCreating] = useState(false);
-  const [paying, setPaying] = useState(false);
+  const [paying, setPaying] = useState(null); // 'fineo' | 'cash' | null
 
   useEffect(() => {
     api.get(`/offers/${offerId}`).then((r) => setOffer(r.data)).catch(() => navigate("/"));
@@ -104,20 +104,23 @@ export default function BookingTunnel() {
     }
   };
 
-  const handlePay = async () => {
+  const handlePay = async (method = "fineo") => {
     if (!bookingResp) return;
-    setPaying(true);
-    await new Promise((r) => setTimeout(r, 1400)); // FINEO simulation
+    setPaying(method);
+    if (method === "fineo") {
+      await new Promise((r) => setTimeout(r, 1400)); // FINEO simulation
+    }
     try {
       const { data } = await api.post(`/bookings/${bookingResp.id}/pay`, {
         reference_token: bookingResp.reference_token,
+        payment_method: method,
       });
       setBookingResp(data);
       toast.success(t.booking.successTitle);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Payment failed");
     } finally {
-      setPaying(false);
+      setPaying(null);
     }
   };
 
@@ -403,25 +406,52 @@ function PaymentView({ booking, onPay, paying, t }) {
   return (
     <div data-testid="payment-view">
       <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">{t.booking.step5}</h2>
-      <div className="gold-divider mb-8" />
+      <div className="gold-divider mb-3" />
+      <p className="text-sm text-[#0A0A0A]/60 mb-8">
+        {t.booking.summary} — <span className="text-[#B8922A] font-medium">{formatXOF(booking.total_amount)}</span>
+        {" · "}#{booking.id.slice(0, 8).toUpperCase()}
+      </p>
 
-      <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-10 text-center">
-        <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">FINEO</div>
-        <div className="font-display-serif text-4xl text-[#0A0A0A] mb-2">{formatXOF(booking.total_amount)}</div>
-        <div className="text-sm text-[#0A0A0A]/50 mb-8">
-          Boulay Beach Resort · #{booking.id.slice(0, 8).toUpperCase()}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* FINEO option */}
+        <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 flex flex-col">
+          <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">FINEO</div>
+          <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
+            {t.booking.payNow}
+          </div>
+          <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
+            {t.booking.fineoDisclaimer}
+          </p>
+          <button
+            onClick={() => onPay("fineo")}
+            disabled={!!paying}
+            className="btn-gold w-full"
+            data-testid="pay-fineo-btn"
+          >
+            {paying === "fineo" ? t.booking.payProcessing : t.booking.payNow}
+          </button>
         </div>
-        <button
-          onClick={onPay}
-          disabled={paying}
-          className="btn-gold w-full sm:w-auto"
-          data-testid="pay-fineo-btn"
-        >
-          {paying ? t.booking.payProcessing : t.booking.payNow}
-        </button>
-        <p className="text-xs text-[#0A0A0A]/40 mt-6 max-w-sm mx-auto leading-relaxed">
-          {t.booking.fineoDisclaimer}
-        </p>
+
+        {/* Cash option */}
+        <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col">
+          <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
+            {t.booking.payCash}
+          </div>
+          <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
+            {t.booking.payCash}
+          </div>
+          <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
+            {t.booking.payCashDesc}
+          </p>
+          <button
+            onClick={() => onPay("cash")}
+            disabled={!!paying}
+            className="btn-ghost-gold w-full"
+            data-testid="pay-cash-btn"
+          >
+            {paying === "cash" ? t.booking.payProcessing : t.booking.payCash}
+          </button>
+        </div>
       </div>
     </div>
   );
