@@ -1,6 +1,7 @@
 """Boulay Beach Resort - Reservation API (guest checkout flow)"""
 import os
 import io
+import json
 import uuid
 import base64
 import logging
@@ -140,7 +141,15 @@ def decode_token(token: str) -> dict:
 
 
 def make_qr(payload: str) -> str:
-    img = qrcode.make(payload)
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=8,
+        border=2,
+    )
+    qr.add_data(payload)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
@@ -280,7 +289,8 @@ async def create_booking(body: BookingCreate):
 
 @api.post("/bookings/{booking_id}/pay")
 async def pay_booking(booking_id: str, body: PayBooking):
-    """FINEO placeholder - validates reference token, generates one QR per guest."""
+    """FINEO placeholder - validates reference token, generates one QR per guest.
+    Each QR encodes a complete JSON payload with all booking information."""
     booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -289,27 +299,52 @@ async def pay_booking(booking_id: str, body: PayBooking):
     if booking["status"] != "pending":
         raise HTTPException(status_code=400, detail="Booking already processed")
 
+    offer = OFFERS[booking["offer_type"]]
+    base_payload = {
+        "v": 1,
+        "issuer": "Boulay Beach Resort",
+        "booking_id": booking_id,
+        "booking_ref": booking_id[:8].upper(),
+        "offer_id": booking["offer_type"],
+        "offer_name": offer["name_fr"],
+        "schedule": offer["schedule_fr"],
+        "date": booking["date"],
+        "adults": int(booking.get("adults", 0)),
+        "children": int(booking.get("children", 0)),
+        "total_amount_fcfa": int(booking["total_amount"]),
+        "name": booking["name"],
+        "surname": booking["surname"],
+        "age": int(booking["age"]),
+        "phone": booking["phone"],
+        "email": booking["email"],
+        "special_requests": booking.get("special_requests", "") or "",
+    }
+
     qr_codes = []
+
+    def build_qr(kind: str, idx: int, label_fr: str, label_en: str):
+        token = uuid.uuid4().hex
+        guest_payload = {
+            **base_payload,
+            "guest_kind": kind,
+            "guest_index": idx,
+            "guest_label": label_fr,
+            "guest_token": token,
+        }
+        payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
+        return {
+            "label_fr": label_fr,
+            "label_en": label_en,
+            "kind": kind,
+            "qr_token": token,
+            "qr_payload": payload_str,
+            "qr_code": make_qr(payload_str),
+        }
+
     for i in range(int(booking.get("adults", 0))):
-        token = uuid.uuid4().hex
-        payload = f"BBR|{booking_id}|adult|{token}"
-        qr_codes.append({
-            "label_fr": f"Adulte #{i + 1}",
-            "label_en": f"Adult #{i + 1}",
-            "kind": "adult",
-            "qr_token": token,
-            "qr_code": make_qr(payload),
-        })
+        qr_codes.append(build_qr("adult", i + 1, f"Adulte #{i + 1}", f"Adult #{i + 1}"))
     for i in range(int(booking.get("children", 0))):
-        token = uuid.uuid4().hex
-        payload = f"BBR|{booking_id}|child|{token}"
-        qr_codes.append({
-            "label_fr": f"Enfant #{i + 1}",
-            "label_en": f"Child #{i + 1}",
-            "kind": "child",
-            "qr_token": token,
-            "qr_code": make_qr(payload),
-        })
+        qr_codes.append(build_qr("child", i + 1, f"Enfant #{i + 1}", f"Child #{i + 1}"))
 
     paid_at = now_iso()
     await db.bookings.update_one(
