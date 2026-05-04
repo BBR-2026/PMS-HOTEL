@@ -17,11 +17,11 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
       className="group relative overflow-hidden border border-[#0A0A0A]/10 bg-white flex flex-col shadow-sm hover:shadow-md transition-shadow duration-500"
       data-testid={`offer-card-${offer.id}`}
     >
-      <div className="relative overflow-hidden h-[220px] md:h-[240px] bg-[#FAFAF7] flex items-center justify-center">
+      <div className="relative overflow-hidden aspect-[16/9] bg-[#FAFAF7]">
         <img
           src={image}
           alt={name}
-          className="w-full h-full object-contain transition-transform duration-[1400ms] ease-out group-hover:scale-[1.04]"
+          className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-[1.04]"
         />
       </div>
 
