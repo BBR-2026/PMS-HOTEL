@@ -125,6 +125,17 @@ body {
     color: var(--bbr-black) !important;
 }
 
+/* Disable the default "today" highlight — only the selected date should appear gold */
+.rdp-day_today:not(.rdp-day_selected) {
+    background-color: transparent !important;
+    color: var(--bbr-cream) !important;
+    font-weight: 400 !important;
+}
+.rdp-day_today:not(.rdp-day_selected):hover {
+    background-color: rgba(184, 146, 42, 0.12) !important;
+    color: var(--bbr-cream) !important;
+}
+
 /* Smooth fade animation utility */
 .fade-up {
     animation: fadeUp 0.8s ease-out forwards;

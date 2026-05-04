@@ -172,6 +172,12 @@ export default function BookingTunnel() {
                     onSelect={setSelectedDate}
                     disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
                     locale={lang === "fr" ? frLocale : enUS}
+                    classNames={{
+                      day_today:
+                        "bg-transparent text-[#F5F0E8] hover:bg-[#B8922A]/10",
+                      day_selected:
+                        "bg-[#B8922A] text-[#0A0A0A] hover:bg-[#B8922A] hover:text-[#0A0A0A] focus:bg-[#B8922A] focus:text-[#0A0A0A]",
+                    }}
                     data-testid="booking-calendar"
                     className="text-[#F5F0E8]"
                   />
