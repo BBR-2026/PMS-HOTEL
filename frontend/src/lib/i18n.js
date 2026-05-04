@@ -10,11 +10,11 @@ export const translations = {
       staff: "Espace Staff",
     },
     hero: {
-      eyebrow: "Boulay Beach Resort — Abidjan",
-      title: "L'art du jour parfait,",
-      titleAccent: "au bord de l'Atlantique.",
-      subtitle:
-        "Une enclave 5 étoiles entre lagune et océan. Trois expériences signatures, conçues pour ceux qui cherchent l'exception.",
+      eyebrow: "Boulay Beach Resort",
+      tagline: "Life Is Here",
+      title: "",
+      titleAccent: "",
+      subtitle: "",
       cta: "Réserver une journée",
       scroll: "Découvrir",
     },
@@ -122,11 +122,11 @@ export const translations = {
       staff: "Staff",
     },
     hero: {
-      eyebrow: "Boulay Beach Resort — Abidjan",
-      title: "The art of the perfect day,",
-      titleAccent: "by the Atlantic.",
-      subtitle:
-        "A 5-star sanctuary between lagoon and ocean. Three signature experiences, designed for those who seek the exceptional.",
+      eyebrow: "Boulay Beach Resort",
+      tagline: "Life Is Here",
+      title: "",
+      titleAccent: "",
+      subtitle: "",
       cta: "Reserve a day",
       scroll: "Discover",
     },

@@ -45,7 +45,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-            className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-6"
+            className="text-[0.72rem] uppercase tracking-[0.4em] text-[#B8922A] mb-6"
           >
             {t.hero.eyebrow}
           </motion.div>
@@ -53,20 +53,16 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="font-serif font-light text-5xl sm:text-6xl lg:text-7xl xl:text-[5.5rem] leading-[1.05] tracking-tight max-w-4xl"
+            className="font-serif font-light text-5xl sm:text-6xl lg:text-7xl xl:text-[5.5rem] leading-[1.05] tracking-tight max-w-4xl text-[#F5F0E8]"
           >
-            <span className="text-[#F5F0E8]">{t.hero.title}</span>
-            <br />
-            <span className="text-[#B8922A] font-light">{t.hero.titleAccent}</span>
+            {t.hero.tagline}
           </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.35 }}
-            className="mt-8 max-w-xl text-base text-[#F5F0E8]/70 leading-relaxed font-light"
-          >
-            {t.hero.subtitle}
-          </motion.p>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
+            className="mt-8 gold-divider"
+          />
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
