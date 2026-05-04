@@ -94,7 +94,8 @@ class BookingCreate(BaseModel):
     children: int = Field(ge=0, le=20)
     name: str
     surname: str
-    age: int = Field(ge=18, le=120)
+    nationality: str
+    boat_time: Literal["10H", "12H", "14H", "16H", "18H", "20H"]
     phone: str
     email: EmailStr
     special_requests: Optional[str] = ""
@@ -276,7 +277,8 @@ async def create_booking(body: BookingCreate):
         "qr_codes": [],
         "name": body.name.strip(),
         "surname": body.surname.strip(),
-        "age": body.age,
+        "nationality": body.nationality.strip(),
+        "boat_time": body.boat_time,
         "phone": body.phone.strip(),
         "email": body.email.lower(),
         "special_requests": body.special_requests or "",
@@ -315,7 +317,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
         "total_amount_fcfa": int(booking["total_amount"]),
         "name": booking["name"],
         "surname": booking["surname"],
-        "age": int(booking["age"]),
+        "nationality": booking.get("nationality", ""),
         "phone": booking["phone"],
         "email": booking["email"],
         "special_requests": booking.get("special_requests", "") or "",
@@ -424,3 +426,4 @@ app.add_middleware(
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+

@@ -23,7 +23,8 @@ export default function BookingTunnel() {
   const [contact, setContact] = useState({
     name: "",
     surname: "",
-    age: "",
+    nationality: "",
+    boat_time: "",
     phone: "",
     email: "",
     special_requests: "",
@@ -63,8 +64,8 @@ export default function BookingTunnel() {
   const contactValid =
     contact.name.trim() &&
     contact.surname.trim() &&
-    contact.age &&
-    Number(contact.age) >= 18 &&
+    contact.nationality.trim() &&
+    contact.boat_time &&
     contact.phone.trim() &&
     /\S+@\S+\.\S+/.test(contact.email);
 
@@ -90,7 +91,8 @@ export default function BookingTunnel() {
         children,
         name: contact.name,
         surname: contact.surname,
-        age: Number(contact.age),
+        nationality: contact.nationality,
+        boat_time: contact.boat_time,
         phone: contact.phone,
         email: contact.email,
         special_requests: contact.special_requests,
@@ -244,10 +246,35 @@ export default function BookingTunnel() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Field label={t.booking.name} value={contact.name} onChange={setC("name")} testId="contact-name" />
                   <Field label={t.booking.surname} value={contact.surname} onChange={setC("surname")} testId="contact-surname" />
-                  <Field type="number" min={18} max={120} label={t.booking.age} value={contact.age} onChange={setC("age")} testId="contact-age" />
+                  <Field label={t.booking.nationality} value={contact.nationality} onChange={setC("nationality")} testId="contact-nationality" />
                   <Field label={t.booking.phone} value={contact.phone} onChange={setC("phone")} testId="contact-phone" />
                   <div className="md:col-span-2">
                     <Field type="email" label={t.booking.email} value={contact.email} onChange={setC("email")} testId="contact-email" />
+                  </div>
+                </div>
+
+                <div className="mt-8">
+                  <label className="label-luxury">{t.booking.boatTime}</label>
+                  <p className="text-[0.75rem] text-[#0A0A0A]/50 mb-3 -mt-1">{t.booking.boatTimeHint}</p>
+                  <div className="flex flex-wrap gap-2.5" data-testid="boat-time-group">
+                    {["10H", "12H", "14H", "16H", "18H", "20H"].map((h) => {
+                      const selected = contact.boat_time === h;
+                      return (
+                        <button
+                          key={h}
+                          type="button"
+                          onClick={() => setContact({ ...contact, boat_time: h })}
+                          className={`px-5 py-2.5 text-sm tracking-[0.18em] font-medium border transition-all ${
+                            selected
+                              ? "bg-[#B8922A] text-white border-[#B8922A]"
+                              : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                          }`}
+                          data-testid={`boat-time-${h}`}
+                        >
+                          {h}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -281,6 +308,8 @@ export default function BookingTunnel() {
                   <SummaryRow label={t.booking.adults} value={`${adults} × ${formatXOF(offer.price_adult)}`} />
                   {children > 0 && <SummaryRow label={t.booking.children} value={`${children} × ${formatXOF(offer.price_child)}`} />}
                   <SummaryRow label={`${t.booking.name} / ${t.booking.surname}`} value={`${contact.name} ${contact.surname}`} />
+                  <SummaryRow label={t.booking.nationality} value={contact.nationality} />
+                  <SummaryRow label={t.booking.boatTime} value={contact.boat_time} />
                   <SummaryRow label={t.booking.phone} value={contact.phone} />
                   <SummaryRow label={t.booking.email} value={contact.email} />
                   {contact.special_requests && <SummaryRow label={t.booking.specialRequests} value={contact.special_requests} />}
