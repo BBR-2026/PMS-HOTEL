@@ -41,7 +41,6 @@ export const translations = {
       leKaaiBullets: [
         "Restaurant ouvert tous les jours",
         "11h — 22h30",
-        "Traversée lagunaire aller-retour incluse",
       ],
     },
     booking: {
@@ -193,7 +192,6 @@ export const translations = {
       leKaaiBullets: [
         "Restaurant open every day",
         "11am — 10:30pm",
-        "Round-trip lagoon crossing included",
       ],
     },
     booking: {
