@@ -35,9 +35,6 @@ export default function LandingPage() {
       >
         <div className="max-w-7xl mx-auto">
           <div className="mb-16 md:mb-20 max-w-2xl">
-            <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-5">
-              {t.offers.eyebrow}
-            </div>
             <h2 className="font-display-serif text-4xl md:text-5xl lg:text-6xl text-[#0A0A0A] tracking-tight leading-[1.05] mb-6">
               {t.offers.title}
             </h2>
