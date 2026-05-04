@@ -46,8 +46,10 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
             </div>
             <div className="flex items-baseline justify-between gap-4">
               <span className="text-sm text-[#0A0A0A]/70">
-                {t.offers.child}{" "}
-                <span className="text-[#0A0A0A]/40">{t.offers.childAge}</span>
+                {t.offers.child}
+                <span className="block text-[0.72rem] text-[#0A0A0A]/40 mt-0.5">
+                  {t.offers.childAge}
+                </span>
               </span>
               <span className="font-medium tracking-wide text-[#0A0A0A]">
                 {formatXOF(offer.price_child)}
