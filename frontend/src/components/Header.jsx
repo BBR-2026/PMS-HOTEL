@@ -30,12 +30,12 @@ export default function Header() {
           : "bg-transparent"
       }`}
     >
-      <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16 py-5 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16 py-3 md:py-4 flex items-center justify-between">
         <Link to="/" data-testid="logo-link" className="flex items-center gap-3 group">
           <img
             src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
             alt="Boulay Beach Resort"
-            className="h-12 md:h-14 w-auto object-contain"
+            className="h-20 md:h-24 w-auto object-contain"
           />
         </Link>
 

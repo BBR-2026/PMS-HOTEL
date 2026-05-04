@@ -18,7 +18,7 @@ export default function OfferCard({ offer, image, description, index = 0, featur
       }`}
       data-testid={`offer-card-${offer.id}`}
     >
-      <div className={`relative overflow-hidden ${featured ? "h-[360px] md:h-[460px]" : "h-[260px]"}`}>
+      <div className={`relative overflow-hidden ${featured ? "h-[360px] md:h-[460px]" : "h-[280px]"}`}>
         <img
           src={image}
           alt={name}
