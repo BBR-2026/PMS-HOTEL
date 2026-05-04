@@ -49,16 +49,35 @@ export default function BookingTunnel() {
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
+  const totalGuests = adults + children;
+  const remaining = availability?.remaining ?? null;
+
+  // Compute boat times to show based on selected date (day-dependent for Le Kaai)
+  const boatTimes = useMemo(() => {
+    if (!offer) return [];
+    if (offer.boat_times_weekday && offer.boat_times_weekend) {
+      if (!selectedDate) return offer.boat_times_weekday;
+      const pyWeekday = (selectedDate.getDay() + 6) % 7;
+      return pyWeekday >= 5 ? offer.boat_times_weekend : offer.boat_times_weekday;
+    }
+    return offer.boat_times || [];
+  }, [offer, selectedDate]);
+
+  // Reset boat_time if it's no longer in the allowed set for the chosen date
+  useEffect(() => {
+    if (contact.boat_time && !boatTimes.includes(contact.boat_time)) {
+      setContact((c) => ({ ...c, boat_time: "" }));
+    }
+  }, [boatTimes, contact.boat_time]);
+
   if (!offer) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center text-[#0A0A0A]/40 text-sm uppercase tracking-[0.3em]">
+      <div className="min-h-screen bg-white flex items-center justify-center text-[#0A0A0A]/40 text-sm uppercase tracking-[0.3em]">
         Loading…
       </div>
     );
   }
 
-  const totalGuests = adults + children;
-  const remaining = availability?.remaining ?? null;
   const participantsValid =
     participants.length === totalGuests &&
     participants.every(
@@ -69,6 +88,13 @@ export default function BookingTunnel() {
     contact.boat_time &&
     contact.phone.trim() &&
     /\S+@\S+\.\S+/.test(contact.email);
+
+  // Human-readable list of what's still missing at step 3 (shown beside the disabled Next button)
+  const missingStep3 = [];
+  if (!participantsValid) missingStep3.push(t.booking.missingParticipants);
+  if (!contact.boat_time) missingStep3.push(t.booking.missingBoatTime);
+  if (!contact.phone.trim()) missingStep3.push(t.booking.missingPhone);
+  if (!/\S+@\S+\.\S+/.test(contact.email)) missingStep3.push(t.booking.missingEmail);
 
   const stepValid = {
     1: !!selectedDate && remaining !== null && remaining >= totalGuests && totalGuests >= 1,
@@ -324,7 +350,7 @@ export default function BookingTunnel() {
                   <label className="label-luxury">{t.booking.boatTime}</label>
                   <p className="text-[0.75rem] text-[#0A0A0A]/50 mb-3 -mt-1">{t.booking.boatTimeHint}</p>
                   <div className="flex flex-wrap gap-2.5" data-testid="boat-time-group">
-                    {(offer.boat_times || []).map((h) => {
+                    {(boatTimes || []).map((h) => {
                       const selected = contact.boat_time === h;
                       return (
                         <button
@@ -432,25 +458,32 @@ export default function BookingTunnel() {
         </AnimatePresence>
 
         {step < 4 && (
-          <div className="mt-14 flex items-center justify-between">
-            <button
-              onClick={goBack}
-              disabled={step === 1}
-              className="text-[0.72rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2"
-              data-testid="step-back-btn"
-            >
-              <ArrowLeft size={14} />
-              {t.booking.back}
-            </button>
-            <button
-              onClick={goNext}
-              disabled={!stepValid[step]}
-              className="btn-gold inline-flex items-center gap-3"
-              data-testid="step-next-btn"
-            >
-              {t.booking.next}
-              <ArrowRight size={14} />
-            </button>
+          <div className="mt-14">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={goBack}
+                disabled={step === 1}
+                className="text-[0.72rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                data-testid="step-back-btn"
+              >
+                <ArrowLeft size={14} />
+                {t.booking.back}
+              </button>
+              <button
+                onClick={goNext}
+                disabled={!stepValid[step]}
+                className="btn-gold inline-flex items-center gap-3"
+                data-testid="step-next-btn"
+              >
+                {t.booking.next}
+                <ArrowRight size={14} />
+              </button>
+            </div>
+            {step === 3 && !stepValid[3] && missingStep3.length > 0 && (
+              <p className="mt-4 text-right text-[0.72rem] text-[#B8922A]" data-testid="missing-hint">
+                {t.booking.missingPrefix} {missingStep3.join(" · ")}
+              </p>
+            )}
           </div>
         )}
 
@@ -635,10 +668,23 @@ function ConfirmationView({ booking, t, lang, navigate }) {
         ))}
       </div>
 
-      <div className="mt-14 text-center">
+      <div className="mt-14 text-center space-y-4">
         <button onClick={() => navigate("/")} className="btn-ghost-gold" data-testid="back-home-btn">
           {t.booking.backHome}
         </button>
+        <div>
+          <a
+            href="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/opmut9mt_LIVRET_BBR.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            download="LIVRET_BBR.pdf"
+            className="inline-flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.22em] text-[#B8922A] hover:text-[#D4AF37] border-b border-[#B8922A]/40 hover:border-[#D4AF37] pb-1 transition-colors"
+            data-testid="download-livret-btn"
+          >
+            <Download size={12} />
+            {t.booking.downloadLivret}
+          </a>
+        </div>
       </div>
 
       <p className="text-xs text-[#0A0A0A]/40 text-center mt-10 max-w-md mx-auto leading-relaxed">

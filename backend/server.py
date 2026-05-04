@@ -43,7 +43,7 @@ OFFERS = {
         "tagline_en": "The signature beach experience, Monday to Friday.",
         "price_adult": 50000,
         "price_child": 25000,
-        "max_capacity": 80,
+        "max_capacity": 250,
     },
     "sunset": {
         "id": "sunset",
@@ -55,7 +55,7 @@ OFFERS = {
         "tagline_en": "Golden cocktails and a flaming horizon at the magic hour.",
         "price_adult": 60000,
         "price_child": 30000,
-        "max_capacity": 60,
+        "max_capacity": 250,
     },
     "brunch": {
         "id": "brunch",
@@ -67,26 +67,51 @@ OFFERS = {
         "tagline_en": "An exceptional Sunday between ocean and gastronomy.",
         "price_adult": 60000,
         "price_child": 30000,
-        "max_capacity": 50,
+        "max_capacity": 250,
+    },
+    "le_kaai": {
+        "id": "le_kaai",
+        "name_fr": "Le Kaai",
+        "name_en": "Le Kaai",
+        "schedule_fr": "Tous les jours · 11h — 22h30",
+        "schedule_en": "Every day · 11am — 10:30pm",
+        "tagline_fr": "Le restaurant signature de Boulay — gastronomie entre lagune et océan.",
+        "tagline_en": "Boulay's signature restaurant — gastronomy between lagoon and ocean.",
+        "price_adult": 30000,
+        "price_child": 15000,
+        "max_capacity": 250,
     },
 }
 
-OfferType = Literal["pass_day", "sunset", "brunch"]
+OfferType = Literal["pass_day", "sunset", "brunch", "le_kaai"]
 BookingStatus = Literal["pending", "confirmed", "arrived", "completed", "cancelled"]
+
+# Weekday boat times (every 2 hours) and weekend boat times (hourly)
+BOAT_TIMES_WEEKDAY = ["10H", "12H", "14H", "16H", "18H", "20H"]
+BOAT_TIMES_WEEKEND = [f"{h}H" for h in range(10, 21)]
 
 # Boat departure times available per offer
 BOAT_TIMES_BY_OFFER = {
-    "pass_day": ["10H", "12H", "14H", "16H", "18H", "20H"],
-    "sunset": ["10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H", "18H", "19H", "20H"],
-    "brunch": ["10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H", "18H", "19H", "20H"],
+    "pass_day": BOAT_TIMES_WEEKDAY,
+    "sunset": BOAT_TIMES_WEEKEND,
+    "brunch": BOAT_TIMES_WEEKEND,
+    # le_kaai is day-dependent — resolved via _boat_times_for_date()
 }
 
 # Python weekday(): Monday=0, Sunday=6
 ALLOWED_WEEKDAYS_BY_OFFER = {
-    "pass_day": [0, 1, 2, 3, 4],  # Monday to Friday
-    "sunset": [5],                  # Saturday only
-    "brunch": [6],                  # Sunday only
+    "pass_day": [0, 1, 2, 3, 4],     # Monday to Friday
+    "sunset": [5],                     # Saturday only
+    "brunch": [6],                     # Sunday only
+    "le_kaai": [0, 1, 2, 3, 4, 5, 6],  # Every day
 }
+
+
+def _boat_times_for_date(offer_id: str, weekday: int) -> list:
+    """Return valid boat times for the given offer + weekday (Python Mon=0..Sun=6)."""
+    if offer_id == "le_kaai":
+        return BOAT_TIMES_WEEKEND if weekday in (5, 6) else BOAT_TIMES_WEEKDAY
+    return BOAT_TIMES_BY_OFFER.get(offer_id, [])
 
 
 # ----- Models -----
@@ -218,11 +243,15 @@ async def login_staff(body: StaffLogin):
 
 # ----- Offers -----
 def _with_boat_times(offer: dict) -> dict:
-    return {
-        **offer,
-        "boat_times": BOAT_TIMES_BY_OFFER.get(offer["id"], []),
-        "allowed_weekdays": ALLOWED_WEEKDAYS_BY_OFFER.get(offer["id"], []),
-    }
+    oid = offer["id"]
+    extra = {"allowed_weekdays": ALLOWED_WEEKDAYS_BY_OFFER.get(oid, [])}
+    if oid == "le_kaai":
+        extra["boat_times_weekday"] = BOAT_TIMES_WEEKDAY
+        extra["boat_times_weekend"] = BOAT_TIMES_WEEKEND
+        extra["boat_times"] = BOAT_TIMES_WEEKDAY  # default fallback
+    else:
+        extra["boat_times"] = BOAT_TIMES_BY_OFFER.get(oid, [])
+    return {**offer, **extra}
 
 
 @api.get("/offers")
@@ -266,20 +295,20 @@ async def create_booking(body: BookingCreate):
         raise HTTPException(status_code=400, detail="Invalid offer")
     offer = OFFERS[body.offer_type]
 
-    # Validate boat_time against offer-specific allowed times
-    allowed_times = BOAT_TIMES_BY_OFFER.get(body.offer_type, [])
-    if body.boat_time not in allowed_times:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid boat time for {body.offer_type}. Allowed: {', '.join(allowed_times)}",
-        )
-
+    # Validate boat_time against offer-specific allowed times (day-dependent for le_kaai)
     try:
         booking_date = datetime.strptime(body.date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format (YYYY-MM-DD)")
     if booking_date < datetime.now(timezone.utc).date():
         raise HTTPException(status_code=400, detail="Date must be in the future")
+
+    allowed_times = _boat_times_for_date(body.offer_type, booking_date.weekday())
+    if body.boat_time not in allowed_times:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid boat time for {body.offer_type}. Allowed: {', '.join(allowed_times)}",
+        )
 
     # Validate day-of-week matches the offer (Day Pass Mon-Fri, Sunset Sat, Brunch Sun)
     allowed_weekdays = ALLOWED_WEEKDAYS_BY_OFFER.get(body.offer_type, [])

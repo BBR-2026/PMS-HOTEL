@@ -6,11 +6,13 @@ import OfferCard from "../components/OfferCard";
 const IMG_PASS_DAY = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ivhtbefz_BBR%20_SHOOT%202_15.jpg";
 const IMG_SUNSET = "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/9e89b22524180e785f62f14ed8558a699ccd6bdf1259b8dea5c13cc732cb44c5.png";
 const IMG_BRUNCH = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2hilix5p_BBR%20_SHOOT%202_29.jpg";
+const IMG_LE_KAAI = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/g5p3da0v_BBR%20_SHOOT%202_140.jpg";
 
 const IMG_BY_ID = {
   pass_day: IMG_PASS_DAY,
   sunset: IMG_SUNSET,
   brunch: IMG_BRUNCH,
+  le_kaai: IMG_LE_KAAI,
 };
 
 export default function LandingPage() {
@@ -25,6 +27,7 @@ export default function LandingPage() {
     pass_day: t.offers.passDayBullets,
     sunset: t.offers.sunsetBullets,
     brunch: t.offers.brunchBullets,
+    le_kaai: t.offers.leKaaiBullets,
   };
 
   return (
@@ -42,7 +45,7 @@ export default function LandingPage() {
             <p className="text-base text-[#0A0A0A]/60 leading-relaxed">{t.offers.subtitle}</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 items-stretch">
             {offers.map((offer, i) => (
               <OfferCard
                 key={offer.id}
