@@ -52,7 +52,7 @@ export default function BookingTunnel() {
 
   if (!offer) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center text-[#F5F0E8]/40 text-sm uppercase tracking-[0.3em]">
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center text-[#0A0A0A]/40 text-sm uppercase tracking-[0.3em]">
         Loading…
       </div>
     );
@@ -124,17 +124,17 @@ export default function BookingTunnel() {
   const setC = (k) => (e) => setContact({ ...contact, [k]: e.target.value });
 
   return (
-    <div data-testid="booking-tunnel" className="min-h-screen bg-[#0A0A0A] text-[#F5F0E8] pt-28 pb-24 px-6 md:px-12">
+    <div data-testid="booking-tunnel" className="min-h-screen bg-white text-[#0A0A0A] pt-32 pb-24 px-6 md:px-12">
       <div className="max-w-4xl mx-auto">
         <div className="mb-12">
-          <Link to="/" className="text-[0.7rem] uppercase tracking-[0.28em] text-[#F5F0E8]/50 hover:text-[#B8922A] transition-colors inline-flex items-center gap-2 mb-6">
+          <Link to="/" className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors inline-flex items-center gap-2 mb-6">
             <ArrowLeft size={14} />
             {t.booking.back}
           </Link>
           <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">
             {offer.schedule_fr && lang === "fr" ? offer.schedule_fr : offer.schedule_en}
           </div>
-          <h1 className="font-display-serif text-4xl md:text-5xl lg:text-6xl text-[#F5F0E8] tracking-tight">
+          <h1 className="font-display-serif text-4xl md:text-5xl lg:text-6xl text-[#0A0A0A] tracking-tight">
             {offerName}
           </h1>
           <div className="gold-divider mt-5" />
@@ -145,7 +145,7 @@ export default function BookingTunnel() {
             <div
               key={n}
               className={`h-px flex-1 transition-colors duration-500 ${
-                step >= n ? "bg-[#B8922A]" : "bg-[#F5F0E8]/15"
+                step >= n ? "bg-[#B8922A]" : "bg-[#0A0A0A]/15"
               }`}
             />
           ))}
@@ -161,11 +161,11 @@ export default function BookingTunnel() {
           >
             {step === 1 && (
               <div data-testid="booking-step-1">
-                <h2 className="font-display-serif text-3xl md:text-4xl text-[#F5F0E8] mb-2">
+                <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step1}
                 </h2>
-                <p className="text-sm text-[#F5F0E8]/50 mb-8">{t.booking.pickDate}</p>
-                <div className="bg-[#141414] border border-[#F5F0E8]/10 p-4 inline-block">
+                <p className="text-sm text-[#0A0A0A]/50 mb-8">{t.booking.pickDate}</p>
+                <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-4 inline-block">
                   <Calendar
                     mode="single"
                     selected={selectedDate}
@@ -174,18 +174,18 @@ export default function BookingTunnel() {
                     locale={lang === "fr" ? frLocale : enUS}
                     classNames={{
                       day_today:
-                        "bg-transparent text-[#F5F0E8] hover:bg-[#B8922A]/10",
+                        "bg-transparent text-[#0A0A0A] hover:bg-[#B8922A]/10",
                       day_selected:
                         "bg-[#B8922A] text-[#0A0A0A] hover:bg-[#B8922A] hover:text-[#0A0A0A] focus:bg-[#B8922A] focus:text-[#0A0A0A]",
                     }}
                     data-testid="booking-calendar"
-                    className="text-[#F5F0E8]"
+                    className="text-[#0A0A0A]"
                   />
                 </div>
                 {availability && (
                   <div className="mt-6 text-sm">
                     {availability.remaining > 0 ? (
-                      <div className="text-[#F5F0E8]/60">
+                      <div className="text-[#0A0A0A]/60">
                         <span className="text-[#B8922A]">{availability.remaining}</span> {t.booking.remaining}
                       </div>
                     ) : (
@@ -198,7 +198,7 @@ export default function BookingTunnel() {
 
             {step === 2 && (
               <div data-testid="booking-step-2" className="max-w-md">
-                <h2 className="font-display-serif text-3xl md:text-4xl text-[#F5F0E8] mb-2">
+                <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step2}
                 </h2>
                 <div className="gold-divider mb-8" />
@@ -223,7 +223,7 @@ export default function BookingTunnel() {
                 </div>
 
                 <div className="mt-12 pt-6 border-t border-[#F5F0E8]/10 flex justify-between items-baseline">
-                  <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#F5F0E8]/50">
+                  <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50">
                     {t.booking.total}
                   </span>
                   <span className="font-display-serif text-3xl text-[#B8922A]">{formatXOF(total)}</span>
@@ -233,7 +233,7 @@ export default function BookingTunnel() {
 
             {step === 3 && (
               <div data-testid="booking-step-3" className="max-w-2xl">
-                <h2 className="font-display-serif text-3xl md:text-4xl text-[#F5F0E8] mb-2">
+                <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step3}
                 </h2>
                 <div className="gold-divider mb-8" />
@@ -264,12 +264,12 @@ export default function BookingTunnel() {
 
             {step === 4 && (
               <div data-testid="booking-step-4" className="max-w-2xl">
-                <h2 className="font-display-serif text-3xl md:text-4xl text-[#F5F0E8] mb-2">
+                <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.summary}
                 </h2>
                 <div className="gold-divider mb-8" />
 
-                <div className="bg-[#141414] border border-[#F5F0E8]/10 p-8 space-y-5">
+                <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-8 space-y-5">
                   <SummaryRow label={t.booking.offer} value={offerName} />
                   <SummaryRow
                     label={t.booking.date}
@@ -318,7 +318,7 @@ export default function BookingTunnel() {
             <button
               onClick={goBack}
               disabled={step === 1}
-              className="text-[0.72rem] uppercase tracking-[0.28em] text-[#F5F0E8]/50 hover:text-[#B8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2"
+              className="text-[0.72rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2"
               data-testid="step-back-btn"
             >
               <ArrowLeft size={14} />
@@ -340,7 +340,7 @@ export default function BookingTunnel() {
           <div className="mt-14">
             <button
               onClick={goBack}
-              className="text-[0.72rem] uppercase tracking-[0.28em] text-[#F5F0E8]/50 hover:text-[#B8922A] transition-colors inline-flex items-center gap-2"
+              className="text-[0.72rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors inline-flex items-center gap-2"
               data-testid="step-back-btn-4"
             >
               <ArrowLeft size={14} />
@@ -357,8 +357,8 @@ function CounterRow({ label, sublabel, value, onDec, onInc, testId }) {
   return (
     <div className="flex items-center justify-between border-b border-[#F5F0E8]/10 pb-6">
       <div>
-        <div className="font-display-serif text-2xl text-[#F5F0E8]">{label}</div>
-        <div className="text-[0.75rem] text-[#F5F0E8]/40 mt-1">{sublabel}</div>
+        <div className="font-display-serif text-2xl text-[#0A0A0A]">{label}</div>
+        <div className="text-[0.75rem] text-[#0A0A0A]/40 mt-1">{sublabel}</div>
       </div>
       <div className="flex items-center gap-5" data-testid={testId}>
         <button
@@ -368,7 +368,7 @@ function CounterRow({ label, sublabel, value, onDec, onInc, testId }) {
         >
           <Minus size={14} />
         </button>
-        <span className="font-display-serif text-2xl text-[#F5F0E8] w-8 text-center" data-testid={`${testId}-value`}>{value}</span>
+        <span className="font-display-serif text-2xl text-[#0A0A0A] w-8 text-center" data-testid={`${testId}-value`}>{value}</span>
         <button
           onClick={onInc}
           className="w-9 h-9 border border-[#B8922A] bg-[#B8922A]/10 text-[#B8922A] flex items-center justify-center hover:bg-[#B8922A]/20 transition-colors"
@@ -393,8 +393,8 @@ function Field({ label, value, onChange, testId, type = "text", min, max }) {
 function SummaryRow({ label, value }) {
   return (
     <div className="flex items-start justify-between gap-6">
-      <span className="text-[0.7rem] uppercase tracking-[0.22em] text-[#F5F0E8]/50">{label}</span>
-      <span className="text-sm text-[#F5F0E8] text-right max-w-[60%]">{value}</span>
+      <span className="text-[0.7rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50">{label}</span>
+      <span className="text-sm text-[#0A0A0A] text-right max-w-[60%]">{value}</span>
     </div>
   );
 }
@@ -402,13 +402,13 @@ function SummaryRow({ label, value }) {
 function PaymentView({ booking, onPay, paying, t }) {
   return (
     <div data-testid="payment-view">
-      <h2 className="font-display-serif text-3xl md:text-4xl text-[#F5F0E8] mb-2">{t.booking.step5}</h2>
+      <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">{t.booking.step5}</h2>
       <div className="gold-divider mb-8" />
 
-      <div className="bg-[#141414] border border-[#B8922A]/30 p-10 text-center">
+      <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-10 text-center">
         <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">FINEO</div>
-        <div className="font-display-serif text-4xl text-[#F5F0E8] mb-2">{formatXOF(booking.total_amount)}</div>
-        <div className="text-sm text-[#F5F0E8]/50 mb-8">
+        <div className="font-display-serif text-4xl text-[#0A0A0A] mb-2">{formatXOF(booking.total_amount)}</div>
+        <div className="text-sm text-[#0A0A0A]/50 mb-8">
           Boulay Beach Resort · #{booking.id.slice(0, 8).toUpperCase()}
         </div>
         <button
@@ -419,7 +419,7 @@ function PaymentView({ booking, onPay, paying, t }) {
         >
           {paying ? t.booking.payProcessing : t.booking.payNow}
         </button>
-        <p className="text-xs text-[#F5F0E8]/40 mt-6 max-w-sm mx-auto leading-relaxed">
+        <p className="text-xs text-[#0A0A0A]/40 mt-6 max-w-sm mx-auto leading-relaxed">
           {t.booking.fineoDisclaimer}
         </p>
       </div>
@@ -443,13 +443,13 @@ function ConfirmationView({ booking, t, lang, navigate }) {
         <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">
           {booking.offer_name}
         </div>
-        <h2 className="font-display-serif text-3xl md:text-4xl lg:text-5xl text-[#F5F0E8] mb-4 tracking-tight">
+        <h2 className="font-display-serif text-3xl md:text-4xl lg:text-5xl text-[#0A0A0A] mb-4 tracking-tight">
           {t.booking.successTitle}
         </h2>
-        <p className="text-[#F5F0E8]/70 max-w-md mx-auto mb-2 leading-relaxed">
+        <p className="text-[#0A0A0A]/70 max-w-md mx-auto mb-2 leading-relaxed">
           {t.booking.successText}
         </p>
-        <p className="text-sm text-[#F5F0E8]/50">
+        <p className="text-sm text-[#0A0A0A]/50">
           {total} {total > 1 ? t.booking.qrCodesPlural : t.booking.qrCodesSingular}
         </p>
       </div>
@@ -461,20 +461,20 @@ function ConfirmationView({ booking, t, lang, navigate }) {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: i * 0.08 }}
-            className="bg-[#141414] border border-[#B8922A]/30 p-5 flex flex-col items-center"
+            className="bg-[#FAFAF7] border border-[#B8922A]/30 p-5 flex flex-col items-center"
             data-testid={`qr-card-${i}`}
           >
             <img src={q.qr_code} alt={q.label_fr} className="w-full h-auto bg-white p-2.5 mb-4" />
             <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
               {lang === "fr" ? q.label_fr : q.label_en}
             </div>
-            <div className="text-[0.6rem] text-[#F5F0E8]/40 tracking-widest">
+            <div className="text-[0.6rem] text-[#0A0A0A]/40 tracking-widest">
               #{q.qr_token.slice(0, 8).toUpperCase()}
             </div>
             <a
               href={q.qr_code}
               download={`bbr-qr-${q.label_en.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.png`}
-              className="mt-4 inline-flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-[#F5F0E8]/60 hover:text-[#B8922A] transition-colors"
+              className="mt-4 inline-flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
               data-testid={`qr-download-${i}`}
             >
               <Download size={11} />
@@ -490,7 +490,7 @@ function ConfirmationView({ booking, t, lang, navigate }) {
         </button>
       </div>
 
-      <p className="text-xs text-[#F5F0E8]/40 text-center mt-10 max-w-md mx-auto leading-relaxed">
+      <p className="text-xs text-[#0A0A0A]/40 text-center mt-10 max-w-md mx-auto leading-relaxed">
         {t.booking.confirmationNote}
       </p>
     </motion.div>

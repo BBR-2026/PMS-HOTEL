@@ -3,19 +3,17 @@ import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { LanguageProvider } from "./context/LanguageContext";
 import Header from "./components/Header";
-import Footer from "./components/Footer";
 import LandingPage from "./pages/LandingPage";
 import BookingTunnel from "./pages/BookingTunnel";
 import EventPrivatization from "./pages/EventPrivatization";
 
 function Layout() {
   return (
-    <div className="App grain min-h-screen flex flex-col">
+    <div className="App min-h-screen flex flex-col bg-white text-[#0A0A0A]">
       <Header />
       <main className="flex-1">
         <Outlet />
       </main>
-      <Footer />
     </div>
   );
 }
@@ -25,13 +23,13 @@ function App() {
     <BrowserRouter>
       <LanguageProvider>
         <Toaster
-          theme="dark"
+          theme="light"
           position="top-center"
           toastOptions={{
             style: {
-              background: "#141414",
+              background: "#FFFFFF",
               border: "1px solid rgba(184, 146, 42, 0.3)",
-              color: "#F5F0E8",
+              color: "#0A0A0A",
               fontFamily: "Poppins, sans-serif",
             },
           }}

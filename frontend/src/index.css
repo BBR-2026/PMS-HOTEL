@@ -5,21 +5,24 @@
 
 :root {
     --bbr-black: #0A0A0A;
-    --bbr-surface: #141414;
-    --bbr-surface-2: #1A1A1A;
+    --bbr-white: #FFFFFF;
+    --bbr-surface: #FAFAF7;
+    --bbr-cream: #F5F0E8;
+    --bbr-cream-strong: #EFE8DA;
     --bbr-gold: #B8922A;
     --bbr-gold-hover: #D4AF37;
-    --bbr-cream: #F5F0E8;
-    --bbr-cream-70: rgba(245, 240, 232, 0.7);
-    --bbr-cream-40: rgba(245, 240, 232, 0.4);
-    --bbr-cream-10: rgba(245, 240, 232, 0.1);
+    --bbr-text: #0A0A0A;
+    --bbr-text-70: rgba(10, 10, 10, 0.7);
+    --bbr-text-50: rgba(10, 10, 10, 0.5);
+    --bbr-text-30: rgba(10, 10, 10, 0.3);
+    --bbr-border: rgba(10, 10, 10, 0.1);
     --bbr-gold-30: rgba(184, 146, 42, 0.3);
     --bbr-gold-15: rgba(184, 146, 42, 0.15);
 }
 
 html, body, #root {
-    background-color: var(--bbr-black);
-    color: var(--bbr-cream);
+    background-color: var(--bbr-white);
+    color: var(--bbr-text);
     min-height: 100%;
 }
 
@@ -34,17 +37,15 @@ body {
 
 ::selection {
     background: var(--bbr-gold);
-    color: var(--bbr-black);
+    color: var(--bbr-white);
 }
 
-/* "font-serif" historic class kept for backwards compat — now Poppins light for elegant headings */
 .font-serif {
     font-family: 'Poppins', sans-serif;
     font-weight: 200;
     letter-spacing: -0.01em;
 }
 
-/* Display serif used on offer titles to match the brand visual references */
 .font-display-serif {
     font-family: 'Playfair Display', 'Cormorant Garamond', serif;
     font-weight: 500;
@@ -56,26 +57,9 @@ body {
 }
 
 .text-gold { color: var(--bbr-gold); }
-.text-cream { color: var(--bbr-cream); }
-.bg-bbr-black { background-color: var(--bbr-black); }
-.bg-bbr-surface { background-color: var(--bbr-surface); }
-.bg-bbr-surface-2 { background-color: var(--bbr-surface-2); }
+.bg-bbr-cream { background-color: var(--bbr-cream); }
 .border-gold { border-color: var(--bbr-gold); }
 .border-gold-30 { border-color: var(--bbr-gold-30); }
-.border-cream-10 { border-color: var(--bbr-cream-10); }
-
-/* Subtle film grain overlay */
-.grain::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 1;
-    background-image: radial-gradient(rgba(245,240,232,0.04) 1px, transparent 1px);
-    background-size: 3px 3px;
-    mix-blend-mode: overlay;
-    opacity: 0.5;
-}
 
 .gold-divider {
     height: 1px;
@@ -85,24 +69,24 @@ body {
 
 @layer base {
     :root {
-        --background: 0 0% 4%;
-        --foreground: 35 33% 94%;
-        --card: 0 0% 8%;
-        --card-foreground: 35 33% 94%;
-        --popover: 0 0% 8%;
-        --popover-foreground: 35 33% 94%;
-        --primary: 41 64% 44%;
-        --primary-foreground: 0 0% 4%;
-        --secondary: 0 0% 10%;
-        --secondary-foreground: 35 33% 94%;
-        --muted: 0 0% 10%;
-        --muted-foreground: 35 15% 70%;
+        --background: 0 0% 100%;
+        --foreground: 0 0% 4%;
+        --card: 0 0% 100%;
+        --card-foreground: 0 0% 4%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 0 0% 4%;
+        --primary: 0 0% 9%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 35 33% 95%;
+        --secondary-foreground: 0 0% 9%;
+        --muted: 35 33% 95%;
+        --muted-foreground: 0 0% 40%;
         --accent: 41 64% 44%;
-        --accent-foreground: 0 0% 4%;
+        --accent-foreground: 0 0% 98%;
         --destructive: 0 75% 50%;
-        --destructive-foreground: 35 33% 94%;
-        --border: 35 15% 18%;
-        --input: 0 0% 10%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 0 0% 90%;
+        --input: 0 0% 92%;
         --ring: 41 64% 44%;
         --radius: 0.25rem;
     }
@@ -117,31 +101,10 @@ body {
     }
 }
 
-/* Calendar styling for luxury theme */
+/* Calendar styling for the white theme */
 .rdp-day_selected,
 .rdp-day_selected:focus-visible,
 .rdp-day_selected:hover {
     background-color: var(--bbr-gold) !important;
-    color: var(--bbr-black) !important;
-}
-
-/* Disable the default "today" highlight — only the selected date should appear gold */
-.rdp-day_today:not(.rdp-day_selected) {
-    background-color: transparent !important;
-    color: var(--bbr-cream) !important;
-    font-weight: 400 !important;
-}
-.rdp-day_today:not(.rdp-day_selected):hover {
-    background-color: rgba(184, 146, 42, 0.12) !important;
-    color: var(--bbr-cream) !important;
-}
-
-/* Smooth fade animation utility */
-.fade-up {
-    animation: fadeUp 0.8s ease-out forwards;
-    opacity: 0;
-}
-@keyframes fadeUp {
-    from { opacity: 0; transform: translateY(24px); }
-    to   { opacity: 1; transform: translateY(0); }
+    color: var(--bbr-white) !important;
 }

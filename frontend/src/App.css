@@ -1,16 +1,15 @@
 .App {
     min-height: 100vh;
-    background-color: var(--bbr-black);
-    color: var(--bbr-cream);
+    background-color: var(--bbr-white);
+    color: var(--bbr-text);
 }
 
-/* Hide scrollbar visual junk while keeping function */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
 }
 ::-webkit-scrollbar-track {
-    background: var(--bbr-black);
+    background: var(--bbr-white);
 }
 ::-webkit-scrollbar-thumb {
     background: rgba(184, 146, 42, 0.3);
@@ -20,12 +19,11 @@
     background: var(--bbr-gold);
 }
 
-/* Luxury button shimmer */
 .btn-gold {
     position: relative;
     overflow: hidden;
     background: var(--bbr-gold);
-    color: var(--bbr-black);
+    color: var(--bbr-white);
     font-weight: 600;
     letter-spacing: 0.18em;
     text-transform: uppercase;
@@ -39,7 +37,7 @@
     transform: translateY(-1px);
 }
 .btn-gold:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
     transform: none;
 }
@@ -56,13 +54,13 @@
     transition: all 0.3s ease;
 }
 .btn-ghost-gold:hover {
-    background: rgba(184, 146, 42, 0.1);
+    background: rgba(184, 146, 42, 0.08);
 }
 
 .input-luxury {
-    background: var(--bbr-surface);
-    border: 1px solid var(--bbr-cream-10);
-    color: var(--bbr-cream);
+    background: var(--bbr-white);
+    border: 1px solid var(--bbr-border);
+    color: var(--bbr-text);
     padding: 0.85rem 1rem;
     width: 100%;
     font-family: 'Poppins', sans-serif;

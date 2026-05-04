@@ -1,81 +1,34 @@
-import { Link, NavLink } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useLang } from "../context/LanguageContext";
-import { useState, useEffect } from "react";
 
 export default function Header() {
-  const { lang, toggle, t } = useLang();
-  const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 30);
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const linkClass = ({ isActive }) =>
-    `text-[0.72rem] uppercase tracking-[0.22em] transition-colors duration-300 ${
-      isActive ? "text-[#B8922A]" : "text-[#F5F0E8]/70 hover:text-[#B8922A]"
-    }`;
+  const { lang, toggle } = useLang();
 
   return (
     <header
       data-testid="site-header"
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-        scrolled
-          ? "backdrop-blur-2xl bg-[#0A0A0A]/80 border-b border-[#F5F0E8]/10"
-          : "bg-transparent"
-      }`}
+      className="absolute top-0 left-0 right-0 z-50 bg-transparent"
     >
       <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16 py-3 md:py-4 flex items-center justify-between">
-        <Link to="/" data-testid="logo-link" className="flex items-center gap-3 group">
+        <Link to="/" data-testid="logo-link" className="flex items-center gap-3">
           <img
             src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
             alt="Boulay Beach Resort"
             className="h-20 md:h-24 w-auto object-contain"
+            style={{ filter: "brightness(0.9)" }}
           />
         </Link>
 
-        <nav className="hidden md:flex items-center gap-10">
-          <NavLink to="/" end className={linkClass} data-testid="nav-home">
-            {t.nav.offers}
-          </NavLink>
-          <NavLink to="/events" className={linkClass} data-testid="nav-events">
-            {t.nav.privatization}
-          </NavLink>
-        </nav>
-
-        <div className="flex items-center gap-5">
-          <button
-            data-testid="language-toggle"
-            onClick={toggle}
-            className="text-[0.7rem] uppercase tracking-[0.22em] text-[#F5F0E8]/60 hover:text-[#B8922A] transition-colors"
-          >
-            <span className={lang === "fr" ? "text-[#B8922A]" : ""}>FR</span>
-            <span className="mx-1.5 text-[#F5F0E8]/30">/</span>
-            <span className={lang === "en" ? "text-[#B8922A]" : ""}>EN</span>
-          </button>
-
-          <button
-            data-testid="menu-toggle"
-            onClick={() => setOpen(!open)}
-            className="md:hidden text-[#F5F0E8] text-xl"
-          >
-            ☰
-          </button>
-        </div>
+        <button
+          data-testid="language-toggle"
+          onClick={toggle}
+          className="text-[0.72rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
+        >
+          <span className={lang === "fr" ? "text-[#B8922A]" : ""}>FR</span>
+          <span className="mx-1.5 text-[#0A0A0A]/30">/</span>
+          <span className={lang === "en" ? "text-[#B8922A]" : ""}>EN</span>
+        </button>
       </div>
-
-      {open && (
-        <div className="md:hidden bg-[#0A0A0A]/95 backdrop-blur-xl border-t border-[#F5F0E8]/10 px-6 py-6 flex flex-col gap-5">
-          <Link to="/" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#F5F0E8]/80">
-            {t.nav.offers}
-          </Link>
-          <Link to="/events" onClick={() => setOpen(false)} className="text-[0.75rem] uppercase tracking-[0.22em] text-[#F5F0E8]/80">
-            {t.nav.privatization}
-          </Link>
-        </div>
-      )}
     </header>
   );
 }

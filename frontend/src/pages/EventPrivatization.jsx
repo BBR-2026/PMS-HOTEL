@@ -50,11 +50,11 @@ export default function EventPrivatization() {
           <div className="text-[0.72rem] uppercase tracking-[0.4em] text-[#B8922A] mb-5">
             {t.events.heroEyebrow}
           </div>
-          <h1 className="font-display-serif text-5xl md:text-6xl lg:text-7xl text-[#F5F0E8] tracking-tight leading-[1.05] mb-6">
+          <h1 className="font-display-serif text-5xl md:text-6xl lg:text-7xl text-[#0A0A0A] tracking-tight leading-[1.05] mb-6">
             {t.events.heroTitle}
           </h1>
           <div className="gold-divider mb-7" />
-          <p className="max-w-2xl text-base md:text-lg text-[#F5F0E8]/80 font-light leading-relaxed">
+          <p className="max-w-2xl text-base md:text-lg text-[#0A0A0A]/80 font-light leading-relaxed">
             {t.events.subtitle}
           </p>
         </div>
@@ -66,17 +66,17 @@ export default function EventPrivatization() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-[#141414] border border-[#B8922A]/30 p-12 text-center"
+              className="bg-[#FAFAF7] border border-[#B8922A]/30 p-12 text-center"
               data-testid="event-success"
             >
               <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-4">Boulay Concierge</div>
-              <h2 className="font-serif text-3xl md:text-4xl text-[#F5F0E8] font-light tracking-tight mb-4">
+              <h2 className="font-serif text-3xl md:text-4xl text-[#0A0A0A] font-light tracking-tight mb-4">
                 Merci.
               </h2>
-              <p className="text-[#F5F0E8]/60 max-w-md mx-auto">{t.events.sent}</p>
+              <p className="text-[#0A0A0A]/60 max-w-md mx-auto">{t.events.sent}</p>
             </motion.div>
           ) : (
-            <form onSubmit={submit} className="bg-[#141414] border border-[#F5F0E8]/10 p-8 md:p-12 space-y-7">
+            <form onSubmit={submit} className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-8 md:p-12 space-y-7">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <Field label={t.booking.name} value={form.name} onChange={change("name")} testId="ev-name" required />
                 <Field label={t.booking.surname} value={form.surname} onChange={change("surname")} testId="ev-surname" required />
