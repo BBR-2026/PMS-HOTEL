@@ -24,10 +24,10 @@ export default function LandingPage() {
     api.get("/offers").then((r) => setOffers(r.data)).catch(() => {});
   }, []);
 
-  const descByOffer = {
-    pass_day: t.offers.passDayDesc,
-    sunset: t.offers.sunsetDesc,
-    brunch: t.offers.brunchDesc,
+  const bulletsByOffer = {
+    pass_day: t.offers.passDayBullets,
+    sunset: t.offers.sunsetBullets,
+    brunch: t.offers.brunchBullets,
   };
 
   return (
@@ -121,13 +121,13 @@ export default function LandingPage() {
             <p className="text-base text-[#F5F0E8]/60 leading-relaxed">{t.offers.subtitle}</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
             {offers.map((offer, i) => (
               <OfferCard
                 key={offer.id}
                 offer={offer}
                 image={IMG_BY_ID[offer.id]}
-                description={descByOffer[offer.id]}
+                bullets={bulletsByOffer[offer.id]}
                 index={i}
               />
             ))}
