@@ -30,6 +30,7 @@ export const translations = {
       child: "Enfant",
       childAge: "(6–12 ans)",
       reserve: "Réserver",
+      reservationOnly: "Sur réservation",
       passDayBullets: [
         "Traversée lagunaire aller-retour",
         "Sélection de tapas",
@@ -75,6 +76,8 @@ export const translations = {
       date: "Date",
       total: "Total",
       proceedToPayment: "Procéder au paiement",
+      confirmReservation: "Confirmer ma réservation",
+      leKaaiConfirmDesc: "Le Kaai est sur réservation simple. Aucun paiement n'est requis en avance — réglez votre addition directement au restaurant.",
       payNow: "Payer avec FINEO",
       payCash: "Payer en espèce",
       payCashDesc: "Réglez sur place à l'arrivée. Votre ticket reste valide.",
@@ -179,6 +182,7 @@ export const translations = {
       child: "Child",
       childAge: "(6–12 yrs)",
       reserve: "Reserve",
+      reservationOnly: "Reservation only",
       passDayBullets: [
         "Round-trip lagoon crossing",
         "Tapas selection",
@@ -237,6 +241,8 @@ export const translations = {
       confirmationNote: "A copy of your QR codes has been sent to the email provided. Make sure to download them or take a screenshot before leaving this page.",
       fineoDisclaimer: "Secure payment via FINEO. Your QR codes will be generated instantly upon payment confirmation.",
       proceedToPayment: "Proceed to payment",
+      confirmReservation: "Confirm my reservation",
+      leKaaiConfirmDesc: "Le Kaai is reservation-only. No upfront payment is required — settle your bill directly at the restaurant.",
       remaining: "Spots remaining",
       capacityFull: "Sold out for this date",
       missingPrefix: "Missing fields:",

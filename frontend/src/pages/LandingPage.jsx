@@ -3,10 +3,10 @@ import api from "../lib/api";
 import { useLang } from "../context/LanguageContext";
 import OfferCard from "../components/OfferCard";
 
-const IMG_PASS_DAY = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ivhtbefz_BBR%20_SHOOT%202_15.jpg";
-const IMG_SUNSET = "https://static.prod-images.emergentagent.com/jobs/4dc6ae3e-af48-4489-bfe0-ebc522484ad7/images/9e89b22524180e785f62f14ed8558a699ccd6bdf1259b8dea5c13cc732cb44c5.png";
-const IMG_BRUNCH = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2hilix5p_BBR%20_SHOOT%202_29.jpg";
-const IMG_LE_KAAI = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/g5p3da0v_BBR%20_SHOOT%202_140.jpg";
+const IMG_PASS_DAY = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4kr4z5g1_DAY%20PASS.jpeg";
+const IMG_SUNSET = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/3g3onmkg_THE%20SUNSET.jpeg";
+const IMG_BRUNCH = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/1txrnqdp_B%20BRUNCH.jpeg";
+const IMG_LE_KAAI = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/kgqk46mw_LE%20KAAI.jpeg";
 
 const IMG_BY_ID = {
   pass_day: IMG_PASS_DAY,

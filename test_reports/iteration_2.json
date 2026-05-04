@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 2 verifies the P0 fix for Step 3 dynamic participants and the new free-payment branch for Le Kaai. Backend: 18/18 pytest cases pass against the public API (4 offers, day restrictions, dynamic Le Kaai boat times by weekday/weekend, full booking + pay lifecycle for pass_day and le_kaai, validation errors). Frontend: full 5-step booking tunnel verified for pass_day (cash -> 3 QR codes + livret link) and le_kaai (only confirm-free-btn shown, FINEO/Cash hidden, summary shows 'Sur réservation', 2 QR codes generated). Step 3 dynamic resize confirmed (3A+2C => 5 participant cards). missing-hint and step-next-btn disabled state confirmed. Landing page renders the 4 luxury images (naturalWidth>0). Le Kaai card shows 'Sur réservation' instead of FCFA. FR -> EN language toggle verified.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_bbr_phase1.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "BookingTunnel.jsx useEffect (lines 48-60) correctly resizes participants array preserving prior entries by kind - regression fix verified.",
+    "PaymentView (line 581) branches on total_amount<=0 to render single confirm-free-btn for Le Kaai - intent matches spec.",
+    "Backend POST /api/bookings validates participants count, kind distribution, day-of-week per offer, and date format; returns proper 400/422 errors. _id is excluded.",
+    "Server uses @app.on_event('startup') - deprecated in FastAPI; will need migration to lifespan handlers eventually but not blocking.",
+    "Capacity check is non-transactional (race condition under concurrent booking) - acceptable for MVP, flagged in iteration 1.",
+    "Old test file /app/backend/tests/test_bbr_api.py was outdated (tested removed client auth endpoints + 3 offers + capacity 80); replaced by /app/backend/tests/test_bbr_phase1.py.",
+    "OfferCard image is inside .group with hover scale-110 - good UX; alt text uses localized name. Accessibility OK.",
+    "Le Kaai has boat_times_weekday + boat_times_weekend exposed via API but BOAT_TIMES_BY_OFFER doesn't include le_kaai - resolved at runtime via _boat_times_for_date(); frontend correctly mirrors via useMemo on selectedDate."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_bbr_phase1.py (new, 18 tests)",
+    "/app/backend/tests/test_bbr_api.py (deleted - obsolete spec)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% on critical flows (pass_day cash, le_kaai free, Step 3 dynamic resize, missing-hint, language toggle, landing images)"},
+  "test_credentials": "No client auth in Phase 1 (guest checkout only). Staff seeded for back-office: admin@boulay.ci / Admin@2026.",
+  "seed_data_creation": "Test created bookings with TEST_-prefixed participant names and example.com emails on future dates for pass_day (Wednesday), le_kaai (Saturday). One event request via /api/events/privatization. No production data modified.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest suite at /app/backend/tests/test_bbr_phase1.py covers: 4-offer list, le_kaai free pricing, allowed_weekdays per offer, dynamic le_kaai boat_times (weekday=6 slots/2H, weekend=11 slots/1H), availability shape, full pass_day create+pay+get with reference token (incl. 403 on bad ref), le_kaai free total=0 flow, day-restriction rejections (pass_day on Sat, sunset on Sun, brunch on Sat), participant count mismatch, past date, invalid date format, invalid email, event privatization. Frontend critical testids verified: landing-page, offer-card-{id}, booking-step-1..5, booking-calendar, counter-adults/children-inc/dec/value, participant-{i} (outer card), participant-{i}-name/-surname/-nationality, contact-phone, contact-email, boat-time-{H} (NB: parent has data-testid='boat-time-group' so prefix selectors will over-count by 1), step-next-btn, step-back-btn, missing-hint, confirm-summary-btn, payment-view, pay-fineo-btn, pay-cash-btn, confirm-free-btn (le_kaai only), confirmation-view, qr-card-{i}, qr-download-{i}, download-livret-btn, language-toggle. To pick a Saturday in calendar, click month-next button then iterate buttons[name='day'] looking for aria-label containing 'samedi' / 'Saturday' (case-sensitive). FINEO is MOCKED (1.4s setTimeout in BookingTunnel.handlePay).",
+  "rca of the issue": "Iteration 1 P0 was that participants state was [] and never resized; main agent fixed by adding the useEffect (line 48-60) that rebuilds the array from adults+children counts, preserving prior entries by kind. Verified visually (3 cards for 2A+1C, 5 cards for 3A+2C) and via the API which now successfully creates bookings with the correct participant count for both pass_day (priced) and le_kaai (free) paths."
+}

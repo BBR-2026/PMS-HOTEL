@@ -77,8 +77,8 @@ OFFERS = {
         "schedule_en": "Every day · 11am — 10:30pm",
         "tagline_fr": "Le restaurant signature de Boulay — gastronomie entre lagune et océan.",
         "tagline_en": "Boulay's signature restaurant — gastronomy between lagoon and ocean.",
-        "price_adult": 30000,
-        "price_child": 15000,
+        "price_adult": 0,
+        "price_child": 0,
         "max_capacity": 250,
     },
 }

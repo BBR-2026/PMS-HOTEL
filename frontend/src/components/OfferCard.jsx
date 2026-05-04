@@ -36,23 +36,31 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
         )}
         <div className="gold-divider mb-6" />
 
-        <div className="space-y-2 mb-6">
-          <div className="flex items-baseline justify-between gap-4">
-            <span className="text-sm text-[#0A0A0A]/70">{t.offers.adult}</span>
-            <span className="font-medium tracking-wide text-[#0A0A0A]">
-              {formatXOF(offer.price_adult)}
-            </span>
+        {offer.price_adult > 0 ? (
+          <div className="space-y-2 mb-6">
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-sm text-[#0A0A0A]/70">{t.offers.adult}</span>
+              <span className="font-medium tracking-wide text-[#0A0A0A]">
+                {formatXOF(offer.price_adult)}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-sm text-[#0A0A0A]/70">
+                {t.offers.child}{" "}
+                <span className="text-[#0A0A0A]/40">{t.offers.childAge}</span>
+              </span>
+              <span className="font-medium tracking-wide text-[#0A0A0A]">
+                {formatXOF(offer.price_child)}
+              </span>
+            </div>
           </div>
-          <div className="flex items-baseline justify-between gap-4">
-            <span className="text-sm text-[#0A0A0A]/70">
-              {t.offers.child}{" "}
-              <span className="text-[#0A0A0A]/40">{t.offers.childAge}</span>
-            </span>
-            <span className="font-medium tracking-wide text-[#0A0A0A]">
-              {formatXOF(offer.price_child)}
-            </span>
+        ) : (
+          <div className="mb-6">
+            <div className="text-sm text-[#0A0A0A]/70 italic">
+              {t.offers.reservationOnly}
+            </div>
           </div>
-        </div>
+        )}
 
         {bullets && bullets.length > 0 && (
           <ul className="space-y-2 mb-8 mt-2">

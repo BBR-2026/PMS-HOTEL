@@ -42,6 +42,23 @@ export default function BookingTunnel() {
     api.get(`/availability/${offerId}/${iso}`).then((r) => setAvailability(r.data)).catch(() => {});
   }, [selectedDate, offerId]);
 
+  // Keep participants array in sync with adults/children counts.
+  // Preserves existing entries by kind (adults first, then children) and
+  // appends empty entries when the count grows, trims when it shrinks.
+  useEffect(() => {
+    setParticipants((prev) => {
+      const prevAdults = prev.filter((p) => p.kind === "adult");
+      const prevChildren = prev.filter((p) => p.kind === "child");
+      const nextAdults = Array.from({ length: adults }, (_, i) =>
+        prevAdults[i] || { name: "", surname: "", nationality: "", kind: "adult" }
+      );
+      const nextChildren = Array.from({ length: children }, (_, i) =>
+        prevChildren[i] || { name: "", surname: "", nationality: "", kind: "child" }
+      );
+      return [...nextAdults, ...nextChildren];
+    });
+  }, [adults, children]);
+
   const total = useMemo(() => {
     if (!offer) return 0;
     return adults * offer.price_adult + children * offer.price_child;
@@ -400,8 +417,16 @@ export default function BookingTunnel() {
                     value={selectedDate ? format(selectedDate, "EEEE d MMMM yyyy", { locale: lang === "fr" ? frLocale : enUS }) : "—"}
                   />
                   <SummaryRow label={t.booking.boatTime} value={contact.boat_time} />
-                  <SummaryRow label={t.booking.adults} value={`${adults} × ${formatXOF(offer.price_adult)}`} />
-                  {children > 0 && <SummaryRow label={t.booking.children} value={`${children} × ${formatXOF(offer.price_child)}`} />}
+                  <SummaryRow
+                    label={t.booking.adults}
+                    value={offer.price_adult > 0 ? `${adults} × ${formatXOF(offer.price_adult)}` : `${adults}`}
+                  />
+                  {children > 0 && (
+                    <SummaryRow
+                      label={t.booking.children}
+                      value={offer.price_child > 0 ? `${children} × ${formatXOF(offer.price_child)}` : `${children}`}
+                    />
+                  )}
 
                   <div className="pt-4 border-t border-[#0A0A0A]/10">
                     <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
@@ -429,7 +454,9 @@ export default function BookingTunnel() {
                     <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A]">
                       {t.booking.total}
                     </span>
-                    <span className="font-display-serif text-3xl text-[#B8922A]">{formatXOF(total)}</span>
+                    <span className="font-display-serif text-3xl text-[#B8922A]">
+                      {total > 0 ? formatXOF(total) : t.offers.reservationOnly}
+                    </span>
                   </div>
                 </div>
 
@@ -439,7 +466,7 @@ export default function BookingTunnel() {
                   data-testid="confirm-summary-btn"
                   disabled={creating}
                 >
-                  {creating ? "…" : t.booking.proceedToPayment}
+                  {creating ? "…" : total > 0 ? t.booking.proceedToPayment : t.booking.confirmReservation}
                   <ArrowRight size={14} />
                 </button>
               </div>
@@ -551,56 +578,83 @@ function SummaryRow({ label, value }) {
 }
 
 function PaymentView({ booking, onPay, paying, t }) {
+  const isFree = (booking.total_amount || 0) <= 0;
   return (
     <div data-testid="payment-view">
-      <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">{t.booking.step5}</h2>
+      <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
+        {isFree ? t.booking.confirmReservation : t.booking.step5}
+      </h2>
       <div className="gold-divider mb-3" />
       <p className="text-sm text-[#0A0A0A]/60 mb-8">
-        {t.booking.summary} — <span className="text-[#B8922A] font-medium">{formatXOF(booking.total_amount)}</span>
+        {t.booking.summary} — <span className="text-[#B8922A] font-medium">
+          {isFree ? t.offers.reservationOnly : formatXOF(booking.total_amount)}
+        </span>
         {" · "}#{booking.id.slice(0, 8).toUpperCase()}
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* FINEO option */}
-        <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 flex flex-col">
-          <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">FINEO</div>
-          <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
-            {t.booking.payNow}
+      {isFree ? (
+        <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 md:p-10 max-w-xl">
+          <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">
+            {booking.offer_name}
           </div>
-          <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
-            {t.booking.fineoDisclaimer}
-          </p>
-          <button
-            onClick={() => onPay("fineo")}
-            disabled={!!paying}
-            className="btn-gold w-full"
-            data-testid="pay-fineo-btn"
-          >
-            {paying === "fineo" ? t.booking.payProcessing : t.booking.payNow}
-          </button>
-        </div>
-
-        {/* Cash option */}
-        <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col">
-          <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
-            {t.booking.payCash}
+          <div className="font-display-serif text-2xl text-[#0A0A0A] mb-3">
+            {t.booking.confirmReservation}
           </div>
-          <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
-            {t.booking.payCash}
-          </div>
-          <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
-            {t.booking.payCashDesc}
+          <p className="text-sm text-[#0A0A0A]/60 mb-7">
+            {t.booking.leKaaiConfirmDesc}
           </p>
           <button
             onClick={() => onPay("cash")}
             disabled={!!paying}
-            className="btn-ghost-gold w-full"
-            data-testid="pay-cash-btn"
+            className="btn-gold w-full"
+            data-testid="confirm-free-btn"
           >
-            {paying === "cash" ? t.booking.payProcessing : t.booking.payCash}
+            {paying ? t.booking.payProcessing : t.booking.confirmReservation}
           </button>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* FINEO option */}
+          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 flex flex-col">
+            <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">FINEO</div>
+            <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
+              {t.booking.payNow}
+            </div>
+            <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
+              {t.booking.fineoDisclaimer}
+            </p>
+            <button
+              onClick={() => onPay("fineo")}
+              disabled={!!paying}
+              className="btn-gold w-full"
+              data-testid="pay-fineo-btn"
+            >
+              {paying === "fineo" ? t.booking.payProcessing : t.booking.payNow}
+            </button>
+          </div>
+
+          {/* Cash option */}
+          <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col">
+            <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
+              {t.booking.payCash}
+            </div>
+            <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
+              {t.booking.payCash}
+            </div>
+            <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
+              {t.booking.payCashDesc}
+            </p>
+            <button
+              onClick={() => onPay("cash")}
+              disabled={!!paying}
+              className="btn-ghost-gold w-full"
+              data-testid="pay-cash-btn"
+            >
+              {paying === "cash" ? t.booking.payProcessing : t.booking.payCash}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
