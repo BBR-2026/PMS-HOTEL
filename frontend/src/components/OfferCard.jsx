@@ -37,9 +37,6 @@ export default function OfferCard({ offer, image, description, index = 0, featur
 
         <div className="flex items-end justify-between mb-8">
           <div>
-            <div className="text-[0.6rem] uppercase tracking-[0.28em] text-[#F5F0E8]/40 mb-1.5">
-              {t.offers.from}
-            </div>
             <div className="font-serif text-2xl text-[#B8922A] leading-none">
               {formatXOF(offer.price_adult)}
             </div>

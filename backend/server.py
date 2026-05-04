@@ -45,8 +45,8 @@ OFFERS = {
     },
     "sunset": {
         "id": "sunset",
-        "name_fr": "Sunset",
-        "name_en": "Sunset",
+        "name_fr": "The Sunset",
+        "name_en": "The Sunset",
         "tagline_fr": "Cocktails dorés et horizon flamboyant à l'heure magique.",
         "tagline_en": "Golden cocktails and a flaming horizon at the magic hour.",
         "price_adult": 60000,
@@ -55,8 +55,8 @@ OFFERS = {
     },
     "brunch": {
         "id": "brunch",
-        "name_fr": "Brunch",
-        "name_en": "Brunch",
+        "name_fr": "The Brunch",
+        "name_en": "The Brunch",
         "tagline_fr": "Un dimanche d'exception entre océan et gastronomie.",
         "tagline_en": "An exceptional Sunday between ocean and gastronomy.",
         "price_adult": 60000,
