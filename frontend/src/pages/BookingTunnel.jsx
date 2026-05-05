@@ -22,8 +22,6 @@ export default function BookingTunnel() {
   const [children, setChildren] = useState(0);
   const [participants, setParticipants] = useState([]);
   const [contact, setContact] = useState({
-    phone: "",
-    email: "",
     special_requests: "",
     boat_time: "",
   });
@@ -50,10 +48,10 @@ export default function BookingTunnel() {
       const prevAdults = prev.filter((p) => p.kind === "adult");
       const prevChildren = prev.filter((p) => p.kind === "child");
       const nextAdults = Array.from({ length: adults }, (_, i) =>
-        prevAdults[i] || { name: "", surname: "", nationality: "", kind: "adult" }
+        prevAdults[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "adult" }
       );
       const nextChildren = Array.from({ length: children }, (_, i) =>
-        prevChildren[i] || { name: "", surname: "", nationality: "", kind: "child" }
+        prevChildren[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "child" }
       );
       return [...nextAdults, ...nextChildren];
     });
@@ -98,20 +96,19 @@ export default function BookingTunnel() {
   const participantsValid =
     participants.length === totalGuests &&
     participants.every(
-      (p) => p.name.trim() && p.surname.trim() && p.nationality.trim()
+      (p) =>
+        p.name.trim() &&
+        p.surname.trim() &&
+        p.nationality.trim() &&
+        p.phone.trim() &&
+        /\S+@\S+\.\S+/.test(p.email)
     );
-  const contactValid =
-    participantsValid &&
-    contact.boat_time &&
-    contact.phone.trim() &&
-    /\S+@\S+\.\S+/.test(contact.email);
+  const contactValid = participantsValid && !!contact.boat_time;
 
   // Human-readable list of what's still missing at step 3 (shown beside the disabled Next button)
   const missingStep3 = [];
   if (!participantsValid) missingStep3.push(t.booking.missingParticipants);
   if (!contact.boat_time) missingStep3.push(t.booking.missingBoatTime);
-  if (!contact.phone.trim()) missingStep3.push(t.booking.missingPhone);
-  if (!/\S+@\S+\.\S+/.test(contact.email)) missingStep3.push(t.booking.missingEmail);
 
   const stepValid = {
     1: !!selectedDate && remaining !== null && remaining >= totalGuests && totalGuests >= 1,
@@ -136,12 +133,12 @@ export default function BookingTunnel() {
         participants: participants.map((p) => ({
           name: p.name.trim(),
           surname: p.surname.trim(),
+          email: p.email.trim().toLowerCase(),
+          phone: p.phone.trim(),
           nationality: p.nationality.trim(),
           kind: p.kind,
         })),
         boat_time: contact.boat_time,
-        phone: contact.phone,
-        email: contact.email,
         special_requests: contact.special_requests,
       });
       setBookingResp(data);
@@ -305,6 +302,11 @@ export default function BookingTunnel() {
                       p.kind === "adult"
                         ? `${t.booking.adults.replace(/s$/, "")} ${adultIndex}${isFirst ? ` · ${t.booking.primaryContact}` : ""}`
                         : `${t.booking.children.replace(/s$/, "")} ${childIndex}`;
+                    const update = (field) => (e) => {
+                      const next = [...participants];
+                      next[i] = { ...next[i], [field]: e.target.value };
+                      setParticipants(next);
+                    };
                     return (
                       <div
                         key={i}
@@ -314,52 +316,45 @@ export default function BookingTunnel() {
                         <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-5">
                           {label}
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                          <Field
-                            label={t.booking.name}
-                            value={p.name}
-                            onChange={(e) => {
-                              const next = [...participants];
-                              next[i] = { ...next[i], name: e.target.value };
-                              setParticipants(next);
-                            }}
-                            testId={`participant-${i}-name`}
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                           <Field
                             label={t.booking.surname}
                             value={p.surname}
-                            onChange={(e) => {
-                              const next = [...participants];
-                              next[i] = { ...next[i], surname: e.target.value };
-                              setParticipants(next);
-                            }}
+                            onChange={update("surname")}
                             testId={`participant-${i}-surname`}
                           />
                           <Field
-                            label={t.booking.nationality}
-                            value={p.nationality}
-                            onChange={(e) => {
-                              const next = [...participants];
-                              next[i] = { ...next[i], nationality: e.target.value };
-                              setParticipants(next);
-                            }}
-                            testId={`participant-${i}-nationality`}
+                            label={t.booking.name}
+                            value={p.name}
+                            onChange={update("name")}
+                            testId={`participant-${i}-name`}
                           />
+                          <Field
+                            type="email"
+                            label={t.booking.email}
+                            value={p.email}
+                            onChange={update("email")}
+                            testId={`participant-${i}-email`}
+                          />
+                          <Field
+                            type="tel"
+                            label={t.booking.phone}
+                            value={p.phone}
+                            onChange={update("phone")}
+                            testId={`participant-${i}-phone`}
+                          />
+                          <div className="md:col-span-2">
+                            <Field
+                              label={t.booking.nationality}
+                              value={p.nationality}
+                              onChange={update("nationality")}
+                              testId={`participant-${i}-nationality`}
+                            />
+                          </div>
                         </div>
                       </div>
                     );
                   })}
-                </div>
-
-                {/* Primary contact */}
-                <div className="mt-10 border border-[#B8922A]/30 bg-white p-6 md:p-7">
-                  <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-5">
-                    {t.booking.contactInfo}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <Field label={t.booking.phone} value={contact.phone} onChange={setC("phone")} testId="contact-phone" />
-                    <Field type="email" label={t.booking.email} value={contact.email} onChange={setC("email")} testId="contact-email" />
-                  </div>
                 </div>
 
                 {/* Boat time */}
@@ -432,23 +427,24 @@ export default function BookingTunnel() {
                     <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
                       {t.booking.participantsLabel}
                     </div>
-                    <ul className="space-y-2">
+                    <ul className="space-y-3">
                       {participants.map((p, i) => (
                         <li key={i} className="flex items-start justify-between gap-6">
-                          <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50">
+                          <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
                             {p.kind === "adult" ? t.booking.adults.replace(/s$/, "") : t.booking.children.replace(/s$/, "")}{" "}
                             {participants.slice(0, i + 1).filter((x) => x.kind === p.kind).length}
                           </span>
                           <span className="text-sm text-[#0A0A0A] text-right">
-                            {p.name} {p.surname} · {p.nationality}
+                            {p.surname} {p.name} · {p.nationality}
+                            <span className="block text-[0.72rem] text-[#0A0A0A]/50 mt-0.5">
+                              {p.email} · {p.phone}
+                            </span>
                           </span>
                         </li>
                       ))}
                     </ul>
                   </div>
 
-                  <SummaryRow label={t.booking.phone} value={contact.phone} />
-                  <SummaryRow label={t.booking.email} value={contact.email} />
                   {contact.special_requests && <SummaryRow label={t.booking.specialRequests} value={contact.special_requests} />}
                   <div className="pt-5 border-t border-[#0A0A0A]/10 flex justify-between items-baseline">
                     <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A]">

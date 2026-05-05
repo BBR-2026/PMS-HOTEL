@@ -129,6 +129,8 @@ class TokenResponse(BaseModel):
 class Participant(BaseModel):
     name: str
     surname: str
+    email: EmailStr
+    phone: str
     nationality: str
     kind: Literal["adult", "child"]
 
@@ -140,8 +142,6 @@ class BookingCreate(BaseModel):
     children: int = Field(ge=0, le=20)
     boat_time: str
     participants: List[Participant]
-    phone: str
-    email: EmailStr
     special_requests: Optional[str] = ""
 
 
@@ -338,7 +338,7 @@ async def create_booking(body: BookingCreate):
             detail="Participants adult/child distribution does not match",
         )
     for p in body.participants:
-        if not p.name.strip() or not p.surname.strip() or not p.nationality.strip():
+        if not p.name.strip() or not p.surname.strip() or not p.nationality.strip() or not p.phone.strip():
             raise HTTPException(status_code=400, detail="All participant fields are required")
 
     # capacity check
@@ -359,11 +359,15 @@ async def create_booking(body: BookingCreate):
         {
             "name": p.name.strip(),
             "surname": p.surname.strip(),
+            "email": p.email.lower(),
+            "phone": p.phone.strip(),
             "nationality": p.nationality.strip(),
             "kind": p.kind,
         }
         for p in body.participants
     ]
+    # Primary contact = first adult (or first participant if none)
+    primary = next((p for p in participants_docs if p["kind"] == "adult"), participants_docs[0])
     doc = {
         "id": bid,
         "reference_token": reference_token,
@@ -377,8 +381,8 @@ async def create_booking(body: BookingCreate):
         "qr_codes": [],
         "participants": participants_docs,
         "boat_time": body.boat_time,
-        "phone": body.phone.strip(),
-        "email": body.email.lower(),
+        "phone": primary["phone"],
+        "email": primary["email"],
         "special_requests": body.special_requests or "",
         "created_at": now_iso(),
         "paid_at": None,
@@ -442,6 +446,8 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "guest_label": label_fr,
             "guest_name": p["name"],
             "guest_surname": p["surname"],
+            "guest_email": p.get("email", ""),
+            "guest_phone": p.get("phone", ""),
             "guest_nationality": p["nationality"],
             "guest_token": token,
         }
@@ -452,6 +458,8 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "kind": p["kind"],
             "guest_name": p["name"],
             "guest_surname": p["surname"],
+            "guest_email": p.get("email", ""),
+            "guest_phone": p.get("phone", ""),
             "guest_nationality": p["nationality"],
             "qr_token": token,
             "qr_payload": payload_str,
