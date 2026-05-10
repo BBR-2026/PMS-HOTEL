@@ -9,6 +9,7 @@ import api from "../lib/api";
 import { useLang } from "../context/LanguageContext";
 import { formatXOF } from "../lib/i18n";
 import { toast } from "sonner";
+import NationalityAutocomplete from "../components/NationalityAutocomplete";
 
 export default function BookingTunnel() {
   const { offerId } = useParams();
@@ -344,10 +345,11 @@ export default function BookingTunnel() {
                             testId={`participant-${i}-phone`}
                           />
                           <div className="md:col-span-2">
-                            <Field
+                            <NationalityAutocomplete
                               label={t.booking.nationality}
                               value={p.nationality}
                               onChange={update("nationality")}
+                              lang={lang}
                               testId={`participant-${i}-nationality`}
                             />
                           </div>
