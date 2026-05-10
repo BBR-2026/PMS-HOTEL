@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar } from "../components/ui/calendar";
-import { Minus, Plus, Check, ArrowLeft, ArrowRight, Download } from "lucide-react";
+import { Minus, Plus, Check, ArrowLeft, ArrowRight, Download, Mail, MessageCircle } from "lucide-react";
 import { format } from "date-fns";
 import { fr as frLocale, enUS } from "date-fns/locale";
 import api from "../lib/api";
@@ -659,6 +659,61 @@ function PaymentView({ booking, onPay, paying, t }) {
 
 function ConfirmationView({ booking, t, lang, navigate }) {
   const total = booking.qr_codes?.length || 0;
+
+  // Build a textual recap that can be shared via Email / WhatsApp deep-links.
+  // Both schemes (mailto: and wa.me) only accept text — actual QR images stay
+  // downloadable from this page. The recap reminds the client to bring them.
+  const recapText = (() => {
+    const isFr = lang === "fr";
+    const lines = [];
+    lines.push(
+      isFr
+        ? `Réservation Boulay Beach Resort — ${booking.offer_name}`
+        : `Boulay Beach Resort Booking — ${booking.offer_name}`
+    );
+    lines.push("");
+    lines.push(`${isFr ? "Référence" : "Reference"}: #${booking.id.slice(0, 8).toUpperCase()}`);
+    lines.push(`${isFr ? "Date" : "Date"}: ${booking.date}`);
+    if (booking.boat_time) {
+      lines.push(`${isFr ? "Heure du bateau" : "Boat time"}: ${booking.boat_time}`);
+    }
+    lines.push(
+      `${isFr ? "Convives" : "Guests"}: ${booking.adults} ${isFr ? "adulte(s)" : "adult(s)"}` +
+        (booking.children ? `, ${booking.children} ${isFr ? "enfant(s)" : "child(ren)"}` : "")
+    );
+    if (booking.total_amount > 0) {
+      lines.push(`${isFr ? "Total" : "Total"}: ${formatXOF(booking.total_amount)}`);
+    } else {
+      lines.push(`${isFr ? "Total" : "Total"}: ${isFr ? "Sur réservation" : "Reservation only"}`);
+    }
+    lines.push("");
+    lines.push(isFr ? "Participants :" : "Participants:");
+    (booking.participants || []).forEach((p, idx) => {
+      lines.push(`  ${idx + 1}. ${p.surname} ${p.name} — ${p.nationality}`);
+    });
+    lines.push("");
+    lines.push(
+      isFr
+        ? `${total} QR code${total > 1 ? "s" : ""} à présenter à l'arrivée. À télécharger depuis la page de confirmation.`
+        : `${total} QR code${total > 1 ? "s" : ""} to present on arrival. Downloadable from the confirmation page.`
+    );
+    lines.push("");
+    lines.push(
+      isFr
+        ? "Livret BBR : https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/opmut9mt_LIVRET_BBR.pdf"
+        : "BBR Booklet: https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/opmut9mt_LIVRET_BBR.pdf"
+    );
+    lines.push("");
+    lines.push("— Boulay Beach Resort, Abidjan");
+    return lines.join("\n");
+  })();
+
+  const subject = lang === "fr"
+    ? `Réservation Boulay Beach Resort — ${booking.offer_name}`
+    : `Boulay Beach Resort Booking — ${booking.offer_name}`;
+  const mailtoHref = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(recapText)}`;
+  const whatsappHref = `https://wa.me/?text=${encodeURIComponent(recapText)}`;
+
   return (
     <motion.div
       data-testid="confirmation-view"
@@ -718,6 +773,33 @@ function ConfirmationView({ booking, t, lang, navigate }) {
             </a>
           </motion.div>
         ))}
+      </div>
+
+      {/* Share recap via Email or WhatsApp */}
+      <div className="mt-12 max-w-xl mx-auto" data-testid="share-recap">
+        <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4 text-center">
+          {t.booking.shareRecap}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <a
+            href={mailtoHref}
+            className="inline-flex items-center justify-center gap-3 px-6 py-3.5 border border-[#0A0A0A]/15 text-[#0A0A0A] hover:border-[#B8922A] hover:text-[#B8922A] transition-colors text-[0.75rem] uppercase tracking-[0.22em]"
+            data-testid="share-email-btn"
+          >
+            <Mail size={14} />
+            {t.booking.shareEmail}
+          </a>
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-3 px-6 py-3.5 border border-[#25D366]/40 bg-[#25D366]/5 text-[#1FAA52] hover:bg-[#25D366]/10 hover:border-[#25D366] transition-colors text-[0.75rem] uppercase tracking-[0.22em]"
+            data-testid="share-whatsapp-btn"
+          >
+            <MessageCircle size={14} />
+            {t.booking.shareWhatsapp}
+          </a>
+        </div>
       </div>
 
       <div className="mt-14 text-center space-y-4">
