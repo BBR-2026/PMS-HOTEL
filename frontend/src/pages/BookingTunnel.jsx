@@ -610,9 +610,9 @@ function PaymentView({ booking, onPay, paying, t }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* FINEO option */}
+          {/* Bank card option */}
           <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 flex flex-col">
-            <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">FINEO</div>
+            <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">{t.booking.payCardLabel}</div>
             <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
               {t.booking.payNow}
             </div>
