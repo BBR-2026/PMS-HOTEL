@@ -541,6 +541,186 @@ def make_ticket_image(
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def make_cash_receipt_image(
+    offer_id: str,
+    offer_name: str,
+    date_iso: str,
+    boat_time: str,
+    owner_name: str,
+    ref_code: str,
+    lang: str = "fr",
+) -> str:
+    """Render the *temporary cash receipt* template as a base64 PNG data URL.
+
+    Layout: gold-bordered logo header on white, hero image of the offer, then a
+    cream/beige body holding a greeting (left) and the four reservation fields
+    (right) separated by thin grey dividers. The reference code is printed in
+    the bottom-right corner. No QR code (cash payments don't get a QR-as-pass).
+    """
+    W = 900
+    GOLD = (140, 95, 38)
+    CREAM = (245, 238, 219)
+    DARK = (50, 38, 28)
+    LIGHT_DARK = (70, 58, 48)
+    LINE = (180, 170, 150)
+
+    H_PAD = 36
+    H_HEADER = 140
+    hero_w = W - 120
+    hero_h = int(hero_w * 9 / 16)
+    H_BODY = 520
+    H = H_PAD + H_HEADER + 20 + hero_h + H_BODY + H_PAD
+
+    img = Image.new("RGB", (W, H), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    # --- Header: gold-bordered box with BBr logo + subtitles centred ---
+    y = H_PAD
+    box_x0, box_x1 = 60, W - 60
+    box_y0 = y
+    box_y1 = y + H_HEADER
+    draw.rectangle([box_x0, box_y0, box_x1, box_y1], outline=GOLD, width=2)
+
+    f_logo = _load_font(60, bold=True)
+    f_sub = _load_font(13, bold=True)
+    f_sub2 = _load_font(10)
+
+    inner_y = box_y0 + 20
+    bbox = draw.textbbox((0, 0), "BBr", font=f_logo)
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw) / 2 - bbox[0], inner_y), "BBr", fill=GOLD, font=f_logo)
+    inner_y += 70
+    text = "BOULAY BEACH RESORT"
+    bbox = draw.textbbox((0, 0), text, font=f_sub)
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw) / 2 - bbox[0], inner_y), text, fill=GOLD, font=f_sub)
+    inner_y += 16
+    text = "HOTEL & BEACH LIFE"
+    bbox = draw.textbbox((0, 0), text, font=f_sub2)
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw) / 2 - bbox[0], inner_y), text, fill=GOLD, font=f_sub2)
+
+    y = box_y1 + 20
+
+    # --- Hero image ---
+    hero_x = 60
+    hero = _fetch_hero(offer_id)
+    if hero is not None:
+        ratio_src = hero.width / hero.height
+        ratio_dst = hero_w / hero_h
+        if ratio_src > ratio_dst:
+            new_w = int(hero.height * ratio_dst)
+            left = (hero.width - new_w) // 2
+            hero = hero.crop((left, 0, left + new_w, hero.height))
+        else:
+            new_h = int(hero.width / ratio_dst)
+            top = (hero.height - new_h) // 2
+            hero = hero.crop((0, top, hero.width, top + new_h))
+        hero = hero.resize((hero_w, hero_h))
+        img.paste(hero, (hero_x, y))
+    else:
+        draw.rectangle([hero_x, y, hero_x + hero_w, y + hero_h], fill=(220, 215, 205))
+    y += hero_h
+
+    # --- Cream body: greeting on left, 4 fields on right ---
+    body_x0, body_x1 = 60, W - 60
+    body_y0 = y
+    body_y1 = y + H_BODY
+    draw.rectangle([body_x0, body_y0, body_x1, body_y1], fill=CREAM)
+
+    pad = 40
+    col_left_x = body_x0 + pad
+    col_right_x = body_x0 + (body_x1 - body_x0) // 2 + 10
+    col_right_end = body_x1 - pad
+
+    f_h = _load_font(20, bold=True)
+    f_body = _load_font(16)
+    f_label = _load_font(16)
+    f_value = _load_font(16, bold=True)
+    f_ref = _load_font(26, bold=True)
+
+    if lang == "fr":
+        bold_block = (
+            "Voici votre réçu temporaire, émis "
+            "suite à votre réservation avec paiement en espèces."
+        )
+        body_block = "Nous vous souhaitons une expérience inoubliable."
+        signoff = "Life is Here."
+        labels = ("Propriétaire", "Offre", "Date", "Heure d'embarquement")
+    else:
+        bold_block = (
+            "Here is your temporary receipt, "
+            "issued upon your reservation with cash payment."
+        )
+        body_block = "We wish you an unforgettable experience."
+        signoff = "Life is Here."
+        labels = ("Owner", "Offer", "Date", "Boarding time")
+
+    def _wrap(text: str, font, max_w: int) -> list:
+        """Greedy word-wrap into a list of lines that fit within max_w pixels."""
+        words = text.split()
+        lines: list = []
+        cur = ""
+        for w in words:
+            test = (cur + " " + w).strip()
+            tw = draw.textbbox((0, 0), test, font=font)[2]
+            if tw <= max_w or not cur:
+                cur = test
+            else:
+                lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines
+
+    left_max_w = (body_x0 + (body_x1 - body_x0) // 2) - col_left_x - 30
+    cy = body_y0 + 40
+    for line in _wrap(bold_block, f_h, left_max_w):
+        draw.text((col_left_x, cy), line, fill=DARK, font=f_h)
+        cy += 28
+    cy += 22
+    for line in _wrap(body_block, f_body, left_max_w):
+        draw.text((col_left_x, cy), line, fill=LIGHT_DARK, font=f_body)
+        cy += 24
+    cy += 18
+    draw.text((col_left_x, cy), signoff, fill=LIGHT_DARK, font=f_body)
+
+    # Right column: 4 fields with thin grey dividers
+    field_y = body_y0 + 40
+    fields = (
+        (labels[0], owner_name),
+        (labels[1], offer_name),
+        (labels[2], _format_date_long(date_iso, lang)),
+        (labels[3], boat_time),
+    )
+    for label, value in fields:
+        label_text = label + " : "
+        draw.text((col_right_x, field_y), label_text, fill=LIGHT_DARK, font=f_label)
+        bbox = draw.textbbox((0, 0), label_text, font=f_label)
+        lw = bbox[2] - bbox[0]
+        draw.text((col_right_x + lw, field_y), value, fill=DARK, font=f_value)
+        draw.line(
+            [(col_right_x, field_y + 30), (col_right_end, field_y + 30)],
+            fill=LINE,
+            width=1,
+        )
+        field_y += 64
+
+    # Reference code in the bottom-right corner of the cream body
+    bbox = draw.textbbox((0, 0), ref_code, font=f_ref)
+    rw = bbox[2] - bbox[0]
+    draw.text(
+        (col_right_end - rw - bbox[0], body_y1 - 65),
+        ref_code,
+        fill=DARK,
+        font=f_ref,
+    )
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -842,7 +1022,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "qr_code": make_qr(payload_str, styled=styled_qr),
         }
         if styled_qr:
-            # Compose the full printable ticket PNG for premium payments
+            # Card / mobile-money payments: composite ticket with brown details + gold QR
             entry["ticket_image"] = make_ticket_image(
                 offer_id=booking["offer_type"],
                 offer_name=offer["name_fr"],
@@ -850,6 +1030,17 @@ async def pay_booking(booking_id: str, body: PayBooking):
                 boat_time=booking.get("boat_time", ""),
                 owner_name=f"{p['name']} {p['surname']}",
                 qr_payload=payload_str,
+                ref_code=token_short,
+                lang="fr",
+            )
+        else:
+            # Cash payments: cream "temporary receipt" with no QR shown
+            entry["ticket_image"] = make_cash_receipt_image(
+                offer_id=booking["offer_type"],
+                offer_name=offer["name_fr"],
+                date_iso=booking["date"],
+                boat_time=booking.get("boat_time", ""),
+                owner_name=f"{p['name']} {p['surname']}",
                 ref_code=token_short,
                 lang="fr",
             )

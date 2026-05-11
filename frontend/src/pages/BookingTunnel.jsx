@@ -972,11 +972,45 @@ function ConfirmationView({ booking, t, lang, navigate }) {
       </div>
 
       {/* For card / mobile-money payments, render the luxury Ticket layout.
-          For cash, keep the lighter QR card grid. */}
+          For cash payments, render the temporary cash-receipt image returned
+          by the backend (no QR shown — staff scanner uses qr_token directly). */}
       {["fineo", "card", "mobile_money"].includes(booking.payment_method) ? (
         <div className="space-y-8" data-testid="ticket-grid">
           {booking.qr_codes.map((q, i) => (
             <Ticket key={i} booking={booking} qr={q} t={t} lang={lang} index={i} />
+          ))}
+        </div>
+      ) : booking.payment_method === "cash" && booking.qr_codes?.[0]?.ticket_image ? (
+        <div className="space-y-8" data-testid="cash-receipt-grid">
+          {booking.qr_codes.map((q, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: i * 0.08 }}
+              className="max-w-xl mx-auto"
+              data-testid={`cash-receipt-${i}`}
+            >
+              <img
+                src={q.ticket_image}
+                alt={`${t.booking.cashReceipt} — ${q.guest_name} ${q.guest_surname}`}
+                className="w-full h-auto block shadow-sm"
+              />
+              <div className="mt-4 flex items-center justify-between">
+                <div className="text-[0.75rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">
+                  {q.guest_name} {q.guest_surname}
+                </div>
+                <a
+                  href={q.ticket_image}
+                  download={`bbr-recu-${(q.guest_name + "-" + q.guest_surname).replace(/[^a-z0-9]/gi, "-").toLowerCase()}.png`}
+                  className="inline-flex items-center gap-2 text-[0.7rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
+                  data-testid={`cash-receipt-${i}-download`}
+                >
+                  <Download size={12} />
+                  {t.booking.download}
+                </a>
+              </div>
+            </motion.div>
           ))}
         </div>
       ) : (
