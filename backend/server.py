@@ -1114,6 +1114,281 @@ async def seed_staff():
     logging.info("Staff seeding complete")
 
 
+# =================================================================
+# BACK-OFFICE (Staff) — Module 1 (Dashboard) & 3 (Embarquement)
+# =================================================================
+
+class Bateau(BaseModel):
+    name: str
+    capacity: int = Field(ge=1, le=300)
+    status: Literal["actif", "maintenance"] = "actif"
+
+
+class BateauUpdate(BaseModel):
+    name: Optional[str] = None
+    capacity: Optional[int] = None
+    status: Optional[Literal["actif", "maintenance"]] = None
+
+
+class Traversee(BaseModel):
+    bateau_id: str
+    date: str  # YYYY-MM-DD
+    depart_time: str  # "12H" etc
+    direction: Literal["aller", "retour"] = "aller"
+
+
+async def _seed_default_bateaux():
+    """Seed 3 default boats if none exist."""
+    if await db.bateaux.count_documents({}) == 0:
+        defaults = [
+            {"id": str(uuid.uuid4()), "name": "L'Étoile de Boulay", "capacity": 50, "status": "actif"},
+            {"id": str(uuid.uuid4()), "name": "Le Lagon d'Or", "capacity": 40, "status": "actif"},
+            {"id": str(uuid.uuid4()), "name": "Le Sunset Express", "capacity": 30, "status": "actif"},
+        ]
+        await db.bateaux.insert_many(defaults)
+        logging.info("Seeded %d default boats", len(defaults))
+
+
+async def _require_role(staff: dict, allowed: list):
+    if staff.get("role") not in allowed:
+        raise HTTPException(status_code=403, detail="Insufficient privileges")
+
+
+# ---------- Dashboard KPIs (Module 1) ----------
+@api.get("/staff/dashboard")
+async def staff_dashboard(staff=Depends(get_current_staff)):
+    """KPIs + planning du jour + alertes pour la page d'accueil staff."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    cursor = db.bookings.find({"date": today}, {"_id": 0, "reference_token": 0, "qr_codes": 0})
+    bookings_today = await cursor.to_list(length=500)
+
+    revenue_today = sum(b.get("total_amount", 0) for b in bookings_today if b.get("status") in ("confirmed", "arrived", "completed"))
+    guests_today = sum(b.get("adults", 0) + b.get("children", 0) for b in bookings_today)
+    crossings = await db.traversees.count_documents({"date": today})
+
+    # Status pipeline counts
+    pipeline_counts = {"pending": 0, "confirmed": 0, "arrived": 0, "completed": 0, "cancelled": 0}
+    for b in bookings_today:
+        s = b.get("status", "pending")
+        pipeline_counts[s] = pipeline_counts.get(s, 0) + 1
+
+    # Alerts
+    now = datetime.now(timezone.utc)
+    imminent = []
+    for b in bookings_today:
+        bt = b.get("boat_time", "")
+        if bt and bt.endswith("H"):
+            try:
+                hour = int(bt[:-1])
+                btime = datetime.combine(now.date(), datetime.min.time()).replace(tzinfo=timezone.utc, hour=hour)
+                diff = (btime - now).total_seconds() / 3600
+                if 0 <= diff <= 2 and b.get("status") in ("pending", "confirmed"):
+                    imminent.append({"booking_id": b["id"], "client": b.get("phone", ""), "offer": b.get("offer_name", ""), "boat_time": bt, "guests": b.get("adults", 0) + b.get("children", 0)})
+            except Exception:
+                pass
+
+    unpaid = await db.bookings.find({"status": "pending"}, {"_id": 0, "id": 1, "offer_name": 1, "total_amount": 1, "phone": 1, "date": 1}).limit(20).to_list(length=20)
+
+    return {
+        "kpis": {
+            "bookings_today": len(bookings_today),
+            "revenue_today": revenue_today,
+            "guests_today": guests_today,
+            "crossings_today": crossings,
+        },
+        "pipeline": pipeline_counts,
+        "bookings_today": bookings_today,
+        "alerts": {
+            "imminent_arrivals": imminent,
+            "unpaid_bookings": unpaid,
+        },
+    }
+
+
+# ---------- Bateaux CRUD (Module 3) ----------
+@api.get("/staff/bateaux")
+async def list_bateaux(staff=Depends(get_current_staff)):
+    await _seed_default_bateaux()
+    items = await db.bateaux.find({}, {"_id": 0}).to_list(length=200)
+    return items
+
+
+@api.post("/staff/bateaux")
+async def create_bateau(body: Bateau, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    doc = {"id": str(uuid.uuid4()), **body.model_dump()}
+    await db.bateaux.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api.patch("/staff/bateaux/{bateau_id}")
+async def update_bateau(bateau_id: str, body: BateauUpdate, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    res = await db.bateaux.update_one({"id": bateau_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Bateau not found")
+    return {"ok": True}
+
+
+@api.delete("/staff/bateaux/{bateau_id}")
+async def delete_bateau(bateau_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    res = await db.bateaux.delete_one({"id": bateau_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Bateau not found")
+    return {"ok": True}
+
+
+# ---------- Traversées (Module 3) ----------
+@api.get("/staff/traversees")
+async def list_traversees(date: Optional[str] = None, staff=Depends(get_current_staff)):
+    """List all crossings (default = today) with linked passengers."""
+    if date is None:
+        date = datetime.now(timezone.utc).date().isoformat()
+    crossings = await db.traversees.find({"date": date}, {"_id": 0}).to_list(length=200)
+    # Hydrate with bateau info + passenger count
+    bateaux = {b["id"]: b for b in await db.bateaux.find({}, {"_id": 0}).to_list(length=200)}
+    for c in crossings:
+        c["bateau"] = bateaux.get(c.get("bateau_id"), {})
+        passengers = await db.traversee_passengers.find({"traversee_id": c["id"]}, {"_id": 0}).to_list(length=500)
+        c["passengers"] = passengers
+        c["passenger_count"] = sum(p.get("guests", 1) for p in passengers)
+    return sorted(crossings, key=lambda x: (x.get("date", ""), x.get("depart_time", "")))
+
+
+@api.post("/staff/traversees")
+async def create_traversee(body: Traversee, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    bateau = await db.bateaux.find_one({"id": body.bateau_id}, {"_id": 0})
+    if not bateau:
+        raise HTTPException(status_code=404, detail="Bateau not found")
+    tid = str(uuid.uuid4())
+    doc = {
+        "id": tid,
+        "bateau_id": body.bateau_id,
+        "date": body.date,
+        "depart_time": body.depart_time,
+        "direction": body.direction,
+        "status": "programmé",
+        "created_at": now_iso(),
+    }
+    await db.traversees.insert_one(doc)
+    # Auto-create the corresponding return trip ~5h later, only for "aller"
+    if body.direction == "aller":
+        try:
+            hour = int(body.depart_time.replace("H", ""))
+            ret_hour = min(hour + 5, 22)
+            ret_doc = {
+                "id": str(uuid.uuid4()),
+                "bateau_id": body.bateau_id,
+                "date": body.date,
+                "depart_time": f"{ret_hour}H",
+                "direction": "retour",
+                "status": "programmé",
+                "parent_id": tid,
+                "created_at": now_iso(),
+            }
+            await db.traversees.insert_one(ret_doc)
+        except Exception:
+            pass
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api.patch("/staff/traversees/{tid}/status")
+async def update_traversee_status(tid: str, status: str = Body(..., embed=True), staff=Depends(get_current_staff)):
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    if status not in ("programmé", "en_cours", "terminé"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    res = await db.traversees.update_one({"id": tid}, {"$set": {"status": status}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Traversee not found")
+    return {"ok": True}
+
+
+@api.post("/staff/traversees/{tid}/board")
+async def board_passenger(tid: str, body: dict = Body(...), staff=Depends(get_current_staff)):
+    """Mark a booking as boarded on a crossing."""
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    booking_id = body.get("booking_id")
+    if not booking_id:
+        raise HTTPException(status_code=400, detail="booking_id required")
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    crossing = await db.traversees.find_one({"id": tid})
+    if not crossing:
+        raise HTTPException(status_code=404, detail="Traversee not found")
+    # Capacity check
+    bateau = await db.bateaux.find_one({"id": crossing["bateau_id"]}, {"_id": 0})
+    existing = await db.traversee_passengers.find({"traversee_id": tid}).to_list(length=500)
+    booked = sum(p.get("guests", 1) for p in existing)
+    guests = booking.get("adults", 0) + booking.get("children", 0)
+    if bateau and booked + guests > bateau["capacity"]:
+        raise HTTPException(status_code=400, detail=f"Capacity exceeded ({bateau['capacity']})")
+    # Upsert
+    await db.traversee_passengers.update_one(
+        {"traversee_id": tid, "booking_id": booking_id},
+        {
+            "$set": {
+                "traversee_id": tid,
+                "booking_id": booking_id,
+                "guests": guests,
+                "client_name": f"{booking.get('participants', [{}])[0].get('surname', '')} {booking.get('participants', [{}])[0].get('name', '')}".strip(),
+                "offer_name": booking.get("offer_name"),
+                "boarded_at": now_iso(),
+            }
+        },
+        upsert=True,
+    )
+    # Mark booking arrived
+    await db.bookings.update_one({"id": booking_id}, {"$set": {"status": "arrived"}})
+    return {"ok": True, "guests_boarded": guests}
+
+
+@api.delete("/staff/traversees/{tid}/board/{booking_id}")
+async def unboard_passenger(tid: str, booking_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    await db.traversee_passengers.delete_one({"traversee_id": tid, "booking_id": booking_id})
+    return {"ok": True}
+
+
+# ---------- QR Scanner (Module 4) ----------
+@api.get("/staff/scan/{qr_token}")
+async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
+    """Look up a booking by QR token. Returns the participant + booking summary."""
+    booking = await db.bookings.find_one({"qr_codes.qr_token": qr_token}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="QR code not recognised")
+    guest = next((q for q in booking.get("qr_codes", []) if q.get("qr_token") == qr_token), None)
+    summary = {
+        "booking_id": booking["id"],
+        "offer_name": booking["offer_name"],
+        "date": booking["date"],
+        "boat_time": booking.get("boat_time"),
+        "adults": booking.get("adults"),
+        "children": booking.get("children"),
+        "status": booking.get("status"),
+        "payment_method": booking.get("payment_method"),
+        "total_amount": booking.get("total_amount", 0),
+        "special_requests": booking.get("special_requests", ""),
+        "guest_name": guest.get("guest_name") if guest else "",
+        "guest_surname": guest.get("guest_surname") if guest else "",
+        "guest_nationality": guest.get("guest_nationality") if guest else "",
+    }
+    return summary
+
+
+@api.post("/staff/bookings/{booking_id}/arrived")
+async def mark_arrived(booking_id: str, staff=Depends(get_current_staff)):
+    res = await db.bookings.update_one({"id": booking_id}, {"$set": {"status": "arrived", "arrived_at": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return {"ok": True}
+
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()

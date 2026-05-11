@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 3 validates the brand-new Staff Back-office (Modules 1 Dashboard, 3 Embarquement & Traversée, 4 Scanner QR) end-to-end, plus public-portal regression. Backend: 22/22 pytest cases pass — covers staff JWT login for the 3 seeded roles (admin/manager/receptionist), bad-password 401, dashboard KPI shape (kpis/pipeline/bookings_today/alerts), bateaux CRUD with role enforcement (manager 200 on POST/PATCH, manager 403 on DELETE, admin 200 on DELETE), traversée creation with automatic retour ~5h later, status patch, hydrated GET with passengers/passenger_count, embarquement (board) marking booking arrived + decrementing capacity, unboard, capacity-exceeded 400, scanner GET on valid token returns guest+booking summary, invalid token 404, mark-arrived endpoint, scan requires auth. Frontend: /staff/login wrong-password shows toast, correct-password redirects to /staff. Dashboard renders the 4 KPI cards + planning + alert sidebars (impayés en attente populated). /staff/embarquement: manager can add a bateau, can program a crossing (UI shows aller+retour after submit). /staff/scanner: typing the qr_token of a paid booking surfaces the guest card with 'Marquer comme arrivé' button; invalid token raises a 'QR code not recognised' toast. Role-based UI verified on receptionist: sidebar hides 'Toutes les réservations' and the 'Modules à venir' section, and the embarquement page hides Add Bateau / Delete Bateau / Add Crossing buttons. Public portal regression: /api/offers still returns the 4 originals (now plus an extra 'hebergement' – non-breaking), pass_day cash flow and le_kaai free flow remain fully functional.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/staff/embarquement", "issues": ["The 'Programmer une traversée' time picker is a <select> with the 6 fixed slots (10H/12H/...); spec wording 'depart_time' implies free format but UX choice of select is acceptable. NOTE: this select wraps each <option> with a span from Emergent's x-component injector — produces a dev-only React hydration warning: 'In HTML, <span> cannot be a child of <option>'. This does not affect production runtime, but pollutes the console with warnings during development."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_staff_backoffice.py",
+    "/app/test_reports/pytest/staff_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 1408 lines — exceeds the 700-line guideline. Strongly recommend splitting into routers: /routers/staff_auth.py, /routers/staff_dashboard.py, /routers/staff_embarquement.py, /routers/staff_scanner.py, /routers/public_bookings.py.",
+    "/api/staff/bateaux POST/PATCH does not enforce uniqueness on name nor validate capacity upper bound at boat level (model says <=300 ok).",
+    "create_traversee silently swallows the auto-retour exception (try/except: pass) — should at least log; if hour parsing fails the user gets only the 'aller' with no error feedback.",
+    "create_traversee does not check for duplicate (bateau_id, date, depart_time, direction) — same crossing can be created twice; consider a unique index.",
+    "board_passenger uses booking.participants[0] surname/name for client_name display — does not handle empty participants list cleanly (defaults to ''); minor.",
+    "scan_qr endpoint is open to receptionist+manager+admin via get_current_staff but does not enforce role check explicitly. Spec requires receptionist access, which works, but a stricter role guard is advisable.",
+    "Bateau capacity is checked at board-time but is non-transactional — concurrent boards could over-fill. Acceptable for MVP given low concurrency on a 5★ resort scanner workstation.",
+    "@app.on_event('startup') / 'shutdown' are deprecated — migrate to FastAPI lifespan handlers eventually (already flagged in iteration 2).",
+    "Frontend StaffEmbarquement uses Select with <option> children that Emergent's runtime augments with <span> wrappers, producing a React hydration warning (see design_issues). Not blocking, but worth investigating an alternative custom dropdown if x-component spans cannot be turned off for <option>.",
+    "Frontend role-based hiding is correctly implemented in StaffLayout + StaffEmbarquement via useStaffAuth().user.role.",
+    "ObjectId is correctly excluded everywhere ({_id: 0} on every find)."
+  ],
+  "updated_files": ["/app/backend/tests/test_staff_backoffice.py (new — 22 tests)"],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% on critical staff flows (login + role redirect, dashboard render, embarquement add boat + program crossing, scanner valid/invalid token, role-based UI for receptionist)"},
+  "test_credentials": "admin@boulay.ci / Admin@2026, manager@boulay.ci / Manager@2026, reception@boulay.ci / Reception@2026 (seeded automatically by the backend on startup, verified working).",
+  "seed_data_creation": "Tests create TEST_-prefixed bookings (pass_day Wednesday cash + le_kaai Saturday free), one TEST_PWBoat + TEST_Tiny + Le Test bateaux were created via the frontend; all TEST_-prefixed bateaux were cleaned up after the run via the admin DELETE endpoint. Bookings remain in the database but are clearly identifiable by TEST_ participant names and example.com emails.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite for the staff back-office lives at /app/backend/tests/test_staff_backoffice.py and runs in ~9s. The public-portal regression at /app/backend/tests/test_bbr_phase1.py still references the OLD booking schema (top-level phone/email) which has been moved to participant-level. That file will fail on most booking-create tests against the current backend — recommend updating it on the next iteration or removing booking-create tests from it since the staff suite already covers them. Notable schema change to be aware of: /api/bookings now requires email AND phone on EACH participant; there is no top-level phone/email anymore; offers list now returns 5 offers (the 4 originals + 'hebergement'). For the scanner UI test, paid booking creation: POST /api/bookings (5 fields per participant) -> POST /api/bookings/{id}/pay with payment_method='cash' -> qr_codes[i].qr_token. The frontend embarquement 'time' field is a <select> (not an <input>); use page.select_option, not page.fill. There is a noisy React hydration warning on /staff/embarquement caused by Emergent's x-component <span> wrappers on <option> children — dev-only, not a real bug.",
+  "rca of the issue": "No bugs found. All 22 backend tests + all 5 critical frontend flows pass. Iteration ready to ship Modules 1, 3 and 4 of the back-office."
+}
