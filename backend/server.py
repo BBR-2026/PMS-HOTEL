@@ -184,7 +184,7 @@ class BookingCreate(BaseModel):
 
 class PayBooking(BaseModel):
     reference_token: str
-    payment_method: Optional[Literal["fineo", "cash"]] = "fineo"
+    payment_method: Optional[Literal["fineo", "card", "mobile_money", "cash"]] = "fineo"
 
 
 class EventPrivatization(BaseModel):
@@ -223,16 +223,63 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-def make_qr(payload: str) -> str:
+def make_qr(payload: str, styled: bool = False) -> str:
+    """Generate a QR code as a base64 PNG data URL.
+
+    When ``styled`` is True, the QR is rendered with rounded gold modules on a
+    white background and a small white square in the centre containing the
+    "BBr" mark — to match the luxury ticket template used for card / mobile
+    money receipts. Otherwise a plain black-and-white QR is returned.
+    """
     qr = qrcode.QRCode(
         version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=8,
+        error_correction=qrcode.constants.ERROR_CORRECT_H if styled else qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
         border=2,
     )
     qr.add_data(payload)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
+    if styled:
+        from qrcode.image.styledpil import StyledPilImage
+        from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
+        from qrcode.image.styles.colormasks import SolidFillColorMask
+        from PIL import Image, ImageDraw, ImageFont
+        gold = (140, 95, 38)  # warm brown-gold matching the ticket palette
+        img = qr.make_image(
+            image_factory=StyledPilImage,
+            module_drawer=RoundedModuleDrawer(),
+            color_mask=SolidFillColorMask(back_color=(255, 255, 255), front_color=gold),
+        ).convert("RGB")
+        # Stamp "BBr" in the centre on a white square (covered by ECC level H)
+        w, h = img.size
+        box = int(min(w, h) * 0.22)
+        x0, y0 = (w - box) // 2, (h - box) // 2
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([x0, y0, x0 + box, y0 + box], fill="white")
+        # Best-effort font load — fall back to default if unavailable
+        font = None
+        for path in (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ):
+            try:
+                font = ImageFont.truetype(path, size=int(box * 0.5))
+                break
+            except Exception:
+                continue
+        if font is None:
+            font = ImageFont.load_default()
+        text = "BBr"
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(
+            (x0 + (box - tw) / 2 - bbox[0], y0 + (box - th) / 2 - bbox[1]),
+            text,
+            fill=gold,
+            font=font,
+        )
+    else:
+        img = qr.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
@@ -475,6 +522,9 @@ async def pay_booking(booking_id: str, body: PayBooking):
 
     offer = OFFERS[booking["offer_type"]]
     participants = booking.get("participants", [])
+    # Card / mobile-money payments produce the luxury styled gold QR.
+    # Cash payments keep a plain black-and-white QR.
+    styled_qr = body.payment_method in ("fineo", "card", "mobile_money")
     base_payload = {
         "v": 1,
         "issuer": "Boulay Beach Resort",
@@ -532,7 +582,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "guest_nationality": p["nationality"],
             "qr_token": token,
             "qr_payload": payload_str,
-            "qr_code": make_qr(payload_str),
+            "qr_code": make_qr(payload_str, styled=styled_qr),
         })
 
     paid_at = now_iso()

@@ -10,6 +10,7 @@ import { useLang } from "../context/LanguageContext";
 import { formatXOF } from "../lib/i18n";
 import { toast } from "sonner";
 import NationalityAutocomplete from "../components/NationalityAutocomplete";
+import Ticket from "../components/Ticket";
 
 export default function BookingTunnel() {
   const { offerId } = useParams();
@@ -823,35 +824,54 @@ function PaymentView({ booking, onPay, paying, t }) {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Bank card option */}
-          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 flex flex-col">
+          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-7 flex flex-col">
             <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">{t.booking.payCardLabel}</div>
-            <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
+            <div className="font-display-serif text-xl text-[#0A0A0A] mb-2">
               {t.booking.payNow}
             </div>
-            <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
+            <p className="text-sm text-[#0A0A0A]/60 mb-6 flex-1">
               {t.booking.fineoDisclaimer}
             </p>
             <button
-              onClick={() => onPay("fineo")}
+              onClick={() => onPay("card")}
               disabled={!!paying}
               className="btn-gold w-full"
-              data-testid="pay-fineo-btn"
+              data-testid="pay-card-btn"
             >
-              {paying === "fineo" ? t.booking.payProcessing : t.booking.payNow}
+              {paying === "card" ? t.booking.payProcessing : t.booking.payNow}
+            </button>
+          </div>
+
+          {/* Mobile money option */}
+          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-7 flex flex-col">
+            <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">{t.booking.payMobileLabel}</div>
+            <div className="font-display-serif text-xl text-[#0A0A0A] mb-2">
+              {t.booking.payMobile}
+            </div>
+            <p className="text-sm text-[#0A0A0A]/60 mb-6 flex-1">
+              {t.booking.payMobileDesc}
+            </p>
+            <button
+              onClick={() => onPay("mobile_money")}
+              disabled={!!paying}
+              className="btn-gold w-full"
+              data-testid="pay-mobile-btn"
+            >
+              {paying === "mobile_money" ? t.booking.payProcessing : t.booking.payMobile}
             </button>
           </div>
 
           {/* Cash option */}
-          <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col">
+          <div className="bg-white border border-[#0A0A0A]/15 p-7 flex flex-col">
             <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
               {t.booking.payCash}
             </div>
-            <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
+            <div className="font-display-serif text-xl text-[#0A0A0A] mb-2">
               {t.booking.payCash}
             </div>
-            <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
+            <p className="text-sm text-[#0A0A0A]/60 mb-6 flex-1">
               {t.booking.payCashDesc}
             </p>
             <button
@@ -951,41 +971,51 @@ function ConfirmationView({ booking, t, lang, navigate }) {
         </p>
       </div>
 
-      <div className={`grid gap-5 ${total === 1 ? "grid-cols-1 max-w-xs mx-auto" : total === 2 ? "grid-cols-1 sm:grid-cols-2 max-w-md mx-auto" : "grid-cols-2 md:grid-cols-3"}`}>
-        {booking.qr_codes.map((q, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: i * 0.08 }}
-            className="bg-[#FAFAF7] border border-[#B8922A]/30 p-5 flex flex-col items-center"
-            data-testid={`qr-card-${i}`}
-          >
-            <img src={q.qr_code} alt={q.label_fr} className="w-full h-auto bg-white p-2.5 mb-4" />
-            <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
-              {lang === "fr" ? q.label_fr : q.label_en}
-            </div>
-            <div className="text-sm text-[#0A0A0A] font-medium text-center">
-              {q.guest_name} {q.guest_surname}
-            </div>
-            {q.guest_nationality && (
-              <div className="text-[0.7rem] text-[#0A0A0A]/50 mt-0.5">{q.guest_nationality}</div>
-            )}
-            <div className="text-[0.6rem] text-[#0A0A0A]/40 tracking-widest mt-2">
-              #{q.qr_token.slice(0, 8).toUpperCase()}
-            </div>
-            <a
-              href={q.qr_code}
-              download={`bbr-qr-${(q.guest_name + "-" + q.guest_surname).replace(/[^a-z0-9]/gi, "-").toLowerCase()}.png`}
-              className="mt-4 inline-flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
-              data-testid={`qr-download-${i}`}
+      {/* For card / mobile-money payments, render the luxury Ticket layout.
+          For cash, keep the lighter QR card grid. */}
+      {["fineo", "card", "mobile_money"].includes(booking.payment_method) ? (
+        <div className="space-y-8" data-testid="ticket-grid">
+          {booking.qr_codes.map((q, i) => (
+            <Ticket key={i} booking={booking} qr={q} t={t} lang={lang} index={i} />
+          ))}
+        </div>
+      ) : (
+        <div className={`grid gap-5 ${total === 1 ? "grid-cols-1 max-w-xs mx-auto" : total === 2 ? "grid-cols-1 sm:grid-cols-2 max-w-md mx-auto" : "grid-cols-2 md:grid-cols-3"}`}>
+          {booking.qr_codes.map((q, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: i * 0.08 }}
+              className="bg-[#FAFAF7] border border-[#B8922A]/30 p-5 flex flex-col items-center"
+              data-testid={`qr-card-${i}`}
             >
-              <Download size={11} />
-              {t.booking.download}
-            </a>
-          </motion.div>
-        ))}
-      </div>
+              <img src={q.qr_code} alt={q.label_fr} className="w-full h-auto bg-white p-2.5 mb-4" />
+              <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
+                {lang === "fr" ? q.label_fr : q.label_en}
+              </div>
+              <div className="text-sm text-[#0A0A0A] font-medium text-center">
+                {q.guest_name} {q.guest_surname}
+              </div>
+              {q.guest_nationality && (
+                <div className="text-[0.7rem] text-[#0A0A0A]/50 mt-0.5">{q.guest_nationality}</div>
+              )}
+              <div className="text-[0.6rem] text-[#0A0A0A]/40 tracking-widest mt-2">
+                #{q.qr_token.slice(0, 8).toUpperCase()}
+              </div>
+              <a
+                href={q.qr_code}
+                download={`bbr-qr-${(q.guest_name + "-" + q.guest_surname).replace(/[^a-z0-9]/gi, "-").toLowerCase()}.png`}
+                className="mt-4 inline-flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
+                data-testid={`qr-download-${i}`}
+              >
+                <Download size={11} />
+                {t.booking.download}
+              </a>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {/* Share recap via Email or WhatsApp */}
       <div className="mt-12 max-w-xl mx-auto" data-testid="share-recap">
