@@ -5,6 +5,7 @@ import json
 import uuid
 import base64
 import logging
+import urllib.request
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
@@ -18,6 +19,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -282,6 +284,271 @@ def make_qr(payload: str, styled: bool = False) -> str:
         img = qr.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+# --- Ticket image generation (printable PNG matching the brand template) ---
+OFFER_HERO_URLS = {
+    "pass_day": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4kr4z5g1_DAY%20PASS.jpeg",
+    "sunset": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/3g3onmkg_THE%20SUNSET.jpeg",
+    "brunch": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/1txrnqdp_B%20BRUNCH.jpeg",
+    "le_kaai": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/kgqk46mw_LE%20KAAI.jpeg",
+    "hebergement": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1600&q=80",
+}
+
+_HERO_CACHE: dict = {}
+
+
+def _fetch_hero(offer_id: str):
+    url = OFFER_HERO_URLS.get(offer_id)
+    if not url:
+        return None
+    if url in _HERO_CACHE:
+        return _HERO_CACHE[url].copy()
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        _HERO_CACHE[url] = img
+        return img.copy()
+    except Exception as e:
+        logging.warning("Failed to fetch hero for %s: %s", offer_id, e)
+        return None
+
+
+def _load_font(size: int, bold: bool = False):
+    candidates = (
+        [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ]
+        if bold
+        else [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        ]
+    )
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size=size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def _format_date_long(date_iso: str, lang: str = "fr") -> str:
+    try:
+        d = datetime.strptime(date_iso, "%Y-%m-%d").date()
+        if lang == "fr":
+            days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+            months = ["", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+                      "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
+            return f"{days[d.weekday()]} {d.day:02d} {months[d.month]} {d.year}"
+        return d.strftime("%A %B %d %Y")
+    except Exception:
+        return date_iso
+
+
+def make_ticket_image(
+    offer_id: str,
+    offer_name: str,
+    date_iso: str,
+    boat_time: str,
+    owner_name: str,
+    qr_payload: str,
+    ref_code: str,
+    lang: str = "fr",
+) -> str:
+    """Render the full luxury ticket as a base64 PNG data URL.
+
+    Layout mirrors the brand template: BBr header, offer hero image with chevron
+    strip, brown details block (left greeting + right Owner/Offer/Date/Boarding),
+    centred gold QR with BBr stamp, and printed reference code below.
+    """
+    W = 900
+    GOLD = (140, 95, 38)
+    BROWN = (107, 68, 35)
+
+    # Header layout
+    H_PAD = 36
+    H_HEADER = 130
+    hero_w = W - 60
+    hero_h = int(hero_w * 9 / 16)
+    H_BROWN = 280
+    QR_SIZE = 340
+    H_QR_BLOCK = QR_SIZE + 110
+    H = H_PAD + H_HEADER + hero_h + 6 + H_BROWN + 24 + H_QR_BLOCK + H_PAD
+
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+    # Outer gold border to match printed template
+    draw.rectangle([8, 8, W - 8, H - 8], outline=GOLD, width=2)
+
+    # ---- Header ----
+    y = H_PAD
+    f_logo = _load_font(60, bold=True)
+    f_sub = _load_font(13, bold=True)
+    f_sub2 = _load_font(10)
+
+    bbox = draw.textbbox((0, 0), "BBr", font=f_logo)
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw) / 2 - bbox[0], y), "BBr", fill=GOLD, font=f_logo)
+    y += 72
+    text = "BOULAY BEACH RESORT"
+    bbox = draw.textbbox((0, 0), text, font=f_sub)
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw) / 2 - bbox[0], y), text, fill=GOLD, font=f_sub)
+    y += 18
+    text = "HOTEL & BEACH LIFE"
+    bbox = draw.textbbox((0, 0), text, font=f_sub2)
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw) / 2 - bbox[0], y), text, fill=GOLD, font=f_sub2)
+    y = H_PAD + H_HEADER
+
+    # ---- Hero image ----
+    hero_x = 30
+    hero = _fetch_hero(offer_id)
+    if hero is not None:
+        ratio_src = hero.width / hero.height
+        ratio_dst = hero_w / hero_h
+        if ratio_src > ratio_dst:
+            # crop sides
+            new_w = int(hero.height * ratio_dst)
+            left = (hero.width - new_w) // 2
+            hero = hero.crop((left, 0, left + new_w, hero.height))
+        else:
+            new_h = int(hero.width / ratio_dst)
+            top = (hero.height - new_h) // 2
+            hero = hero.crop((0, top, hero.width, top + new_h))
+        hero = hero.resize((hero_w, hero_h))
+        img.paste(hero, (hero_x, y))
+    else:
+        draw.rectangle([hero_x, y, hero_x + hero_w, y + hero_h], fill=(220, 215, 205))
+
+    # Chevron strip overlay at the bottom of the hero
+    strip_h = 22
+    strip_y0 = y + hero_h - strip_h
+    for i in range(-strip_h, hero_w + strip_h, 16):
+        draw.polygon(
+            [
+                (hero_x + i, strip_y0 + strip_h),
+                (hero_x + i + 8, strip_y0 + strip_h),
+                (hero_x + i + 8 + strip_h, strip_y0),
+                (hero_x + i + strip_h, strip_y0),
+            ],
+            fill=BROWN,
+        )
+    y += hero_h + 6
+
+    # ---- Brown details block ----
+    box_x0, box_y0 = 30, y
+    box_x1, box_y1 = W - 30, y + H_BROWN
+    draw.rectangle([box_x0, box_y0, box_x1, box_y1], fill=BROWN)
+
+    f_h = _load_font(20, bold=True)
+    f_body = _load_font(15)
+    f_label = _load_font(13)
+    f_value = _load_font(18, bold=True)
+
+    col_left_x = box_x0 + 28
+    col_right_x = box_x0 + (box_x1 - box_x0) // 2 + 10
+    text_y = box_y0 + 30
+
+    if lang == "fr":
+        greet = [
+            ("Voici votre pass, émis", True),
+            ("suite à votre réservation.", True),
+            ("", False),
+            ("Nous vous souhaitons", False),
+            ("une expérience inoubliable.", False),
+            ("", False),
+            ("Life is Here.", False),
+        ]
+        labels = ("Propriétaire", "Offre", "Date", "Heure d'embarquement")
+    else:
+        greet = [
+            ("Here is your pass, issued", True),
+            ("upon your reservation.", True),
+            ("", False),
+            ("We wish you", False),
+            ("an unforgettable experience.", False),
+            ("", False),
+            ("Life is Here.", False),
+        ]
+        labels = ("Owner", "Offer", "Date", "Boarding time")
+
+    cur_y = text_y
+    for line, bold in greet:
+        font = f_h if bold else f_body
+        if line:
+            draw.text((col_left_x, cur_y), line, fill="white", font=font)
+        cur_y += 24 if bold else 22
+
+    # Right column: 4 fields with thin white dividers
+    field_y = text_y
+    field_h = (H_BROWN - 60) // 4
+    fields = (
+        (labels[0], owner_name),
+        (labels[1], offer_name),
+        (labels[2], _format_date_long(date_iso, lang)),
+        (labels[3], boat_time),
+    )
+    for label, value in fields:
+        draw.text((col_right_x, field_y), label + " :", fill=(240, 235, 225), font=f_label)
+        draw.text((col_right_x, field_y + 22), value, fill="white", font=f_value)
+        draw.line(
+            [(col_right_x, field_y + field_h - 4), (box_x1 - 28, field_y + field_h - 4)],
+            fill=(255, 255, 255),
+            width=1,
+        )
+        field_y += field_h
+
+    y = box_y1 + 24
+
+    # ---- QR section ----
+    qr_obj = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=2,
+    )
+    qr_obj.add_data(qr_payload)
+    qr_obj.make(fit=True)
+    from qrcode.image.styledpil import StyledPilImage
+    from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
+    from qrcode.image.styles.colormasks import SolidFillColorMask
+
+    qr_img = (
+        qr_obj.make_image(
+            image_factory=StyledPilImage,
+            module_drawer=RoundedModuleDrawer(),
+            color_mask=SolidFillColorMask(back_color=(255, 255, 255), front_color=GOLD),
+        )
+        .convert("RGB")
+        .resize((QR_SIZE, QR_SIZE))
+    )
+    # Stamp BBr in the centre of the QR
+    qr_draw = ImageDraw.Draw(qr_img)
+    cbox = int(QR_SIZE * 0.22)
+    cx, cy = QR_SIZE // 2, QR_SIZE // 2
+    qr_draw.rectangle([cx - cbox // 2, cy - cbox // 2, cx + cbox // 2, cy + cbox // 2], fill="white")
+    f_bbr = _load_font(int(cbox * 0.5), bold=True)
+    bbox = qr_draw.textbbox((0, 0), "BBr", font=f_bbr)
+    bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    qr_draw.text((cx - bw / 2 - bbox[0], cy - bh / 2 - bbox[1]), "BBr", fill=GOLD, font=f_bbr)
+
+    qr_x = (W - QR_SIZE) // 2
+    img.paste(qr_img, (qr_x, y + 10))
+
+    # Reference code below
+    f_ref = _load_font(30, bold=True)
+    bbox = draw.textbbox((0, 0), ref_code, font=f_ref)
+    rw = bbox[2] - bbox[0]
+    draw.text(((W - rw) / 2 - bbox[0], y + 10 + QR_SIZE + 28), ref_code, fill=BROWN, font=f_ref)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
@@ -571,7 +838,8 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "guest_token": token,
         }
         payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
-        qr_codes.append({
+        token_short = token[:10].upper()
+        entry = {
             "label_fr": label_fr,
             "label_en": label_en,
             "kind": p["kind"],
@@ -583,7 +851,20 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "qr_token": token,
             "qr_payload": payload_str,
             "qr_code": make_qr(payload_str, styled=styled_qr),
-        })
+        }
+        if styled_qr:
+            # Compose the full printable ticket PNG for premium payments
+            entry["ticket_image"] = make_ticket_image(
+                offer_id=booking["offer_type"],
+                offer_name=offer["name_fr"],
+                date_iso=booking["date"],
+                boat_time=booking.get("boat_time", ""),
+                owner_name=f"{p['name']} {p['surname']}",
+                qr_payload=payload_str,
+                ref_code=token_short,
+                lang="fr",
+            )
+        qr_codes.append(entry)
 
     paid_at = now_iso()
     await db.bookings.update_one(

@@ -120,7 +120,7 @@ export default function Ticket({ booking, qr, t, lang, index = 0 }) {
         </div>
 
         <a
-          href={qr.qr_code}
+          href={qr.ticket_image || qr.qr_code}
           download={`bbr-ticket-${(ownerName).replace(/[^a-z0-9]/gi, "-").toLowerCase()}.png`}
           className="mt-5 inline-flex items-center gap-2 text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
           data-testid={`ticket-${index}-download`}
