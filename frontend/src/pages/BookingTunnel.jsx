@@ -29,6 +29,7 @@ export default function BookingTunnel() {
   const [contact, setContact] = useState({
     special_requests: "",
     boat_time: "",
+    return_boat_time: "",
   });
   const [availability, setAvailability] = useState(null);
   const [bookingResp, setBookingResp] = useState(null);
@@ -97,12 +98,30 @@ export default function BookingTunnel() {
     return offer.boat_times || [];
   }, [offer, selectedDate]);
 
+  // Compute return boat times based on checkout date (for overnight stays)
+  const returnBoatTimes = useMemo(() => {
+    if (!offer || !isOvernight) return [];
+    if (offer.boat_times_weekday && offer.boat_times_weekend) {
+      if (!checkoutDate) return offer.boat_times_weekday;
+      const pyWeekday = (checkoutDate.getDay() + 6) % 7;
+      return pyWeekday >= 5 ? offer.boat_times_weekend : offer.boat_times_weekday;
+    }
+    return offer.boat_times || [];
+  }, [offer, isOvernight, checkoutDate]);
+
   // Reset boat_time if it's no longer in the allowed set for the chosen date
   useEffect(() => {
     if (contact.boat_time && !boatTimes.includes(contact.boat_time)) {
       setContact((c) => ({ ...c, boat_time: "" }));
     }
   }, [boatTimes, contact.boat_time]);
+
+  // Reset return_boat_time if checkout date changes and it's no longer valid
+  useEffect(() => {
+    if (contact.return_boat_time && !returnBoatTimes.includes(contact.return_boat_time)) {
+      setContact((c) => ({ ...c, return_boat_time: "" }));
+    }
+  }, [returnBoatTimes, contact.return_boat_time]);
 
   if (!offer) {
     return (
@@ -122,12 +141,16 @@ export default function BookingTunnel() {
         p.phone.trim() &&
         /\S+@\S+\.\S+/.test(p.email)
     );
-  const contactValid = participantsValid && !!contact.boat_time;
+  const contactValid =
+    participantsValid &&
+    !!contact.boat_time &&
+    (!isOvernight || !!contact.return_boat_time);
 
   // Human-readable list of what's still missing at step 3 (shown beside the disabled Next button)
   const missingStep3 = [];
   if (!participantsValid) missingStep3.push(t.booking.missingParticipants);
   if (!contact.boat_time) missingStep3.push(t.booking.missingBoatTime);
+  if (isOvernight && !contact.return_boat_time) missingStep3.push(t.booking.missingReturnBoatTime);
 
   const stepValid = {
     1:
@@ -167,6 +190,7 @@ export default function BookingTunnel() {
           kind: p.kind,
         })),
         boat_time: contact.boat_time,
+        return_boat_time: isOvernight ? contact.return_boat_time : null,
         special_requests: contact.special_requests,
       });
       setBookingResp(data);
@@ -527,31 +551,98 @@ export default function BookingTunnel() {
                   })}
                 </div>
 
-                {/* Boat time */}
-                <div className="mt-10">
-                  <label className="label-luxury">{t.booking.boatTime}</label>
-                  <p className="text-[0.75rem] text-[#0A0A0A]/50 mb-3 -mt-1">{t.booking.boatTimeHint}</p>
-                  <div className="flex flex-wrap gap-2.5" data-testid="boat-time-group">
-                    {(boatTimes || []).map((h) => {
-                      const selected = contact.boat_time === h;
-                      return (
-                        <button
-                          key={h}
-                          type="button"
-                          onClick={() => setContact({ ...contact, boat_time: h })}
-                          className={`px-5 py-2.5 text-sm tracking-[0.18em] font-medium border transition-all ${
-                            selected
-                              ? "bg-[#B8922A] text-white border-[#B8922A]"
-                              : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
-                          }`}
-                          data-testid={`boat-time-${h}`}
-                        >
-                          {h}
-                        </button>
-                      );
-                    })}
+                {/* Boat time(s) */}
+                {isOvernight ? (
+                  <>
+                    <div className="mt-10">
+                      <label className="label-luxury">{t.booking.arrivalBoatTime}</label>
+                      <p className="text-[0.75rem] text-[#0A0A0A]/50 mb-3 -mt-1">
+                        {t.booking.arrivalBoatTimeHint}
+                        {selectedDate && (
+                          <span className="ml-2 text-[#B8922A]">
+                            · {format(selectedDate, "EEEE d MMMM", { locale: lang === "fr" ? frLocale : enUS })}
+                          </span>
+                        )}
+                      </p>
+                      <div className="flex flex-wrap gap-2.5" data-testid="boat-time-group">
+                        {(boatTimes || []).map((h) => {
+                          const selected = contact.boat_time === h;
+                          return (
+                            <button
+                              key={h}
+                              type="button"
+                              onClick={() => setContact({ ...contact, boat_time: h })}
+                              className={`px-5 py-2.5 text-sm tracking-[0.18em] font-medium border transition-all ${
+                                selected
+                                  ? "bg-[#B8922A] text-white border-[#B8922A]"
+                                  : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                              }`}
+                              data-testid={`boat-time-${h}`}
+                            >
+                              {h}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="mt-8">
+                      <label className="label-luxury">{t.booking.returnBoatTime}</label>
+                      <p className="text-[0.75rem] text-[#0A0A0A]/50 mb-3 -mt-1">
+                        {t.booking.returnBoatTimeHint}
+                        {checkoutDate && (
+                          <span className="ml-2 text-[#B8922A]">
+                            · {format(checkoutDate, "EEEE d MMMM", { locale: lang === "fr" ? frLocale : enUS })}
+                          </span>
+                        )}
+                      </p>
+                      <div className="flex flex-wrap gap-2.5" data-testid="return-boat-time-group">
+                        {(returnBoatTimes || []).map((h) => {
+                          const selected = contact.return_boat_time === h;
+                          return (
+                            <button
+                              key={h}
+                              type="button"
+                              onClick={() => setContact({ ...contact, return_boat_time: h })}
+                              className={`px-5 py-2.5 text-sm tracking-[0.18em] font-medium border transition-all ${
+                                selected
+                                  ? "bg-[#B8922A] text-white border-[#B8922A]"
+                                  : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                              }`}
+                              data-testid={`return-boat-time-${h}`}
+                            >
+                              {h}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-10">
+                    <label className="label-luxury">{t.booking.boatTime}</label>
+                    <p className="text-[0.75rem] text-[#0A0A0A]/50 mb-3 -mt-1">{t.booking.boatTimeHint}</p>
+                    <div className="flex flex-wrap gap-2.5" data-testid="boat-time-group">
+                      {(boatTimes || []).map((h) => {
+                        const selected = contact.boat_time === h;
+                        return (
+                          <button
+                            key={h}
+                            type="button"
+                            onClick={() => setContact({ ...contact, boat_time: h })}
+                            className={`px-5 py-2.5 text-sm tracking-[0.18em] font-medium border transition-all ${
+                              selected
+                                ? "bg-[#B8922A] text-white border-[#B8922A]"
+                                : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                            }`}
+                            data-testid={`boat-time-${h}`}
+                          >
+                            {h}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Special requests */}
                 <div className="mt-8">
@@ -598,7 +689,16 @@ export default function BookingTunnel() {
                       value={selectedDate ? format(selectedDate, "EEEE d MMMM yyyy", { locale: lang === "fr" ? frLocale : enUS }) : "—"}
                     />
                   )}
-                  <SummaryRow label={t.booking.boatTime} value={contact.boat_time} />
+                  <SummaryRow
+                    label={isOvernight ? t.booking.arrivalBoatTime : t.booking.boatTime}
+                    value={contact.boat_time}
+                  />
+                  {isOvernight && (
+                    <SummaryRow
+                      label={t.booking.returnBoatTime}
+                      value={contact.return_boat_time || "—"}
+                    />
+                  )}
                   {hasTiers && selectedTier && (
                     <>
                       <SummaryRow
@@ -889,6 +989,9 @@ function ConfirmationView({ booking, t, lang, navigate }) {
     lines.push(`${isFr ? "Date" : "Date"}: ${booking.date}`);
     if (booking.boat_time) {
       lines.push(`${isFr ? "Heure du bateau" : "Boat time"}: ${booking.boat_time}`);
+    }
+    if (booking.return_boat_time) {
+      lines.push(`${isFr ? "Bateau retour" : "Return boat"}: ${booking.return_boat_time}`);
     }
     lines.push(
       `${isFr ? "Convives" : "Guests"}: ${booking.adults} ${isFr ? "adulte(s)" : "adult(s)"}` +

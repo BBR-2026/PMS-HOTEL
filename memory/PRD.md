@@ -84,3 +84,4 @@ See `/app/memory/test_credentials.md`.
   + 4 (Scanner QR) delivered. JWT staff auth, role-based sidebar (receptionist/manager/admin),
   bateaux CRUD, traversées avec auto-retour, scan QR → mark arrived. 22/22 tests backend, 5/5
   flux frontend validés par testing agent. Placeholders en place pour Modules 2/5/6/7.**
+- 2026-02-06: Hébergement — ajout sélecteur "Bateau retour" en plus du "Bateau aller", horaires dynamiques selon le jour de check-in et de check-out (semaine 2h / week-end horaire). Champ `return_boat_time` persisté côté backend + inclus dans payload QR.

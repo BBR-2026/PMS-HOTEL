@@ -180,6 +180,7 @@ class BookingCreate(BaseModel):
     adults: int = Field(ge=0, le=20)
     children: int = Field(ge=0, le=20)
     boat_time: str
+    return_boat_time: Optional[str] = None  # required for overnight stays (departure from resort on checkout day)
     participants: List[Participant]
     special_requests: Optional[str] = ""
 
@@ -760,7 +761,7 @@ async def login_staff(body: StaffLogin):
 def _with_boat_times(offer: dict) -> dict:
     oid = offer["id"]
     extra = {"allowed_weekdays": ALLOWED_WEEKDAYS_BY_OFFER.get(oid, [])}
-    if oid == "le_kaai":
+    if oid in ("le_kaai", "hebergement"):
         extra["boat_times_weekday"] = BOAT_TIMES_WEEKDAY
         extra["boat_times_weekend"] = BOAT_TIMES_WEEKEND
         extra["boat_times"] = BOAT_TIMES_WEEKDAY  # default fallback
@@ -874,6 +875,7 @@ async def create_booking(body: BookingCreate):
     selected_tier = None
     nights = 0
     checkout_iso = None
+    return_boat_time = None
     if is_overnight:
         if not body.checkout_date:
             raise HTTPException(status_code=400, detail="checkout_date is required for overnight stays")
@@ -885,6 +887,16 @@ async def create_booking(body: BookingCreate):
         if nights < 1:
             raise HTTPException(status_code=400, detail="Checkout date must be at least one day after arrival")
         checkout_iso = body.checkout_date
+        # Validate return boat time against checkout weekday
+        if not body.return_boat_time:
+            raise HTTPException(status_code=400, detail="return_boat_time is required for overnight stays")
+        return_allowed = _boat_times_for_date(body.offer_type, checkout.weekday())
+        if body.return_boat_time not in return_allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid return boat time. Allowed: {', '.join(return_allowed)}",
+            )
+        return_boat_time = body.return_boat_time
         if room_tiers:
             if not body.room_tier:
                 raise HTTPException(status_code=400, detail="room_tier is required for this offer")
@@ -928,6 +940,7 @@ async def create_booking(body: BookingCreate):
         "qr_codes": [],
         "participants": participants_docs,
         "boat_time": body.boat_time,
+        "return_boat_time": return_boat_time,
         "phone": primary["phone"],
         "email": primary["email"],
         "special_requests": body.special_requests or "",
@@ -966,6 +979,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
         "schedule": offer["schedule_fr"],
         "date": booking["date"],
         "boat_time": booking.get("boat_time", ""),
+        "return_boat_time": booking.get("return_boat_time") or "",
         "adults": int(booking.get("adults", 0)),
         "children": int(booking.get("children", 0)),
         "total_amount_fcfa": int(booking["total_amount"]),
