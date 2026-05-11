@@ -14,7 +14,7 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.7, delay: index * 0.12, ease: [0.22, 1, 0.36, 1] }}
-      className="group relative overflow-hidden border border-[#0A0A0A]/10 bg-white flex flex-col shadow-sm hover:shadow-md transition-shadow duration-500"
+      className="group relative overflow-hidden border border-[#0A0A0A]/10 bg-white flex flex-col w-full h-full shadow-sm hover:shadow-md transition-shadow duration-500"
       data-testid={`offer-card-${offer.id}`}
     >
       <div className="relative overflow-hidden aspect-[16/9] bg-[#FAFAF7]">
