@@ -52,7 +52,7 @@ export default function StaffDashboard() {
   const { kpis, bookings_today, alerts } = data;
 
   return (
-    <div className="p-8 md:p-10 max-w-7xl mx-auto" data-testid="staff-dashboard">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-dashboard">
       <div className="mb-8">
         <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Tableau de bord</h1>
         <p className="text-sm text-[#0A0A0A]/55 mt-1">Vue opérationnelle de la journée</p>

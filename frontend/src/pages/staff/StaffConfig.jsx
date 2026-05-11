@@ -4,6 +4,13 @@ import { formatXOF } from "../../lib/i18n";
 import { Settings, UserPlus, Trash2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 
 const ROLE_LABEL = {
   admin: "Administrateur",
@@ -85,10 +92,10 @@ export default function StaffConfig() {
     }));
   };
 
-  const updateTierPrice = (oid, tierId, value) => {
+  const updateTierField = (oid, tierId, field, value) => {
     setEdits((prev) => {
       const current = prev[oid]?.room_tiers || offers.find((o) => o.id === oid)?.room_tiers || [];
-      const newTiers = current.map((t) => (t.id === tierId ? { ...t, price: value } : t));
+      const newTiers = current.map((t) => (t.id === tierId ? { ...t, [field]: value } : t));
       return { ...prev, [oid]: { ...(prev[oid] || {}), room_tiers: newTiers } };
     });
   };
@@ -102,7 +109,11 @@ export default function StaffConfig() {
     if (payload.price_child !== undefined) body.price_child = parseInt(payload.price_child) || 0;
     if (payload.max_capacity !== undefined) body.max_capacity = parseInt(payload.max_capacity) || 1;
     if (payload.room_tiers) {
-      body.room_tiers = payload.room_tiers.map((t) => ({ ...t, price: parseInt(t.price) || 0 }));
+      body.room_tiers = payload.room_tiers.map((t) => ({
+        ...t,
+        price: parseInt(t.price) || 0,
+        inventory: t.inventory !== undefined ? parseInt(t.inventory) || 0 : undefined,
+      }));
     }
     try {
       await api.patch(`/staff/config/offers/${oid}`, body);
@@ -119,14 +130,14 @@ export default function StaffConfig() {
   };
 
   return (
-    <div className="p-8 md:p-10 max-w-6xl mx-auto" data-testid="staff-config">
-      <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">Configuration</h1>
+    <div className="p-4 md:p-8 lg:p-10 max-w-6xl mx-auto" data-testid="staff-config">
+      <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">Configuration</h1>
       <p className="text-sm text-[#0A0A0A]/55 mb-6">Gestion du personnel et des tarifs (réservé administrateur).</p>
 
-      <div className="flex gap-2 mb-7 border-b border-[#0A0A0A]/10">
+      <div className="flex gap-2 mb-7 border-b border-[#0A0A0A]/10 overflow-x-auto">
         <button
           onClick={() => setTab("users")}
-          className={`px-5 py-3 text-[0.7rem] uppercase tracking-[0.22em] border-b-2 transition-colors ${
+          className={`px-4 sm:px-5 py-3 text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.22em] border-b-2 transition-colors whitespace-nowrap ${
             tab === "users" ? "border-[#B8922A] text-[#B8922A]" : "border-transparent text-[#0A0A0A]/60 hover:text-[#0A0A0A]"
           }`}
           data-testid="tab-users"
@@ -135,7 +146,7 @@ export default function StaffConfig() {
         </button>
         <button
           onClick={() => setTab("offers")}
-          className={`px-5 py-3 text-[0.7rem] uppercase tracking-[0.22em] border-b-2 transition-colors ${
+          className={`px-4 sm:px-5 py-3 text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.22em] border-b-2 transition-colors whitespace-nowrap ${
             tab === "offers" ? "border-[#B8922A] text-[#B8922A]" : "border-transparent text-[#0A0A0A]/60 hover:text-[#0A0A0A]"
           }`}
           data-testid="tab-offers"
@@ -159,30 +170,37 @@ export default function StaffConfig() {
           </div>
 
           <div className="bg-white border border-[#0A0A0A]/8">
-            <div className="grid grid-cols-12 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 px-5 py-3 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
+            <div className="hidden md:grid grid-cols-12 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 px-5 py-3 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
               <div className="col-span-3">Nom</div>
               <div className="col-span-4">Email</div>
               <div className="col-span-3">Rôle</div>
               <div className="col-span-2 text-right">Actions</div>
             </div>
             {users.map((u) => (
-              <div key={u.id} className="grid grid-cols-12 items-center px-5 py-4 border-b border-[#0A0A0A]/5" data-testid={`user-row-${u.id}`}>
-                <div className="col-span-3 text-sm text-[#0A0A0A]">{u.name}</div>
-                <div className="col-span-4 text-sm text-[#0A0A0A]/70">{u.email}</div>
-                <div className="col-span-3">
-                  <select
+              <div
+                key={u.id}
+                className="md:grid md:grid-cols-12 md:items-center flex flex-col items-start gap-3 md:gap-0 px-5 py-4 border-b border-[#0A0A0A]/5"
+                data-testid={`user-row-${u.id}`}
+              >
+                <div className="md:col-span-3 text-sm text-[#0A0A0A] w-full">{u.name}</div>
+                <div className="md:col-span-4 text-sm text-[#0A0A0A]/70 break-all w-full">{u.email}</div>
+                <div className="md:col-span-3 w-full md:w-auto">
+                  <Select
                     value={u.role}
-                    onChange={(e) => updateUserRole(u.id, e.target.value)}
+                    onValueChange={(v) => updateUserRole(u.id, v)}
                     disabled={u.id === currentUser?.id}
-                    className="px-2 py-1.5 border border-[#0A0A0A]/15 text-sm focus:border-[#B8922A] focus:outline-none disabled:opacity-50"
-                    data-testid={`user-role-${u.id}`}
                   >
-                    <option value="receptionist">Réception</option>
-                    <option value="manager">Manager</option>
-                    <option value="admin">Administrateur</option>
-                  </select>
+                    <SelectTrigger className="h-9 text-sm" data-testid={`user-role-${u.id}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="receptionist">Réception</SelectItem>
+                      <SelectItem value="manager">Manager</SelectItem>
+                      <SelectItem value="admin">Administrateur</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="col-span-2 text-right">
+                <div className="md:col-span-2 md:text-right w-full">
                   {u.id !== currentUser?.id && (
                     <button
                       onClick={() => deleteUser(u.id)}
@@ -260,21 +278,34 @@ export default function StaffConfig() {
 
                 {o.room_tiers && o.room_tiers.length > 0 && (
                   <div className="mt-5">
-                    <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-3">Tarifs chambres (par nuit)</div>
+                    <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-3">
+                      Tarifs chambres (par nuit) & inventaire
+                    </div>
                     <div className="space-y-2">
                       {currentTiers.map((t) => (
-                        <div key={t.id} className="grid grid-cols-12 items-center gap-3">
-                          <div className="col-span-5 text-sm text-[#0A0A0A]">{t.name_fr}</div>
-                          <div className="col-span-4">
+                        <div key={t.id} className="grid grid-cols-12 items-center gap-2 sm:gap-3">
+                          <div className="col-span-12 sm:col-span-4 text-sm text-[#0A0A0A]">{t.name_fr}</div>
+                          <div className="col-span-6 sm:col-span-3">
+                            <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-0.5">Prix</label>
                             <input
                               type="number"
                               value={t.price}
-                              onChange={(ev) => updateTierPrice(o.id, t.id, ev.target.value)}
+                              onChange={(ev) => updateTierField(o.id, t.id, "price", ev.target.value)}
                               className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
                               data-testid={`tier-price-${t.id}`}
                             />
                           </div>
-                          <div className="col-span-3 text-sm text-[#0A0A0A]/55 text-right">{formatXOF(parseInt(t.price) || 0)}</div>
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-0.5">Inventaire</label>
+                            <input
+                              type="number"
+                              value={t.inventory ?? 0}
+                              onChange={(ev) => updateTierField(o.id, t.id, "inventory", ev.target.value)}
+                              className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                              data-testid={`tier-inventory-${t.id}`}
+                            />
+                          </div>
+                          <div className="col-span-12 sm:col-span-3 text-sm text-[#0A0A0A]/55 sm:text-right">{formatXOF(parseInt(t.price) || 0)}</div>
                         </div>
                       ))}
                     </div>
@@ -328,16 +359,16 @@ export default function StaffConfig() {
               </div>
               <div>
                 <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Rôle</label>
-                <select
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
-                  data-testid="new-user-role"
-                >
-                  <option value="receptionist">Réception</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Administrateur</option>
-                </select>
+                <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                  <SelectTrigger className="mt-1 h-10 text-sm" data-testid="new-user-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="receptionist">Réception</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="admin">Administrateur</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <button

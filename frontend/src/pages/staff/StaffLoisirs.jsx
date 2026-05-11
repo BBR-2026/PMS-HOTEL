@@ -60,8 +60,8 @@ export default function StaffLoisirs() {
   };
 
   return (
-    <div className="p-8 md:p-10 max-w-7xl mx-auto" data-testid="staff-loisirs">
-      <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">Loisirs & Privatisations</h1>
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-loisirs">
+      <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">Loisirs & Privatisations</h1>
       <p className="text-sm text-[#0A0A0A]/55 mb-6">Demandes de privatisation, événements et activités spéciales.</p>
 
       {/* Status filter */}
@@ -86,7 +86,7 @@ export default function StaffLoisirs() {
       </div>
 
       <div className="bg-white border border-[#0A0A0A]/8">
-        <div className="grid grid-cols-12 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 px-5 py-3 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
+        <div className="hidden md:grid grid-cols-12 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 px-5 py-3 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
           <div className="col-span-3">Demandeur</div>
           <div className="col-span-2">Événement</div>
           <div className="col-span-2">Date</div>
@@ -105,20 +105,26 @@ export default function StaffLoisirs() {
                 setSelected(e);
                 setNotes(e.notes || "");
               }}
-              className="w-full grid grid-cols-12 items-center px-5 py-4 text-left border-b border-[#0A0A0A]/5 hover:bg-[#FAFAF7] transition-colors"
+              className="w-full md:grid md:grid-cols-12 md:items-center flex flex-col items-start gap-2 md:gap-0 px-5 py-4 text-left border-b border-[#0A0A0A]/5 hover:bg-[#FAFAF7] transition-colors"
               data-testid={`event-row-${e.id}`}
             >
-              <div className="col-span-3">
+              <div className="md:col-span-3 w-full">
                 <div className="text-sm text-[#0A0A0A]">{e.surname} {e.name}</div>
-                <div className="text-[0.7rem] text-[#0A0A0A]/45 mt-0.5">{e.email}</div>
+                <div className="text-[0.7rem] text-[#0A0A0A]/45 mt-0.5 break-all">{e.email}</div>
               </div>
-              <div className="col-span-2 text-sm text-[#0A0A0A]/75 capitalize">{e.event_type}</div>
-              <div className="col-span-2 text-sm text-[#0A0A0A]/75">{e.event_date}</div>
-              <div className="col-span-2 text-sm text-[#0A0A0A]/75">{e.guest_count}</div>
-              <div className="col-span-2">
+              <div className="md:col-span-2 text-sm text-[#0A0A0A]/75 capitalize flex md:block items-center justify-between w-full">
+                <span className="md:hidden text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50">Événement</span>{e.event_type}
+              </div>
+              <div className="md:col-span-2 text-sm text-[#0A0A0A]/75 flex md:block items-center justify-between w-full">
+                <span className="md:hidden text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50">Date</span>{e.event_date}
+              </div>
+              <div className="md:col-span-2 text-sm text-[#0A0A0A]/75 flex md:block items-center justify-between w-full">
+                <span className="md:hidden text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50">Invités</span>{e.guest_count}
+              </div>
+              <div className="md:col-span-2 w-full">
                 <span className={`inline-block px-2 py-1 text-[0.6rem] uppercase tracking-[0.18em] border ${st.color}`}>{st.label}</span>
               </div>
-              <div className="col-span-1 text-right text-[0.7rem] text-[#0A0A0A]/45">{(e.created_at || "").slice(0, 10)}</div>
+              <div className="md:col-span-1 text-right text-[0.7rem] text-[#0A0A0A]/45 w-full">{(e.created_at || "").slice(0, 10)}</div>
             </button>
           );
         })}

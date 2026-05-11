@@ -441,7 +441,7 @@ export default function StaffReservations() {
   const refresh = () => setRefreshKey((x) => x + 1);
 
   return (
-    <div className="p-8 md:p-10 max-w-7xl mx-auto" data-testid="staff-reservations">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-reservations">
       <div className="mb-8">
         <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Réservations</h1>
         <p className="text-sm text-[#0A0A0A]/55 mt-1">Pipeline complet des réservations</p>

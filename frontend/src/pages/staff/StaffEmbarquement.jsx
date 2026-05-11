@@ -85,7 +85,7 @@ export default function StaffEmbarquement() {
     bookings.filter((b) => b.boat_time === crossing.depart_time && b.offer_type !== "hebergement");
 
   return (
-    <div className="p-8 md:p-10 max-w-7xl mx-auto" data-testid="staff-embarquement">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-embarquement">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Embarquement & Traversée</h1>

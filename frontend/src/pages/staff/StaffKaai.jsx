@@ -93,7 +93,7 @@ export default function StaffKaai() {
   const zones = Array.from(new Set(tables.map((t) => t.zone || "Salle")));
 
   return (
-    <div className="p-8 md:p-10 max-w-7xl mx-auto" data-testid="staff-kaai">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-kaai">
       <div className="flex items-center justify-between mb-2">
         <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Le Kaai — Restaurant</h1>
         <button

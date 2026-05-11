@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 6 — Validated the 4 new chantiers (overbooking guard, advanced stats, responsive back-office, polished Config UI) end-to-end. Backend: 8/8 new pytest cases pass in /app/backend/tests/test_iteration6_overbooking_stats.py and full regression suite (test_phase2_modules + test_module2_reservations + test_staff_backoffice) remains 77/77 green. Frontend smoke validated on 390x844 (mobile) and 1440x900 (desktop): hamburger drawer opens/closes, drawer navigation auto-closes the drawer, no horizontal overflow on /staff, /staff/clients, /staff/revenue, /staff/hebergement, /staff/kaai, /staff/loisirs, /staff/config, advanced-stats toggle reveals the panel, shadcn Select replaces native selects in Config (3 user rows + create-modal popover with 3 options), tier-inventory inputs visible on hebergement offer with values 18/6/6.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6_overbooking_stats.py",
+    "/app/test_reports/pytest/iteration6_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 2389 lines (still ~3.4x the 700-line guideline). The split into routers (auth/dashboard/embarquement/scanner/bookings_admin/clients_crm/revenue/kaai/hebergement/loisirs/config/public/stats) is overdue; this is the 3rd iteration the file grows substantially. Recommend splitting before the next feature batch.",
+    "Overbooking guard at server.py:903-942 only enforces inventory when tier_inventory > 0. Older offer overrides that pre-date the 'inventory' field would silently bypass the check. Acceptable because seed offer has inventory; just call this out for future migrations.",
+    "PATCH /api/staff/config/offers/{id}: room_tiers is replaced wholesale. If a future frontend partial update sends only price (no inventory), the inventory field gets dropped (default 0) and the guard is silently disabled. The current frontend (StaffConfig.jsx) always sends the full tier list (currentTiers map), so it's safe today, but server-side merge would be safer.",
+    "advanced stats endpoint computes nights_sold ignoring cancelled bookings but DOES count the un-paid pending bookings — consistent with the rest of the funnel but worth noting that occupancy_rate_pct will overstate vs. payment-confirmed nights.",
+    "advanced stats lead time fromisoformat() with Z replacement is fine but won't tolerate created_at being None; the try/except catches it but a cleaner guard would log a warning to spot data corruption.",
+    "StaffLayout.jsx mobile drawer uses fixed positioning + click-on-overlay-to-close pattern — works well. Drawer auto-close on navigation confirmed via onNavigate callback. No accessibility issues observed (focus trap not implemented though — minor).",
+    "Calendar endpoint properly returns is_overbooked, total_inventory, by_tier[].inventory & by_tier[].is_overbooked as specified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6_overbooking_stats.py (new — 8 tests covering overbooking guard, calendar flags, advanced stats role guard, inventory PATCH persistence)"
+  ],
+  "success_rate": {"backend": "100% (8/8 new + 77/77 regression)", "frontend": "100% of in-scope flows"},
+  "test_credentials": "admin@boulay.ci / Admin@2026, manager@boulay.ci / Manager@2026, reception@boulay.ci / Reception@2026 — all working.",
+  "seed_data_creation": "Tests create disposable hebergement bookings with TEST_OB* prefix on dates RUN_OFFSET+{0,100,200,400} days in the future to avoid collision across test runs. They persist in DB but are clearly identifiable and far in the future so they don't appear in normal dashboards. Inventory is briefly bumped suite_mer 6→7 and restored to 6 in the persistence test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Overbooking guard lives at server.py:903-942 (per-night occupancy sum vs tier_inventory, excludes cancelled). /api/staff/hebergement/calendar (server.py:1953) now returns tier_inventory, total_inventory, day.is_overbooked, day.by_tier[].inventory + is_overbooked. /api/staff/stats/advanced (server.py:2197) is manager+/admin only and returns year/yoy/funnel/avg_lead_time_days/top_nationalities/party_size/weekday_distribution/hebergement. Total inventory = 18+6+6 = 30. PATCH /api/staff/config/offers returns the offer (200) and persists to db.offer_overrides which is re-applied on startup AND merged on GET; the same room_tiers list must be sent in full. Test suite uses RUN_OFFSET = (time.time() % 1500)+500 days to avoid collisions; safe to re-run. To clean test data, db.bookings.deleteMany({special_requests: 'TEST_overbooking'}) on Mongo.",
+  "rca of the issue": "No bug. All four chantiers behave per spec: (1) overbooking guard fires only when adding rooms would exceed the tier inventory on any night in the stay; cancellations are excluded; the error message includes the offending night and the tier name in French. (2) The calendar endpoint correctly exposes inventory + is_overbooked per day and per tier. (3) Advanced stats endpoint is properly gated to manager+ (reception → 403, manager → 200) and returns the full payload (yoy[12], funnel{5 statuses}, lead time, top nationalities, party size, weekday[7], hebergement occupancy block). (4) Inventory PATCH persists via offer_overrides and is reflected immediately in both the offer GET (/api/offers/hebergement and /api/staff/config/offers) and the calendar endpoint; a booking that previously exceeded inventory now succeeds when inventory is increased — proving end-to-end persistence. Frontend: mobile hamburger + drawer + auto-close on nav verified, all 7 staff routes have no horizontal overflow at 390x844, sidebar fixed on desktop, advanced-stats toggle works, shadcn Select renders popovers in both the user list and the create-user modal, tier-inventory inputs show 18/6/6 on hebergement."
+}
