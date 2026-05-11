@@ -190,7 +190,9 @@ class BookingCreate(BaseModel):
 
 class PayBooking(BaseModel):
     reference_token: str
-    payment_method: Optional[Literal["fineo", "card", "mobile_money", "cash"]] = "fineo"
+    payment_method: Optional[Literal["fineo", "card", "mobile_money", "cash", "deposit"]] = "fineo"
+    # When payment_method = "deposit" (Hébergement only): % of total paid as deposit.
+    deposit_pct: Optional[Literal[10, 30, 70]] = None
 
 
 class EventPrivatization(BaseModel):
@@ -291,16 +293,20 @@ def _fetch_logo():
         return None
 
 
-def _paste_logo(canvas, top: int, max_h: int = 110):
+def _paste_logo(canvas, top: int, max_h: int = 110, max_w_ratio: float = 1.0):
     """Paste the BBr logo centred horizontally on ``canvas`` at vertical ``top``,
-    sized so its height does not exceed ``max_h``. Returns the actual rendered
-    height so callers can advance their layout cursor."""
+    sized so its height does not exceed ``max_h`` and width does not exceed
+    ``max_w_ratio * canvas.width``. Returns the actual rendered height."""
     logo = _fetch_logo()
     if logo is None:
         return 0
     w0, h0 = logo.size
     new_h = max_h
     new_w = int(w0 * (new_h / h0))
+    max_w = int(canvas.width * max_w_ratio)
+    if new_w > max_w:
+        new_w = max_w
+        new_h = int(h0 * (new_w / w0))
     logo = logo.resize((new_w, new_h))
     canvas.paste(logo, ((canvas.width - new_w) // 2, top), logo)
     return new_h
@@ -1003,9 +1009,24 @@ async def pay_booking(booking_id: str, body: PayBooking):
 
     offer = OFFERS[booking["offer_type"]]
     participants = booking.get("participants", [])
-    # Card / mobile-money payments produce the luxury styled gold QR.
-    # Cash payments keep a plain black-and-white QR.
-    styled_qr = body.payment_method in ("fineo", "card", "mobile_money")
+
+    # Compute paid amount (full vs deposit). Deposit is only valid for overnight offers.
+    total_amount = int(booking.get("total_amount", 0))
+    deposit_pct = None
+    if body.payment_method == "deposit":
+        if not offer.get("is_overnight"):
+            raise HTTPException(status_code=400, detail="Deposit only available for overnight stays")
+        if body.deposit_pct not in (10, 30, 70):
+            raise HTTPException(status_code=400, detail="deposit_pct must be 10, 30 or 70")
+        deposit_pct = int(body.deposit_pct)
+        paid_amount = int(round(total_amount * deposit_pct / 100))
+    else:
+        paid_amount = total_amount
+    balance_due = total_amount - paid_amount
+
+    # Card / mobile-money / deposit payments produce the luxury styled gold QR.
+    # Only true cash payments keep the plain receipt.
+    styled_qr = body.payment_method in ("fineo", "card", "mobile_money", "deposit")
     base_payload = {
         "v": 1,
         "issuer": "Boulay Beach Resort",
@@ -1020,6 +1041,9 @@ async def pay_booking(booking_id: str, body: PayBooking):
         "adults": int(booking.get("adults", 0)),
         "children": int(booking.get("children", 0)),
         "total_amount_fcfa": int(booking["total_amount"]),
+        "paid_amount_fcfa": int(paid_amount),
+        "balance_due_fcfa": int(balance_due),
+        "deposit_pct": deposit_pct,
         "phone": booking["phone"],
         "email": booking["email"],
         "special_requests": booking.get("special_requests", "") or "",
@@ -1100,12 +1124,18 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "qr_codes": qr_codes,
             "paid_at": paid_at,
             "payment_method": body.payment_method,
+            "paid_amount": int(paid_amount),
+            "balance_due": int(balance_due),
+            "deposit_pct": deposit_pct,
         }},
     )
     booking["status"] = "confirmed"
     booking["qr_codes"] = qr_codes
     booking["paid_at"] = paid_at
     booking["payment_method"] = body.payment_method
+    booking["paid_amount"] = int(paid_amount)
+    booking["balance_due"] = int(balance_due)
+    booking["deposit_pct"] = deposit_pct
     return booking
 
 

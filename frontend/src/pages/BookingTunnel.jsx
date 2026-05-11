@@ -202,16 +202,18 @@ export default function BookingTunnel() {
     }
   };
 
-  const handlePay = async (method = "fineo") => {
+  const handlePay = async (method = "fineo", extra = {}) => {
     if (!bookingResp) return;
-    setPaying(method);
-    if (method === "fineo") {
+    const trackKey = method === "deposit" && extra.deposit_pct ? `deposit-${extra.deposit_pct}` : method;
+    setPaying(trackKey);
+    if (method === "fineo" || method === "deposit") {
       await new Promise((r) => setTimeout(r, 1400)); // FINEO simulation
     }
     try {
       const { data } = await api.post(`/bookings/${bookingResp.id}/pay`, {
         reference_token: bookingResp.reference_token,
         payment_method: method,
+        ...extra,
       });
       setBookingResp(data);
       toast.success(t.booking.successTitle);
@@ -788,7 +790,7 @@ export default function BookingTunnel() {
                 {bookingResp.status === "confirmed" ? (
                   <ConfirmationView booking={bookingResp} t={t} lang={lang} navigate={navigate} />
                 ) : (
-                  <PaymentView booking={bookingResp} onPay={handlePay} paying={paying} t={t} />
+                  <PaymentView booking={bookingResp} onPay={handlePay} paying={paying} t={t} isOvernight={isOvernight} />
                 )}
               </div>
             )}
@@ -888,7 +890,7 @@ function SummaryRow({ label, value }) {
   );
 }
 
-function PaymentView({ booking, onPay, paying, t }) {
+function PaymentView({ booking, onPay, paying, t, isOvernight }) {
   const isFree = (booking.total_amount || 0) <= 0;
   return (
     <div data-testid="payment-view">
@@ -944,26 +946,67 @@ function PaymentView({ booking, onPay, paying, t }) {
             </button>
           </div>
 
-          {/* Cash option */}
-          <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col">
-            <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
-              {t.booking.payCash}
+          {/* Right column: deposit for hebergement, otherwise cash */}
+          {isOvernight ? (
+            <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col" data-testid="deposit-card">
+              <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
+                {t.booking.payDepositLabel}
+              </div>
+              <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
+                {t.booking.payDeposit}
+              </div>
+              <p className="text-sm text-[#0A0A0A]/60 mb-6 flex-1">
+                {t.booking.payDepositDesc}
+              </p>
+              <div className="space-y-2.5">
+                {[10, 30, 70].map((pct) => {
+                  const amount = Math.round((booking.total_amount * pct) / 100);
+                  const balance = booking.total_amount - amount;
+                  const tracker = `deposit-${pct}`;
+                  const busy = paying === tracker;
+                  return (
+                    <button
+                      key={pct}
+                      onClick={() => onPay("deposit", { deposit_pct: pct })}
+                      disabled={!!paying}
+                      className="btn-ghost-gold w-full text-left flex items-center justify-between px-4 py-3"
+                      data-testid={`pay-deposit-${pct}-btn`}
+                    >
+                      <span className="text-[0.7rem] uppercase tracking-[0.22em]">
+                        {busy ? t.booking.payProcessing : `${t.booking.payDepositCta} ${pct}%`}
+                      </span>
+                      <span className="text-sm font-medium">
+                        {new Intl.NumberFormat("fr-FR").format(amount)} FCFA
+                        <span className="text-[0.65rem] text-[#0A0A0A]/45 ml-2">
+                          · {t.booking.balanceDue} {new Intl.NumberFormat("fr-FR").format(balance)} FCFA
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
-              {t.booking.payCash}
+          ) : (
+            <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col">
+              <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
+                {t.booking.payCash}
+              </div>
+              <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
+                {t.booking.payCash}
+              </div>
+              <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
+                {t.booking.payCashDesc}
+              </p>
+              <button
+                onClick={() => onPay("cash")}
+                disabled={!!paying}
+                className="btn-ghost-gold w-full"
+                data-testid="pay-cash-btn"
+              >
+                {paying === "cash" ? t.booking.payProcessing : t.booking.payCash}
+              </button>
             </div>
-            <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
-              {t.booking.payCashDesc}
-            </p>
-            <button
-              onClick={() => onPay("cash")}
-              disabled={!!paying}
-              className="btn-ghost-gold w-full"
-              data-testid="pay-cash-btn"
-            >
-              {paying === "cash" ? t.booking.payProcessing : t.booking.payCash}
-            </button>
-          </div>
+          )}
         </div>
       )}
     </div>
@@ -999,6 +1042,14 @@ function ConfirmationView({ booking, t, lang, navigate }) {
     );
     if (booking.total_amount > 0) {
       lines.push(`${isFr ? "Total" : "Total"}: ${formatXOF(booking.total_amount)}`);
+      if (booking.payment_method === "deposit" && booking.deposit_pct) {
+        lines.push(
+          `${isFr ? "Acompte versé" : "Deposit paid"} (${booking.deposit_pct}%): ${formatXOF(booking.paid_amount || 0)}`,
+        );
+        lines.push(
+          `${isFr ? "Solde dû à l'arrivée" : "Balance due on arrival"}: ${formatXOF(booking.balance_due || 0)}`,
+        );
+      }
     } else {
       lines.push(`${isFr ? "Total" : "Total"}: ${isFr ? "Sur réservation" : "Reservation only"}`);
     }
@@ -1055,10 +1106,31 @@ function ConfirmationView({ booking, t, lang, navigate }) {
         </p>
       </div>
 
-      {/* For card / mobile-money payments, render the luxury Ticket layout.
+      {/* Deposit summary banner — only shown when paid with deposit */}
+      {booking.payment_method === "deposit" && booking.deposit_pct && (
+        <div className="max-w-xl mx-auto mb-8 bg-[#FAFAF7] border border-[#B8922A]/40 px-6 py-5" data-testid="deposit-banner">
+          <div className="text-[0.65rem] uppercase tracking-[0.32em] text-[#B8922A] mb-2">
+            {lang === "fr" ? "Acompte versé" : "Deposit paid"} · {booking.deposit_pct}%
+          </div>
+          <div className="flex justify-between items-baseline text-sm text-[#0A0A0A]/75 mb-1">
+            <span>{lang === "fr" ? "Montant total" : "Total amount"}</span>
+            <span className="font-medium">{formatXOF(booking.total_amount)}</span>
+          </div>
+          <div className="flex justify-between items-baseline text-sm text-[#0A0A0A]/75 mb-1">
+            <span>{lang === "fr" ? "Acompte payé en ligne" : "Deposit paid online"}</span>
+            <span className="font-medium text-[#B8922A]">{formatXOF(booking.paid_amount || 0)}</span>
+          </div>
+          <div className="flex justify-between items-baseline text-sm pt-2 border-t border-[#B8922A]/20 mt-2">
+            <span className="text-[#0A0A0A]">{lang === "fr" ? "Solde à régler à l'arrivée" : "Balance due on arrival"}</span>
+            <span className="font-display-serif text-lg text-[#0A0A0A]">{formatXOF(booking.balance_due || 0)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* For card / mobile-money / deposit payments, render the luxury Ticket layout.
           For cash payments, render the temporary cash-receipt image returned
           by the backend (no QR shown — staff scanner uses qr_token directly). */}
-      {["fineo", "card", "mobile_money"].includes(booking.payment_method) ? (
+      {["fineo", "card", "mobile_money", "deposit"].includes(booking.payment_method) ? (
         <div className="space-y-8" data-testid="ticket-grid">
           {booking.qr_codes.map((q, i) => (
             <Ticket key={i} booking={booking} qr={q} t={t} lang={lang} index={i} />

@@ -271,6 +271,15 @@ function BookingDrawer({ id, onClose, onUpdated }) {
                 <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Total</dt>
                 <dd className="text-[#0A0A0A] font-medium mt-0.5">{b.total_amount > 0 ? formatXOF(b.total_amount) : "Sur réservation"}</dd>
               </div>
+              {b.payment_method === "deposit" && b.deposit_pct && (
+                <div className="col-span-2 bg-[#FAFAF7] border border-[#B8922A]/30 p-3">
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Acompte {b.deposit_pct}% versé</dt>
+                  <dd className="text-sm text-[#0A0A0A] mt-1 flex justify-between">
+                    <span>Payé en ligne&nbsp;: <span className="font-medium">{formatXOF(b.paid_amount || 0)}</span></span>
+                    <span>Solde à l'arrivée&nbsp;: <span className="font-medium text-[#B8922A]">{formatXOF(b.balance_due || 0)}</span></span>
+                  </dd>
+                </div>
+              )}
               {b.room_tier_name && (
                 <div className="col-span-2">
                   <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Hébergement</dt>

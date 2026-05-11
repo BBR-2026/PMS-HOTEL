@@ -1,0 +1,27 @@
+{
+  "summary": "Iteration 9 — Deposit payment option for Hebergement-only. Backend pytest 11/11 PASS covering: (1) POST /api/bookings/{id}/pay with payment_method='deposit' + deposit_pct in {10,30,70} on hebergement returns paid_amount = round(total*pct/100), balance_due = total - paid_amount, deposit_pct echoed, payment_method='deposit', paid_at set, status='confirmed', qr_codes generated with styled gold ticket_image; (2) deposit_pct=50 rejected with 422 (Pydantic Literal); missing deposit_pct rejected; (3) deposit on pass_day (non-overnight) returns HTTP 400 'Deposit only available for overnight stays'; (4) backwards-compat: card/fineo/mobile_money on hebergement → paid_amount=total, balance_due=0, deposit_pct=null; (5) cash on pass_day still works (cash receipt image); (6) GET /api/staff/bookings/{id} as manager returns paid_amount/balance_due/deposit_pct/payment_method for deposit bookings. Frontend Playwright PASS: /booking/hebergement Step 5 shows pay-card-btn + deposit-card with pay-deposit-10/30/70 buttons, NO pay-cash-btn; clicking pay-deposit-30-btn → confirmation-view with deposit-banner (Montant total 200 000 FCFA · Acompte payé 60 000 FCFA · Solde 140 000 FCFA · 30%) and ticket-grid (gold styled QR) — cash-receipt-grid absent. /booking/pass_day Step 5 shows pay-cash-btn + pay-card-btn, NO deposit-card or pay-deposit-* buttons. Staff drawer code verified by grep: StaffReservations.jsx L274–279 renders 'Acompte {pct}% versé' + 'Solde à l'arrivée: {balance_due}' when b.payment_method==='deposit' && b.deposit_pct (backend confirmed these fields are exposed).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9_deposit.py",
+    "/app/test_reports/pytest/iter9_deposit.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Backend pay_booking (server.py L1019–1021) does a defensive runtime check 'deposit_pct must be 10, 30 or 70' even though Pydantic Literal[10,30,70] already enforces it at parse time. The defensive check is dead code in practice (Pydantic returns 422 before reaching it) but harmless — keep as safety net.",
+    "Frontend formula `Math.round((booking.total_amount * pct) / 100)` (BookingTunnel.jsx L963) matches backend `int(round(total_amount * deposit_pct / 100))` (server.py L1022) — values stay consistent. Verified empirically: 200 000 × 30% = 60 000 displayed and persisted.",
+    "deposit-banner displays correctly when payment_method='deposit' and deposit_pct truthy (L1110). Defensive: if backend ever returns deposit_pct=0 by mistake the banner is hidden — acceptable as 0 is not a valid deposit_pct per Literal.",
+    "PaymentView styled ticket_image gating (server.py L1029) groups 'deposit' with fineo/card/mobile_money for styled_qr — confirmed by frontend ticket-grid rendering. Symmetric on the FE side at L1133.",
+    "server.py still 3063 lines — module-split recommendation from iter8 still pending. Not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration9_deposit.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "manager@boulay.ci / Manager@2026 (used in backend test_manager_sees_deposit_fields). Staff login endpoint returns 'access_token' (not 'token').",
+  "seed_data_creation": "Created TEST_Deposit / TEST_Cash hebergement+pass_day bookings via public POST /api/bookings during pytest run; bookings remain in DB (status=confirmed) but identified by TEST_ name prefix and example.ci email.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Boat times in the BookingCreate validator only accept '10H','12H','14H','16H','18H','20H' (no '10h00' format). Staff login response key is 'access_token' not 'token'. The nationality autocomplete uses input[data-testid=\"participant-{i}-nationality\"] — type 'Fran' + ArrowDown + Enter. Default adults state in BookingTunnel is 2 → decrement once for adults=1 scenarios. /booking/hebergement uses dual calendars data-testid='booking-calendar-arrival' + 'booking-calendar-checkout'; other offers use a single 'booking-calendar'. Deposit % buttons compute amounts identically client-side vs server-side via round().",
+  "rca of the issue": "N/A — feature works as specified."
+}
