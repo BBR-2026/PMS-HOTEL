@@ -30,15 +30,13 @@ export default function StaffLogin() {
     <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center p-6" data-testid="staff-login-page">
       <div className="w-full max-w-md bg-white border border-[#B8922A]/30 p-10 md:p-12">
         <div className="text-center mb-10">
-          <div className="bg-[#0A0A0A] inline-flex items-center justify-center px-10 py-6 mb-5">
-            <img
-              src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/zyq1citg_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
-              alt="Boulay Beach Resort"
-              className="h-24 w-auto"
-              data-testid="staff-login-logo"
-            />
-          </div>
-          <div className="text-[0.55rem] uppercase tracking-[0.4em] text-[#0A0A0A]/40 mt-1">
+          <img
+            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/5jjvd8zn_LOGO_BBr_VF_Plan_de_travail_1-removebg-preview.png"
+            alt="Boulay Beach Resort"
+            className="h-28 w-auto mx-auto mb-3"
+            data-testid="staff-login-logo"
+          />
+          <div className="text-[0.55rem] uppercase tracking-[0.4em] text-[#0A0A0A]/40">
             Back-office Staff
           </div>
         </div>
