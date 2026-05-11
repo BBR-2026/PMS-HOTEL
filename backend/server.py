@@ -378,7 +378,7 @@ def make_ticket_image(
     H_BROWN = 280
     QR_SIZE = 340
     H_QR_BLOCK = QR_SIZE + 110
-    H = H_PAD + H_HEADER + hero_h + 6 + H_BROWN + 24 + H_QR_BLOCK + H_PAD
+    H = H_PAD + H_HEADER + hero_h + H_BROWN + 24 + H_QR_BLOCK + H_PAD
 
     img = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(img)
@@ -426,20 +426,23 @@ def make_ticket_image(
     else:
         draw.rectangle([hero_x, y, hero_x + hero_w, y + hero_h], fill=(220, 215, 205))
 
-    # Chevron strip overlay at the bottom of the hero
-    strip_h = 22
-    strip_y0 = y + hero_h - strip_h
-    for i in range(-strip_h, hero_w + strip_h, 16):
+    # Chevron strip: small brown triangles pointing up, sitting flush against
+    # the bottom of the hero image and the top of the brown details block.
+    tooth_w = 14
+    tooth_h = 14
+    base_y = y + hero_h  # bottom of hero / top of brown box
+    i = 0
+    while i < hero_w:
         draw.polygon(
             [
-                (hero_x + i, strip_y0 + strip_h),
-                (hero_x + i + 8, strip_y0 + strip_h),
-                (hero_x + i + 8 + strip_h, strip_y0),
-                (hero_x + i + strip_h, strip_y0),
+                (hero_x + i, base_y),
+                (hero_x + min(i + tooth_w, hero_w), base_y),
+                (hero_x + i + tooth_w // 2, base_y - tooth_h),
             ],
             fill=BROWN,
         )
-    y += hero_h + 6
+        i += tooth_w
+    y += hero_h  # brown box starts immediately, no gap
 
     # ---- Brown details block ----
     box_x0, box_y0 = 30, y

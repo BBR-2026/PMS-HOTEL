@@ -60,18 +60,32 @@ export default function Ticket({ booking, qr, t, lang, index = 0 }) {
       </div>
 
       {/* Hero image with the offer's own brand title (already baked into the asset) */}
-      <div className="relative overflow-hidden aspect-[16/9] mb-0">
+      <div className="relative overflow-hidden aspect-[16/9]">
         <img src={image} alt={booking.offer_name} className="absolute inset-0 w-full h-full object-cover" />
-        {/* Decorative chevron strip at bottom */}
-        <div
-          className="absolute bottom-0 left-0 right-0 h-6"
-          style={{
-            background:
-              "repeating-linear-gradient(135deg, #6B4423 0 6px, transparent 6px 14px)",
-            opacity: 0.7,
-          }}
-        />
       </div>
+
+      {/* Decorative brown chevron strip — flush against the photo above and the
+          brown box below, so the teeth appear to grow from the brown panel. */}
+      <div
+        className="block w-full"
+        style={{
+          height: "14px",
+          backgroundColor: BROWN,
+          WebkitMaskImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'><polygon points='0,14 14,14 7,0' fill='black'/></svg>\")",
+          maskImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'><polygon points='0,14 14,14 7,0' fill='black'/></svg>\")",
+          WebkitMaskRepeat: "repeat-x",
+          maskRepeat: "repeat-x",
+          WebkitMaskSize: "14px 14px",
+          maskSize: "14px 14px",
+          WebkitMaskPosition: "bottom",
+          maskPosition: "bottom",
+          marginTop: "-14px",
+          position: "relative",
+          zIndex: 1,
+        }}
+      />
 
       {/* Brown body with details */}
       <div className="grid grid-cols-2 gap-5 p-6 md:p-7 text-white" style={{ backgroundColor: BROWN }}>
