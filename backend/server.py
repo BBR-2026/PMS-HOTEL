@@ -1555,15 +1555,30 @@ async def list_clients(search: Optional[str] = None, staff=Depends(get_current_s
     """Aggregate clients from bookings by primary email (contact)."""
     await _require_role(staff, ["manager", "admin"])
     pipeline = [
-        {"$match": {"status": {"$ne": "cancelled"}}},
+        {"$match": {"status": {"$ne": "cancelled"}, "email": {"$nin": [None, ""]}}},
         {
             "$group": {
                 "_id": {"$toLower": "$email"},
                 "email": {"$first": "$email"},
                 "phone": {"$first": "$phone"},
-                "name": {"$first": {"$arrayElemAt": ["$participants.name", 0]}},
-                "surname": {"$first": {"$arrayElemAt": ["$participants.surname", 0]}},
-                "nationality": {"$first": {"$arrayElemAt": ["$participants.nationality", 0]}},
+                "name": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.name", 0]}, {"$arrayElemAt": ["$participants.name", 0]}]},
+                    }
+                }},
+                "surname": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.surname", 0]}, {"$arrayElemAt": ["$participants.surname", 0]}]},
+                    }
+                }},
+                "nationality": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.nationality", 0]}, {"$arrayElemAt": ["$participants.nationality", 0]}]},
+                    }
+                }},
                 "bookings_count": {"$sum": 1},
                 "total_spent": {
                     "$sum": {
@@ -1600,15 +1615,30 @@ async def export_clients_csv(staff=Depends(get_current_staff)):
     from fastapi.responses import Response
     import csv
     pipeline = [
-        {"$match": {"status": {"$ne": "cancelled"}}},
+        {"$match": {"status": {"$ne": "cancelled"}, "email": {"$nin": [None, ""]}}},
         {
             "$group": {
                 "_id": {"$toLower": "$email"},
                 "email": {"$first": "$email"},
                 "phone": {"$first": "$phone"},
-                "name": {"$first": {"$arrayElemAt": ["$participants.name", 0]}},
-                "surname": {"$first": {"$arrayElemAt": ["$participants.surname", 0]}},
-                "nationality": {"$first": {"$arrayElemAt": ["$participants.nationality", 0]}},
+                "name": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.name", 0]}, {"$arrayElemAt": ["$participants.name", 0]}]},
+                    }
+                }},
+                "surname": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.surname", 0]}, {"$arrayElemAt": ["$participants.surname", 0]}]},
+                    }
+                }},
+                "nationality": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.nationality", 0]}, {"$arrayElemAt": ["$participants.nationality", 0]}]},
+                    }
+                }},
                 "bookings_count": {"$sum": 1},
                 "total_spent": {"$sum": {"$cond": [{"$ne": ["$paid_at", None]}, "$total_amount", 0]}},
                 "last_visit": {"$max": "$date"},
@@ -1718,8 +1748,9 @@ async def revenue_overview(
         by_method[m]["total"] += b.get("total_amount", 0)
 
         d = b.get("date") or ""
-        by_day.setdefault(d, 0)
-        by_day[d] += b.get("total_amount", 0)
+        if d:
+            by_day.setdefault(d, 0)
+            by_day[d] += b.get("total_amount", 0)
 
         email = (b.get("email") or "").lower()
         if email:
@@ -1845,9 +1876,9 @@ async def assign_kaai_table(
 ):
     """Assign or unassign a table to a Le Kaai booking."""
     await _require_role(staff, ["manager", "admin"])
-    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0, "offer_type": 1})
+    booking = await db.bookings.find_one({"id": booking_id, "offer_type": "le_kaai"}, {"_id": 0, "offer_type": 1})
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found")
+        raise HTTPException(status_code=404, detail="Le Kaai booking not found")
     if table_id:
         table = await db.kaai_tables.find_one({"id": table_id}, {"_id": 0})
         if not table:

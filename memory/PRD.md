@@ -36,22 +36,21 @@ stays**, plus a **Staff Back-office** for internal operations.
 - Confirmation page: download PNGs, share via Email (`mailto:`) / WhatsApp (`wa.me`), Livret BBR PDF
 - FR/EN toggle
 
-## Phase 2 — Staff Back-Office (🔄 IN PROGRESS)
+## Phase 2 — Staff Back-Office (✅ COMPLETE)
 3 roles: receptionist · manager · admin.
 
 ### ✅ Delivered modules
 - **Module 1 — Tableau de bord**: 4 KPIs + planning du jour + alertes.
-- **Module 2 — Réservations**: vue Liste / Calendrier, sous-onglets par offre (Day Pass / Sunset / Brunch / Le Kaai / Hébergement / Paiements), filtres (search nom/tel/email, statut, paiement), drawer détail avec actions (Confirmer / Terminer / Annuler / Marquer payé cash·card·mobile_money). Pipeline cohérent (cancelled non-réouvrable, paid ne régresse plus completed). `RoleGuard` côté frontend redirige les réceptionnistes vers le dashboard pour les routes manager-only.
-- **Module 3 — Embarquement & Traversée**: CRUD bateaux, programmation traversées avec auto-retour, embarquement passager 1 clic.
+- **Module 2 — Réservations**: vue Liste / Calendrier, sous-onglets par offre, filtres, drawer détail avec actions, RoleGuard côté frontend.
+- **Module 3 — Embarquement & Traversée**: CRUD bateaux, programmation traversées avec auto-retour, embarquement 1 clic.
 - **Module 4 — Scanner QR**: input plein écran, fiche client + bouton "Marquer comme arrivé".
-- **Auth + RBAC**: JWT staff, sidebar role-aware, endpoints `_require_role`.
-
-### 🟡 Backlog modules (placeholders en navigation)
-- **Module 5 — Clients** (P1) : DB clients, fiche détaillée, export CSV, avis.
-- **Module 6 — Le Kaai** (P1) : plan de salle, calendrier tables (`tables_kaai`, `réservations_kaai`).
-- **Module 7 — Chiffre d'affaires** (P1) : courbes par offre/période, top clients, comparatifs.
-- **Hébergement** (P2) : calendrier chambres, statistiques.
-- **Loisirs** (P2) : activités aquatiques/sportives/spa/privatisation.
+- **Module 5 — Clients** (CRM): liste agrégée des clients, recherche, fiche détaillée avec historique complet, export CSV.
+- **Module 6 — Le Kaai**: 36 tables seedées par zone (Salle/Terrasse/Bord de mer), CRUD tables, vue jour avec sélecteur date, assignation table par clic, libération.
+- **Module 7 — Chiffre d'affaires**: KPIs revenus + panier moyen, filtres période (jour/semaine/mois/année/total), graphique d'évolution journalière (LineChart), répartition par offre (BarChart) et par méthode de paiement (PieChart), top 10 clients.
+- **Module Hébergement** (staff): calendrier mensuel d'occupation par tier (couleurs Or/Vert/Bleu), navigation mois précédent/suivant, panneau Arrivées + Départs du jour basé sur boat_time et return_boat_time.
+- **Module Loisirs**: liste des `event_requests`, filtres statut, drawer détail avec changement de statut (new→contacted→confirmed→completed/declined) et notes internes.
+- **Configuration Admin** (admin only): onglet Utilisateurs (CRUD complet, refuse self-delete), onglet Offres & Tarifs (édition prix adulte/enfant, capacité, tarifs de chambres, persistance via collection `offer_overrides`, prise en compte immédiate côté public).
+- **Auth + RBAC**: JWT staff, sidebar role-aware (Réservations / Opérations / Administration), endpoints `_require_role`.
 
 ## Phase 3 — Backlog
 - Real FINEO integration (replace mocked `/pay`).
@@ -85,3 +84,4 @@ See `/app/memory/test_credentials.md`.
   bateaux CRUD, traversées avec auto-retour, scan QR → mark arrived. 22/22 tests backend, 5/5
   flux frontend validés par testing agent. Placeholders en place pour Modules 2/5/6/7.**
 - 2026-02-06: Hébergement — ajout sélecteur "Bateau retour" en plus du "Bateau aller", horaires dynamiques selon le jour de check-in et de check-out (semaine 2h / week-end horaire). Champ `return_boat_time` persisté côté backend + inclus dans payload QR.
+- 2026-02-06: **Phase 2 Back-Office Complete** — Modules 5 (Clients CRM + export CSV), 6 (Le Kaai 36 tables CRUD + assignation), 7 (Chiffre d'affaires + graphiques recharts), Hébergement (calendrier mensuel + arrivées/départs), Loisirs (event_requests), Configuration Admin (CRUD staff + édition tarifs via offer_overrides). 35/35 tests backend pytest passent. RoleGuard validé.
