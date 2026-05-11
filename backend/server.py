@@ -385,7 +385,7 @@ def make_ticket_image(
 
     # Header layout
     H_PAD = 36
-    H_HEADER = 130
+    H_HEADER = 320
     hero_w = W - 60
     hero_h = int(hero_w * 9 / 16)
     H_BROWN = 280
@@ -400,7 +400,7 @@ def make_ticket_image(
 
     # ---- Header: BBr logo (image) ----
     y = H_PAD
-    logo_h = _paste_logo(img, y, max_h=H_HEADER - 10)
+    logo_h = _paste_logo(img, y, max_h=H_HEADER - 20, max_w_ratio=0.85)
     if logo_h == 0:
         # Fallback: text-only header if the logo failed to load
         f_logo = _load_font(60, bold=True)
@@ -558,7 +558,7 @@ def make_cash_receipt_image(
     LINE = (180, 170, 150)
 
     H_PAD = 36
-    H_HEADER = 140
+    H_HEADER = 230
     hero_w = W - 120
     hero_h = int(hero_w * 9 / 16)
     H_BODY = 520

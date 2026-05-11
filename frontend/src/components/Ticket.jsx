@@ -44,11 +44,11 @@ export default function Ticket({ booking, qr, t, lang, index = 0 }) {
       data-testid={`ticket-${index}`}
     >
       {/* Header: official BBr logo */}
-      <div className="border-y border-[#B8922A]/40 py-5 mb-2 flex items-center justify-center bg-white">
+      <div className="border-y border-[#B8922A]/40 py-6 mb-2 flex items-center justify-center bg-white">
         <img
           src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2p8ulkeu_LOGO_BBr_VF_Plan_de_travail_1-removebg-preview.png"
           alt="Boulay Beach Resort"
-          className="h-20 w-auto"
+          className="h-36 w-auto"
           data-testid={`ticket-${index}-logo`}
         />
       </div>
