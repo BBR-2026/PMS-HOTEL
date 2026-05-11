@@ -1546,6 +1546,585 @@ async def payments_summary(staff=Depends(get_current_staff)):
     }
 
 
+# =================================================================
+# MODULE 5 — CLIENTS (CRM)
+# =================================================================
+
+@api.get("/staff/clients")
+async def list_clients(search: Optional[str] = None, staff=Depends(get_current_staff)):
+    """Aggregate clients from bookings by primary email (contact)."""
+    await _require_role(staff, ["manager", "admin"])
+    pipeline = [
+        {"$match": {"status": {"$ne": "cancelled"}}},
+        {
+            "$group": {
+                "_id": {"$toLower": "$email"},
+                "email": {"$first": "$email"},
+                "phone": {"$first": "$phone"},
+                "name": {"$first": {"$arrayElemAt": ["$participants.name", 0]}},
+                "surname": {"$first": {"$arrayElemAt": ["$participants.surname", 0]}},
+                "nationality": {"$first": {"$arrayElemAt": ["$participants.nationality", 0]}},
+                "bookings_count": {"$sum": 1},
+                "total_spent": {
+                    "$sum": {
+                        "$cond": [{"$ne": ["$paid_at", None]}, "$total_amount", 0]
+                    }
+                },
+                "last_visit": {"$max": "$date"},
+                "first_visit": {"$min": "$date"},
+                "offers": {"$addToSet": "$offer_type"},
+            }
+        },
+        {"$sort": {"last_visit": -1}},
+        {"$limit": 1000},
+    ]
+    items = await db.bookings.aggregate(pipeline).to_list(length=1000)
+    for it in items:
+        it.pop("_id", None)
+    if search:
+        s = search.strip().lower()
+        items = [
+            it for it in items
+            if s in (it.get("email") or "").lower()
+            or s in (it.get("phone") or "").lower()
+            or s in (it.get("name") or "").lower()
+            or s in (it.get("surname") or "").lower()
+        ]
+    return {"items": items, "count": len(items)}
+
+
+@api.get("/staff/clients/export.csv")
+async def export_clients_csv(staff=Depends(get_current_staff)):
+    """CSV export of aggregated client list."""
+    await _require_role(staff, ["manager", "admin"])
+    from fastapi.responses import Response
+    import csv
+    pipeline = [
+        {"$match": {"status": {"$ne": "cancelled"}}},
+        {
+            "$group": {
+                "_id": {"$toLower": "$email"},
+                "email": {"$first": "$email"},
+                "phone": {"$first": "$phone"},
+                "name": {"$first": {"$arrayElemAt": ["$participants.name", 0]}},
+                "surname": {"$first": {"$arrayElemAt": ["$participants.surname", 0]}},
+                "nationality": {"$first": {"$arrayElemAt": ["$participants.nationality", 0]}},
+                "bookings_count": {"$sum": 1},
+                "total_spent": {"$sum": {"$cond": [{"$ne": ["$paid_at", None]}, "$total_amount", 0]}},
+                "last_visit": {"$max": "$date"},
+                "first_visit": {"$min": "$date"},
+            }
+        },
+        {"$sort": {"last_visit": -1}},
+    ]
+    items = await db.bookings.aggregate(pipeline).to_list(length=10000)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Nom", "Prénom", "Email", "Téléphone", "Nationalité", "Réservations", "Total dépensé (FCFA)", "Première visite", "Dernière visite"])
+    for it in items:
+        writer.writerow([
+            it.get("surname") or "",
+            it.get("name") or "",
+            it.get("email") or "",
+            it.get("phone") or "",
+            it.get("nationality") or "",
+            it.get("bookings_count", 0),
+            it.get("total_spent", 0),
+            it.get("first_visit") or "",
+            it.get("last_visit") or "",
+        ])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="bbr-clients.csv"'},
+    )
+
+
+@api.get("/staff/clients/{email}")
+async def client_detail(email: str, staff=Depends(get_current_staff)):
+    """Full client history for the given email (case-insensitive)."""
+    await _require_role(staff, ["manager", "admin"])
+    cursor = db.bookings.find(
+        {"email": {"$regex": f"^{email}$", "$options": "i"}},
+        {"_id": 0, "reference_token": 0, "qr_codes.qr_code": 0, "qr_codes.qr_payload": 0, "qr_codes.ticket_image": 0},
+    ).sort([("date", -1)])
+    bookings = await cursor.to_list(length=500)
+    if not bookings:
+        raise HTTPException(status_code=404, detail="Client not found")
+    primary = next((p for b in bookings for p in b.get("participants", []) if p.get("kind") == "adult"), None) or {}
+    total_spent = sum(b.get("total_amount", 0) for b in bookings if b.get("paid_at"))
+    return {
+        "email": bookings[0].get("email"),
+        "phone": bookings[0].get("phone"),
+        "name": primary.get("name", ""),
+        "surname": primary.get("surname", ""),
+        "nationality": primary.get("nationality", ""),
+        "bookings_count": len(bookings),
+        "total_spent": total_spent,
+        "bookings": bookings,
+    }
+
+
+# =================================================================
+# MODULE 7 — REVENUE (CHIFFRE D'AFFAIRES)
+# =================================================================
+
+@api.get("/staff/revenue")
+async def revenue_overview(
+    period: str = "month",  # day | week | month | year | all
+    staff=Depends(get_current_staff),
+):
+    """Revenue dashboard: KPIs, by offer, by payment method, daily trend, top clients."""
+    await _require_role(staff, ["manager", "admin"])
+    today = datetime.now(timezone.utc).date()
+    if period == "day":
+        date_from = today
+    elif period == "week":
+        date_from = today - timedelta(days=7)
+    elif period == "month":
+        date_from = today - timedelta(days=30)
+    elif period == "year":
+        date_from = today - timedelta(days=365)
+    else:
+        date_from = None
+
+    q: dict = {"paid_at": {"$ne": None}}
+    if date_from:
+        q["date"] = {"$gte": date_from.isoformat()}
+
+    paid = await db.bookings.find(
+        q,
+        {"_id": 0, "offer_type": 1, "offer_name": 1, "date": 1, "total_amount": 1, "payment_method": 1, "email": 1, "phone": 1, "participants": 1, "paid_at": 1},
+    ).to_list(length=10000)
+
+    total_revenue = sum(b.get("total_amount", 0) for b in paid)
+    total_bookings = len(paid)
+    avg_basket = (total_revenue / total_bookings) if total_bookings else 0
+
+    by_offer: dict = {}
+    by_method: dict = {}
+    by_day: dict = {}
+    by_client: dict = {}
+
+    for b in paid:
+        oid = b.get("offer_type", "unknown")
+        by_offer.setdefault(oid, {"offer_id": oid, "offer_name": b.get("offer_name", oid), "count": 0, "total": 0})
+        by_offer[oid]["count"] += 1
+        by_offer[oid]["total"] += b.get("total_amount", 0)
+
+        m = b.get("payment_method") or "unknown"
+        by_method.setdefault(m, {"method": m, "count": 0, "total": 0})
+        by_method[m]["count"] += 1
+        by_method[m]["total"] += b.get("total_amount", 0)
+
+        d = b.get("date") or ""
+        by_day.setdefault(d, 0)
+        by_day[d] += b.get("total_amount", 0)
+
+        email = (b.get("email") or "").lower()
+        if email:
+            participants = b.get("participants", [])
+            primary = next((p for p in participants if p.get("kind") == "adult"), participants[0] if participants else {})
+            by_client.setdefault(email, {
+                "email": email,
+                "phone": b.get("phone", ""),
+                "name": primary.get("name", "") if primary else "",
+                "surname": primary.get("surname", "") if primary else "",
+                "count": 0,
+                "total": 0,
+            })
+            by_client[email]["count"] += 1
+            by_client[email]["total"] += b.get("total_amount", 0)
+
+    daily_trend = [{"date": d, "amount": amt} for d, amt in sorted(by_day.items())]
+    top_clients = sorted(by_client.values(), key=lambda c: c["total"], reverse=True)[:10]
+
+    return {
+        "period": period,
+        "total_revenue": total_revenue,
+        "total_bookings": total_bookings,
+        "avg_basket": int(avg_basket),
+        "by_offer": list(by_offer.values()),
+        "by_method": list(by_method.values()),
+        "daily_trend": daily_trend,
+        "top_clients": top_clients,
+    }
+
+
+# =================================================================
+# MODULE 6 — LE KAAI (TABLES)
+# =================================================================
+
+class KaaiTable(BaseModel):
+    number: str
+    capacity: int = Field(ge=1, le=30)
+    zone: Optional[str] = "Salle"
+    status: Literal["active", "indisponible"] = "active"
+
+
+class KaaiTableUpdate(BaseModel):
+    number: Optional[str] = None
+    capacity: Optional[int] = None
+    zone: Optional[str] = None
+    status: Optional[Literal["active", "indisponible"]] = None
+
+
+async def _seed_default_kaai_tables():
+    """Seed default Le Kaai tables if none exist."""
+    if await db.kaai_tables.count_documents({}) == 0:
+        zones = [("Terrasse", 6, 2), ("Terrasse", 6, 4), ("Salle", 8, 2), ("Salle", 8, 4), ("Salle", 4, 6), ("Bord de mer", 4, 2)]
+        seeds = []
+        i = 1
+        for zone, count, cap in zones:
+            for _ in range(count):
+                seeds.append({"id": str(uuid.uuid4()), "number": f"T{i:02d}", "capacity": cap, "zone": zone, "status": "active"})
+                i += 1
+        await db.kaai_tables.insert_many(seeds)
+        logging.info("Seeded %d Le Kaai tables", len(seeds))
+
+
+@api.get("/staff/kaai/tables")
+async def list_kaai_tables(staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    await _seed_default_kaai_tables()
+    items = await db.kaai_tables.find({}, {"_id": 0}).sort("number", 1).to_list(length=500)
+    return {"items": items}
+
+
+@api.post("/staff/kaai/tables")
+async def create_kaai_table(body: KaaiTable, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    doc = body.model_dump()
+    doc.update({"id": str(uuid.uuid4()), "created_at": now_iso()})
+    await db.kaai_tables.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.patch("/staff/kaai/tables/{table_id}")
+async def update_kaai_table(table_id: str, body: KaaiTableUpdate, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not update:
+        return {"ok": True}
+    res = await db.kaai_tables.update_one({"id": table_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return {"ok": True}
+
+
+@api.delete("/staff/kaai/tables/{table_id}")
+async def delete_kaai_table(table_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    res = await db.kaai_tables.delete_one({"id": table_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Table not found")
+    # Also clear assignments referencing this table
+    await db.bookings.update_many({"table_id": table_id}, {"$unset": {"table_id": ""}})
+    return {"ok": True}
+
+
+@api.get("/staff/kaai/day")
+async def kaai_day(date: str, staff=Depends(get_current_staff)):
+    """Le Kaai bookings + table assignments for a specific day."""
+    await _require_role(staff, ["manager", "admin"])
+    bookings = await db.bookings.find(
+        {"offer_type": "le_kaai", "date": date, "status": {"$ne": "cancelled"}},
+        {"_id": 0, "id": 1, "boat_time": 1, "adults": 1, "children": 1, "phone": 1, "email": 1,
+         "participants": 1, "status": 1, "special_requests": 1, "table_id": 1, "paid_at": 1, "created_at": 1},
+    ).sort("boat_time", 1).to_list(length=500)
+    tables = await db.kaai_tables.find({}, {"_id": 0}).sort("number", 1).to_list(length=500)
+    return {"date": date, "bookings": bookings, "tables": tables}
+
+
+@api.patch("/staff/kaai/bookings/{booking_id}/table")
+async def assign_kaai_table(
+    booking_id: str,
+    table_id: Optional[str] = Body(None, embed=True),
+    staff=Depends(get_current_staff),
+):
+    """Assign or unassign a table to a Le Kaai booking."""
+    await _require_role(staff, ["manager", "admin"])
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0, "offer_type": 1})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if table_id:
+        table = await db.kaai_tables.find_one({"id": table_id}, {"_id": 0})
+        if not table:
+            raise HTTPException(status_code=404, detail="Table not found")
+        await db.bookings.update_one({"id": booking_id}, {"$set": {"table_id": table_id}})
+    else:
+        await db.bookings.update_one({"id": booking_id}, {"$unset": {"table_id": ""}})
+    return {"ok": True}
+
+
+# =================================================================
+# MODULE HÉBERGEMENT — STAFF CALENDAR & DAILY ARRIVALS/DEPARTURES
+# =================================================================
+
+@api.get("/staff/hebergement/today")
+async def hebergement_today(date: Optional[str] = None, staff=Depends(get_current_staff)):
+    """Arrivals (check-in) and departures (check-out) for a given day. Defaults to today."""
+    await _require_role(staff, ["manager", "admin", "receptionist"])
+    target = date or datetime.now(timezone.utc).date().isoformat()
+    arrivals = await db.bookings.find(
+        {"offer_type": "hebergement", "date": target, "status": {"$ne": "cancelled"}},
+        {"_id": 0, "id": 1, "boat_time": 1, "room_tier_name": 1, "rooms": 1, "adults": 1,
+         "children": 1, "phone": 1, "email": 1, "participants": 1, "status": 1, "paid_at": 1,
+         "nights": 1, "checkout_date": 1, "special_requests": 1},
+    ).sort("boat_time", 1).to_list(length=500)
+    departures = await db.bookings.find(
+        {"offer_type": "hebergement", "checkout_date": target, "status": {"$ne": "cancelled"}},
+        {"_id": 0, "id": 1, "return_boat_time": 1, "room_tier_name": 1, "rooms": 1, "adults": 1,
+         "children": 1, "phone": 1, "email": 1, "participants": 1, "status": 1, "date": 1,
+         "nights": 1, "special_requests": 1},
+    ).sort("return_boat_time", 1).to_list(length=500)
+    return {"date": target, "arrivals": arrivals, "departures": departures}
+
+
+@api.get("/staff/hebergement/calendar")
+async def hebergement_calendar(month: str, staff=Depends(get_current_staff)):
+    """Monthly room occupancy: for each day, how many rooms are occupied per tier."""
+    await _require_role(staff, ["manager", "admin"])
+    if not month or len(month) != 7:
+        raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+    date_from = datetime.strptime(f"{month}-01", "%Y-%m-%d").date()
+    next_month = (date_from + timedelta(days=32)).replace(day=1)
+    # Find any booking that overlaps this month
+    cursor = db.bookings.find(
+        {
+            "offer_type": "hebergement",
+            "status": {"$ne": "cancelled"},
+            "date": {"$lt": next_month.isoformat()},
+            "checkout_date": {"$gt": date_from.isoformat()},
+        },
+        {"_id": 0, "id": 1, "date": 1, "checkout_date": 1, "rooms": 1, "room_tier": 1, "room_tier_name": 1,
+         "adults": 1, "children": 1, "email": 1, "phone": 1, "participants": 1},
+    )
+    items = await cursor.to_list(length=2000)
+    # Expand per-night occupancy
+    occupancy: dict = {}  # date -> {tier_id: {name, rooms}}
+    bookings_by_day: dict = {}  # date -> [booking]
+    cur = date_from
+    while cur < next_month:
+        d = cur.isoformat()
+        occupancy[d] = {}
+        bookings_by_day[d] = []
+        cur += timedelta(days=1)
+    for b in items:
+        arr = datetime.strptime(b["date"], "%Y-%m-%d").date()
+        chk = datetime.strptime(b["checkout_date"], "%Y-%m-%d").date()
+        night = arr
+        while night < chk:
+            key = night.isoformat()
+            if key in occupancy:
+                tier = b.get("room_tier") or "unknown"
+                occupancy[key].setdefault(tier, {"tier_id": tier, "tier_name": b.get("room_tier_name") or tier, "rooms": 0})
+                occupancy[key][tier]["rooms"] += int(b.get("rooms", 1))
+                bookings_by_day[key].append({"id": b["id"], "rooms": b.get("rooms", 1), "tier": tier, "tier_name": b.get("room_tier_name"), "guests": int(b.get("adults", 0)) + int(b.get("children", 0))})
+            night += timedelta(days=1)
+    # Format as list per day
+    days = []
+    for d in sorted(occupancy.keys()):
+        total_rooms = sum(v["rooms"] for v in occupancy[d].values())
+        days.append({
+            "date": d,
+            "total_rooms": total_rooms,
+            "by_tier": list(occupancy[d].values()),
+            "bookings": bookings_by_day[d],
+        })
+    return {"month": month, "days": days}
+
+
+# =================================================================
+# MODULE LOISIRS — Event privatization requests
+# =================================================================
+
+@api.get("/staff/loisirs/events")
+async def list_event_requests(status: Optional[str] = None, staff=Depends(get_current_staff)):
+    """List event/privatization requests."""
+    await _require_role(staff, ["manager", "admin"])
+    q: dict = {}
+    if status:
+        q["status"] = status
+    items = await db.event_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+    return {"items": items, "count": len(items)}
+
+
+@api.patch("/staff/loisirs/events/{event_id}")
+async def update_event_request(
+    event_id: str,
+    status: Optional[str] = Body(None, embed=True),
+    notes: Optional[str] = Body(None, embed=True),
+    staff=Depends(get_current_staff),
+):
+    """Update an event request status / notes."""
+    await _require_role(staff, ["manager", "admin"])
+    if status and status not in ("new", "contacted", "confirmed", "declined", "completed"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    update: dict = {}
+    if status:
+        update["status"] = status
+    if notes is not None:
+        update["notes"] = notes
+    if not update:
+        return {"ok": True}
+    res = await db.event_requests.update_one({"id": event_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Event request not found")
+    return {"ok": True}
+
+
+# =================================================================
+# CONFIG ADMIN — Staff user management & offer price overrides
+# =================================================================
+
+class StaffUserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+    role: Literal["receptionist", "manager", "admin"]
+
+
+class StaffUserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = Field(default=None, min_length=8)
+    role: Optional[Literal["receptionist", "manager", "admin"]] = None
+
+
+@api.get("/staff/config/users")
+async def list_staff_users(staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    items = await db.staff.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", 1).to_list(length=200)
+    return {"items": items}
+
+
+@api.post("/staff/config/users")
+async def create_staff_user(body: StaffUserCreate, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    existing = await db.staff.find_one({"email": body.email.lower()})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already exists")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "name": body.name.strip(),
+        "email": body.email.lower(),
+        "role": body.role,
+        "password_hash": hash_password(body.password),
+        "created_at": now_iso(),
+    }
+    await db.staff.insert_one(doc)
+    doc.pop("_id", None)
+    doc.pop("password_hash", None)
+    return doc
+
+
+@api.patch("/staff/config/users/{user_id}")
+async def update_staff_user(user_id: str, body: StaffUserUpdate, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    target = await db.staff.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    update: dict = {}
+    if body.name is not None:
+        update["name"] = body.name.strip()
+    if body.email is not None:
+        update["email"] = body.email.lower()
+    if body.role is not None:
+        update["role"] = body.role
+    if body.password is not None:
+        update["password_hash"] = hash_password(body.password)
+    if not update:
+        return {"ok": True}
+    await db.staff.update_one({"id": user_id}, {"$set": update})
+    return {"ok": True}
+
+
+@api.delete("/staff/config/users/{user_id}")
+async def delete_staff_user(user_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    if user_id == staff.get("id"):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    res = await db.staff.delete_one({"id": user_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True}
+
+
+class OfferPriceOverride(BaseModel):
+    price_adult: Optional[int] = Field(default=None, ge=0)
+    price_child: Optional[int] = Field(default=None, ge=0)
+    max_capacity: Optional[int] = Field(default=None, ge=1)
+    room_tiers: Optional[List[dict]] = None  # [{id, name_fr, name_en, price}]
+
+
+async def _apply_overrides(offer: dict) -> dict:
+    """Merge any stored overrides on top of the static OFFERS dict."""
+    override = await db.offer_overrides.find_one({"offer_id": offer["id"]}, {"_id": 0})
+    if not override:
+        return offer
+    merged = dict(offer)
+    for k in ("price_adult", "price_child", "max_capacity"):
+        if override.get(k) is not None:
+            merged[k] = override[k]
+    if override.get("room_tiers"):
+        merged["room_tiers"] = override["room_tiers"]
+    return merged
+
+
+@api.get("/staff/config/offers")
+async def list_config_offers(staff=Depends(get_current_staff)):
+    """All offers with overrides applied — used by admin config screen."""
+    await _require_role(staff, ["admin"])
+    result = []
+    for o in OFFERS.values():
+        merged = await _apply_overrides(o)
+        result.append(_with_boat_times(merged))
+    return {"items": result}
+
+
+@api.patch("/staff/config/offers/{offer_id}")
+async def update_offer_override(offer_id: str, body: OfferPriceOverride, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    if offer_id not in OFFERS:
+        raise HTTPException(status_code=404, detail="Offer not found")
+    payload = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not payload:
+        return {"ok": True}
+    payload["offer_id"] = offer_id
+    payload["updated_at"] = now_iso()
+    await db.offer_overrides.update_one(
+        {"offer_id": offer_id},
+        {"$set": payload},
+        upsert=True,
+    )
+    # Mutate in-memory OFFERS dict so public site reflects immediately
+    for k in ("price_adult", "price_child", "max_capacity"):
+        if payload.get(k) is not None:
+            OFFERS[offer_id][k] = payload[k]
+    if payload.get("room_tiers"):
+        OFFERS[offer_id]["room_tiers"] = payload["room_tiers"]
+    return {"ok": True}
+
+
+# Apply stored overrides at startup so OFFERS dict is in sync with DB
+@app.on_event("startup")
+async def apply_offer_overrides_on_boot():
+    try:
+        async for ov in db.offer_overrides.find({}, {"_id": 0}):
+            oid = ov.get("offer_id")
+            if oid in OFFERS:
+                for k in ("price_adult", "price_child", "max_capacity"):
+                    if ov.get(k) is not None:
+                        OFFERS[oid][k] = ov[k]
+                if ov.get("room_tiers"):
+                    OFFERS[oid]["room_tiers"] = ov["room_tiers"]
+        logging.info("Offer overrides applied on boot")
+    except Exception as e:
+        logging.warning("Offer override boot failed: %s", e)
+
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

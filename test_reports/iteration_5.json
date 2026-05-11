@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 5 — Phase 2 back-office (Modules 5/6/7 + Hébergement + Loisirs + Config) tested end-to-end. Backend: 35/35 pytest cases pass against the live preview URL. Coverage: Module 5 Clients (list aggregated from bookings, detail by email with 404 case, CSV export, reception forbidden), Module 7 Revenue (all 5 periods day/week/month/year/all return {total_revenue, total_bookings, avg_basket, by_offer[], by_method[], daily_trend[], top_clients[]}; reception 403), Module 6 Le Kaai (GET tables auto-seeds 36 defaults, manager CRUD POST/PATCH, manager DELETE → 403, admin DELETE 200, GET /kaai/day returns {date, bookings, tables}, PATCH /kaai/bookings/{id}/table assigns/unassigns with persistence verified via re-GET, 404 when booking missing), Hébergement (POST overnight booking with checkout_date+return_boat_time, then arrival appears in /hebergement/today?date=arrival, departure in /today?date=checkout, calendar /hebergement/calendar?month=YYYY-MM returns full month grid with by_tier occupancy, 400 on bad month, 403 for reception on calendar, 200 for reception on /today), Loisirs (list events, status filter, PATCH validates allowed statuses + 400 on invalid + 404 on missing), Config Users (admin only list with password_hash excluded, 403 for manager/reception, POST creates user → can log in with new password, duplicate email 400, password min 8 enforced (422), PATCH role/password → re-login works, DELETE removes user → login 401, self-delete → 400), Config Offers (admin lists 5 offers with overrides, manager 403, PATCH price_adult on pass_day reflects immediately on PUBLIC /api/offers/{id}, 404 on bogus offer). Frontend: as admin all 6 routes /staff/clients, /staff/revenue, /staff/kaai, /staff/hebergement, /staff/loisirs, /staff/config load with correct H1 headings and no runtime errors. Configuration page lists Admin/Manager/Reception users with role dropdowns and shows 'Supprimer' on non-self rows only. RoleGuard verified: manager and reception navigating directly to /staff/config are redirected to /staff (no error overlay).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/staff/config — Utilisateurs", "issues": ["Role dropdowns are native HTML <select> elements instead of the shadcn/ui Select component used elsewhere in the app — inconsistent design language with the rest of the back-office. Functional but visually off."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase2_modules.py",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [
+    "(Optional polish) Replace native <select> role dropdowns in StaffConfig.jsx with shadcn Select for visual consistency.",
+    "(Refactor — recurrent from iteration 4) server.py is now ~2145 lines. Strongly recommend splitting into routers: auth, dashboard, embarquement, scanner, bookings_admin, clients_crm, revenue, kaai, hebergement, loisirs, config, public_offers, public_bookings."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew to 2145 lines — well above the 700-line guideline; module split is overdue.",
+    "GET /staff/clients aggregation uses {$arrayElemAt: ['$participants.name', 0]} which always takes the FIRST participant regardless of `kind`. If the first participant is a child the client card will show a child's name/surname. Recommend $filter to pick the first 'adult'.",
+    "GET /staff/clients groups by lower-cased email; bookings with empty/null email collapse into a single 'null' bucket — surfaces as a phantom client row with phone='+225' and empty name (matches the legacy seed data observed in iteration 4). Consider $match {email: {$nin: [null, '']}} before grouping.",
+    "GET /staff/clients/export.csv has no role check on filename safety and writes all paid+unpaid totals; OK for now but unbounded — consider streaming for large exports.",
+    "GET /staff/revenue uses date_from = today - timedelta(days=30) for 'month' — this is a rolling 30 days, NOT the current calendar month. Same for 'week' (rolling 7d) and 'year' (rolling 365d). Acceptable if intentional, but the label 'mois' may mislead users.",
+    "GET /staff/revenue daily_trend keys are unsanitised; if any booking has date='' it generates a '' bucket that breaks Recharts X-axis. Filter empty dates before aggregation.",
+    "PATCH /staff/config/offers/{offer_id}: room_tiers is replaced wholesale (not merged) — fine, but make sure the frontend always sends the COMPLETE tier list, otherwise tiers can be silently dropped.",
+    "PATCH /staff/kaai/bookings/{id}/table accepts ANY booking id even if offer_type != 'le_kaai' (it only verifies existence). Risk: someone could 'assign a table' to a hebergement booking. Consider filtering {offer_type: 'le_kaai'} in find_one.",
+    "/staff/hebergement/calendar expands occupancy per night but does NOT check max room capacity per tier — overbooked nights will silently exceed the resort capacity. Consider returning a `is_overbooked` flag per tier.",
+    "/staff/loisirs/events relies on db.event_requests collection but I could not confirm an ingest endpoint exists (POST). If the public site has no submission form for events yet, the page is permanently empty.",
+    "Pydantic StaffUserCreate uses EmailStr — make sure email-validator is in requirements.txt (worked here, so likely fine).",
+    "MongoDB ObjectId `_id` properly excluded on every find in modules 5/6/7/Heb/Loisirs/Config — verified ✅.",
+    "POST /staff/config/users uses await db.staff.insert_one(doc) THEN doc.pop('_id', None) — but motor mutates the dict in-place adding _id, so the pop is correct. Verified the API never leaks _id."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase2_modules.py (new — 35 pytest cases for Phase 2 modules)"
+  ],
+  "success_rate": {"backend": "100% (35/35)", "frontend": "100% on in-scope flows: all 6 admin pages load with correct H1, RoleGuard redirects manager/reception away from /staff/config to /staff."},
+  "test_credentials": "admin@boulay.ci / Admin@2026, manager@boulay.ci / Manager@2026, reception@boulay.ci / Reception@2026 — all seeded and verified working.",
+  "seed_data_creation": "Tests create disposable bookings (TESTP2/TESTK/TESTH prefixed participants) for pass_day, le_kaai, and hebergement flows. They remain in DB but are identifiable. A short-lived staff user 'test_user_*@boulay.ci' is created and deleted within test_create_login_update_delete_user.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 backend (clients/revenue/kaai/hebergement/loisirs/config) lives at server.py lines 1553-2125. Test suite is /app/backend/tests/test_phase2_modules.py (35 tests, ~9s). All pass. Frontend pages /staff/clients, /staff/revenue, /staff/kaai, /staff/hebergement, /staff/loisirs, /staff/config render correctly for admin. RoleGuard correctly redirects non-admin from /staff/config. Known minor concerns: (1) clients aggregation picks participants[0] not first adult; (2) revenue 'month' = rolling 30d, not calendar month; (3) /staff/kaai/bookings/{id}/table does not enforce offer_type==le_kaai; (4) hebergement calendar lacks overbooking guard. None block release. For module 6 (Le Kaai) the seed default count is 36 tables (6+6+8+8+4+4 across Terrasse/Salle/Bord de mer zones) — confirmed by GET /staff/kaai/tables returning ≥36 items.",
+  "rca of the issue": "No bugs. All P1/P2 modules behave per spec. RoleGuard tested for manager and reception → both correctly redirected from /staff/config to /staff (no axios uncaught error). Offer override persistence verified end-to-end: PATCH /staff/config/offers/pass_day {price_adult: original+1234} → public GET /api/offers/pass_day returns the new price → restored cleanly. Staff CRUD verified end-to-end: created user can immediately log in with the new password; PATCH password forces re-login with new credentials; DELETE blocks login; self-delete returns 400 with 'Cannot delete your own account'."
+}

@@ -11,6 +11,7 @@ import {
   TrendingUp,
   LogOut,
   QrCode,
+  Settings,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -21,14 +22,15 @@ const NAV = [
   { to: "/staff/scanner", icon: QrCode, label: "Scanner QR", roles: ["receptionist", "manager", "admin"] },
   { section: "Réservations", roles: ["manager", "admin"] },
   { to: "/staff/reservations", icon: Ticket, label: "Toutes les réservations", roles: ["manager", "admin"] },
-  { section: "Embarquement & Traversée", roles: ["receptionist", "manager", "admin"] },
-  { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: ["receptionist", "manager", "admin"] },
-  { section: "Modules à venir", roles: ["manager", "admin"] },
-  { to: "/staff/hebergement", icon: BedDouble, label: "Hébergement", roles: ["manager", "admin"] },
   { to: "/staff/clients", icon: Users, label: "Clients", roles: ["manager", "admin"] },
-  { to: "/staff/loisirs", icon: Sparkles, label: "Loisirs", roles: ["manager", "admin"] },
-  { to: "/staff/kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: ["manager", "admin"] },
   { to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: ["manager", "admin"] },
+  { section: "Opérations", roles: ["receptionist", "manager", "admin"] },
+  { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: ["receptionist", "manager", "admin"] },
+  { to: "/staff/hebergement", icon: BedDouble, label: "Hébergement", roles: ["manager", "admin"] },
+  { to: "/staff/kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: ["manager", "admin"] },
+  { to: "/staff/loisirs", icon: Sparkles, label: "Loisirs", roles: ["manager", "admin"] },
+  { section: "Administration", roles: ["admin"] },
+  { to: "/staff/config", icon: Settings, label: "Configuration", roles: ["admin"] },
 ];
 
 export default function StaffLayout() {

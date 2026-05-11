@@ -14,9 +14,16 @@ import StaffEmbarquement from "./pages/staff/StaffEmbarquement";
 import StaffScanner from "./pages/staff/StaffScanner";
 import StaffPlaceholder from "./pages/staff/StaffPlaceholder";
 import StaffReservations from "./pages/staff/StaffReservations";
+import StaffClients from "./pages/staff/StaffClients";
+import StaffRevenue from "./pages/staff/StaffRevenue";
+import StaffKaai from "./pages/staff/StaffKaai";
+import StaffHebergement from "./pages/staff/StaffHebergement";
+import StaffLoisirs from "./pages/staff/StaffLoisirs";
+import StaffConfig from "./pages/staff/StaffConfig";
 import RoleGuard from "./components/RoleGuard";
 
 const MANAGER_PLUS = ["manager", "admin"];
+const ADMIN_ONLY = ["admin"];
 
 function PublicLayout() {
   return (
@@ -58,11 +65,12 @@ function App() {
               <Route path="scanner" element={<StaffScanner />} />
               <Route path="embarquement" element={<StaffEmbarquement />} />
               <Route path="reservations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffReservations /></RoleGuard>} />
-              <Route path="hebergement" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Hébergement" description="Calendrier des chambres, réservations soldées/non soldées, statistiques." /></RoleGuard>} />
-              <Route path="clients" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Clients" description="Base de données clients, historique, retours d'expérience." /></RoleGuard>} />
-              <Route path="loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Loisirs" description="Activités aquatiques, sportives, spa & wellness, privatisation d'espaces." /></RoleGuard>} />
-              <Route path="kaai" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Le Kaai" description="Calendrier des tables et statistiques du restaurant." /></RoleGuard>} />
-              <Route path="revenue" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Chiffre d'affaires" description="Vue consolidée et répartition par offre." /></RoleGuard>} />
+              <Route path="hebergement" element={<RoleGuard allowed={MANAGER_PLUS}><StaffHebergement /></RoleGuard>} />
+              <Route path="clients" element={<RoleGuard allowed={MANAGER_PLUS}><StaffClients /></RoleGuard>} />
+              <Route path="loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLoisirs /></RoleGuard>} />
+              <Route path="kaai" element={<RoleGuard allowed={MANAGER_PLUS}><StaffKaai /></RoleGuard>} />
+              <Route path="revenue" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRevenue /></RoleGuard>} />
+              <Route path="config" element={<RoleGuard allowed={ADMIN_ONLY}><StaffConfig /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>
