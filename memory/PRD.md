@@ -1,92 +1,92 @@
 # Boulay Beach Resort (BBr) — Product Requirements Document
 
 ## Original Problem Statement
-Build a luxury full-stack reservation web application for "Boulay Beach Resort" (BBr) — a 5-star
-beach resort in Abidjan, Côte d'Ivoire. App manages **Day Visit reservations only** (no hotel rooms).
+Luxury full-stack reservation web application for "Boulay Beach Resort" (BBr) — 5★ beach resort
+in Abidjan, Côte d'Ivoire, accessible **only by boat**. Manages **Day Visit reservations + Hôtel
+stays**, plus a **Staff Back-office** for internal operations.
 
-### Brand
-- Background white · Gold accent `#B8922A` · Deep text `#0A0A0A` · Soft cream sections `#FAFAF7`
-- Playfair Display (`font-display-serif`) for headings + Poppins (body)
-- Tone: Ultra-luxury, 5-star (Four Seasons / Nikki Beach reference)
+## Brand
+- White background, gold `#B8922A`, deep `#0A0A0A`, cream `#FAFAF7`
+- Playfair Display + Poppins / Allura cursive for ticket titles
+- 5★ luxury aesthetic (Six Senses / Aman / Nikki Beach references)
 
-### Four Day-Visit offers
-| Offer    | Adult        | Child        | Days                | Notes                        |
-|----------|--------------|--------------|---------------------|------------------------------|
-| Day Pass | 50 000 FCFA  | 25 000 FCFA  | Mon–Fri             | Signature beach day          |
-| Sunset   | 60 000 FCFA  | 30 000 FCFA  | Sat                 | Golden hour                  |
-| Brunch   | 60 000 FCFA  | 30 000 FCFA  | Sun                 | Sunday gastronomy            |
-| Le Kaai  | **Free / Sur réservation** | **Free** | Every day | Reservation-only restaurant, pay on-site |
-
-### Boat times (dynamic)
-- Weekdays (Mon-Fri): every 2h → 10H, 12H, 14H, 16H, 18H, 20H
-- Weekend (Sat-Sun): hourly 10H..20H
-- `le_kaai` switches automatically based on selected date.
-
-### Two Interfaces
-- **Client Portal (Phase 1, IMPLEMENTED)** — guest-only (no auth), FR/EN, 5-step booking tunnel.
-- **Staff Back-office (Phase 2, backlog)** — Receptionist, Manager, Admin with JWT auth.
-
-## User Personas
-- **Client (guest)** — Books Day Visit without any account, receives QR codes via email/download.
-- **Receptionist** — Scans QR codes, marks arrivals (Phase 2).
-- **Manager** — Calendar/list view, payments, notifications (Phase 2).
-- **Admin** — Offers/pricing, staff, statistics, automation (Phase 2).
+## Five offers
+| Offer | Adult | Child | Days | Notes |
+|-------|-------|-------|------|-------|
+| Day Pass | 50 000 | 25 000 | Mon-Fri | — |
+| Sunset | 60 000 | 30 000 | Sat | — |
+| Brunch | 60 000 | 30 000 | Sun | — |
+| Le Kaai | Reservation-only | — | Every day | Restaurant, pay on-site |
+| Hébergement | Suites 200k/420k/470k FCFA/nuit | — | Every day | 3 room tiers + rooms counter |
 
 ## Architecture
-- **Backend**: FastAPI + Motor (async MongoDB) + JWT (staff only) + bcrypt + `qrcode` (PIL).
-- **Frontend**: React 19, React Router 7, Axios, framer-motion, sonner, Tailwind + Shadcn UI, react-day-picker.
-- **Storage**: MongoDB collections — `bookings`, `event_requests`, `staff`.
-- **Participant schema**: `{name, surname, nationality, kind: "adult"|"child"}` — first adult is the primary contact (phone + email).
+- Backend: FastAPI + Motor + JWT + bcrypt + Pillow (ticket PNG) + qrcode (styled gold QR)
+- Frontend: React 19 + Router 7 + Tailwind + Shadcn + framer-motion + sonner
+- DB: MongoDB collections — `bookings`, `event_requests`, `staff`, `bateaux`, `traversees`, `traversee_passengers`
 
-## Phase 1 — Client Portal (✅ COMPLETE) — Last verified 2026-02-04
+## Phase 1 — Client Portal (✅ COMPLETE)
+- 5-step guest tunnel (Date → Convives → Coordonnées par participant → Récap → Paiement)
+- 5 offers including overnight Hébergement with 3 room tiers + rooms counter
+- Per-participant fields: Nom, Prénom, Email, Téléphone, Nationalité (autocomplete 195 nationalités)
+- Dynamic boat times (Mon-Fri 2h, weekend hourly)
+- Payment options: Carte bancaire / Mobile Money / Espèces (FINEO + Orange/MTN/Moov **MOCKED**)
+- Premium printable **ticket PNG** generated server-side per participant:
+  - Carte/Mobile → brown body + styled gold QR + reference code
+  - Espèces → cream "reçu temporaire" without QR
+- Confirmation page: download PNGs, share via Email (`mailto:`) / WhatsApp (`wa.me`), Livret BBR PDF
+- FR/EN toggle
 
-### Backend
-- `GET /api/offers`, `GET /api/offers/{id}` — 4-offer catalog with dynamic weekday/weekend boat times for `le_kaai`.
-- `GET /api/availability/{offer}/{date}` — capacity check (250/day per offer) + allowed_weekdays gate.
-- `POST /api/bookings` — guest checkout, validates participant count (= adults+children), kind distribution, day-of-week per offer, and fields (name/surname/nationality per person + phone/email on primary).
-- `POST /api/bookings/{id}/pay` — **FINEO placeholder (MOCKED 1.4s frontend delay)**; accepts `total_amount=0` path for Le Kaai. On success, generates one PNG QR per participant encoding full JSON payload (booking_id, offer, date, boat_time, guest identity + token).
-- `POST /api/events/privatization` — collects privatization requests (UI teaser).
-- Staff seed on startup: admin@boulay.ci / Admin@2026 · manager@boulay.ci / Manager@2026 · reception@boulay.ci / Reception@2026.
+## Phase 2 — Staff Back-Office (🔄 IN PROGRESS)
+3 roles: receptionist · manager · admin.
 
-### Frontend (Client Portal)
-- Landing page: cinematic hero + 4 luxury offer cards (user-uploaded images for DAY PASS, THE SUNSET, B BRUNCH, LE KAAI).
-- 5-step Booking Tunnel: Date (calendar with disabled non-eligible days) → Guests counters → Participant forms (dynamic per-person Name/Surname/Nationality) + primary contact + boat time + special requests → Summary → Payment.
-- **Le Kaai branch**: summary shows "Sur réservation" instead of FCFA total; payment step shows a single "Confirmer ma réservation" button (no FINEO/Cash).
-- Paid offers branch: FINEO (mocked) or Cash side-by-side.
-- Confirmation view: one QR card per participant with download, + link to download LIVRET_BBR.pdf.
-- FR/EN toggle (`bbr_lang` localStorage), default FR.
-- All interactive elements have `data-testid`.
+### ✅ Delivered modules
+- **Module 1 — Tableau de bord**: 4 KPIs (réservations / revenus / clients attendus / traversées),
+  planning du jour avec code couleur par offre + badges statut, panneau alertes (arrivées
+  imminentes ≤2h, impayés en attente).
+- **Module 3 — Embarquement & Traversée**: gestion CRUD bateaux (3 bateaux seedés), programmation
+  de traversées avec auto-création du retour à +5h, embarquement passager en 1 clic depuis les
+  réservations du jour, vérification capacité, marquage statut (programmé/en_cours/terminé).
+- **Module 4 — Scanner QR**: input plein écran, lookup par `qr_token`, affichage instantané fiche
+  client (offre, date, bateau, paiement, demandes spéciales) + bouton vert "Marquer comme arrivé".
+- **Auth + RBAC**: JWT staff, sidebar role-aware, endpoints `_require_role` (receptionist limité à
+  scan/embarquement, manager CRUD sans delete bateau, admin tout).
 
-## Phase 2 — Backlog (P0 — Staff Back-Office UI)
-- Staff login UI (`/staff/login`).
-- **Receptionist dashboard**: today's arrivals list + QR scanner (camera) + check-in.
-- **Manager dashboard**: calendar + list view of bookings, status pipeline (pending → confirmed → arrived → completed), manual notifications, cancellation management, payment tracking.
-- **Admin panel**: configure offers/pricing, staff CRUD, availability calendar, statistics + CSV export, automated message templates.
+### 🟡 Backlog modules (placeholders en navigation)
+- **Module 2 — Réservations** (P0) : vue liste + calendrier, pipeline statuts, filtres, fiches.
+- **Module 5 — Clients** (P1) : DB clients, fiche détaillée, export CSV, avis.
+- **Module 6 — Le Kaai** (P1) : plan de salle, calendrier tables (`tables_kaai`, `réservations_kaai`).
+- **Module 7 — Chiffre d'affaires** (P1) : courbes par offre/période, top clients, comparatifs.
+- **Hébergement** (P2) : calendrier chambres, statistiques.
+- **Loisirs** (P2) : activités aquatiques/sportives/spa/privatisation.
 
-## Phase 3 — Backlog (P1)
+## Phase 3 — Backlog
 - Real FINEO integration (replace mocked `/pay`).
-- WhatsApp + Email automation: confirmation (D-Day), D-3 (info+directions), D-1 (reminder), D+1 (Google review).
+- WhatsApp + Email automation (D-3 info, D-1 rappel, D+1 review).
+- Auto-send each guest their own ticket PNG via Resend/SendGrid + Twilio WhatsApp.
 - Multi-currency display (EUR alongside FCFA).
-- Stripe fallback for international cards.
-
-## Phase 4 — Backlog (P2)
-- Real backend for Event Privatization request management (currently UI+save only).
-- Loyalty / repeat-guest tier.
-- iCal export per booking.
-- Public reviews integration.
+- Loyalty tier system.
 
 ## Refactoring Backlog
-- Split `BookingTunnel.jsx` (~720 lines) into per-step subcomponents (StepDate, StepGuests, StepParticipants, StepSummary, StepPayment).
-- Move offers from hardcoded constants in `server.py` to a MongoDB `offers` collection to prepare admin editing.
-
-## Mocked Integrations (must be replaced before production)
-- **FINEO payment** — `POST /api/bookings/{id}/pay` is a placeholder with 1.4s frontend simulation.
-- No external notifications (email/WhatsApp) yet.
+- **Backend**: `server.py` ≈ 1400 lignes — split into `/routers/staff_*`, `/routers/public_*`.
+- **Frontend**: `BookingTunnel.jsx` ≈ 1000 lignes — split into StepDate/Guests/Participants/Summary/Payment.
+- Move OFFERS from constants to a `offers` collection (admin-editable).
+- Migrate `@app.on_event` to FastAPI lifespan handlers.
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.
 
 ## Changelog
-- **2026-02-04**: Phase 1 MVP complete — 3 offers, guest booking tunnel, QR generation, FR/EN.
-- **2026-02-04**: Added 4th offer `le_kaai` (reservation-only, free), dynamic weekday/weekend boat times, participant nationality field, LIVRET_BBR PDF download, capacity reset to 250/day.
-- **2026-02-05**: Fixed P0 regression — Step 3 participant forms now render dynamically (useEffect syncs `participants[]` with adults+children counters). Added Le Kaai free-payment branch: summary displays "Sur réservation", payment step shows single `confirm-free-btn`. Tested end-to-end (backend 18/18 pytest pass, frontend full tunnel for pass_day + le_kaai).
+- 2026-02-04: Phase 1 MVP — 3 offers, QR generation, FR/EN.
+- 2026-02-04: Added Le Kaai (free), dynamic boat times, participant nationality, Livret BBR.
+- 2026-02-05: Fixed P0 — Step 3 participant form rendering (useEffect sync).
+- 2026-02-05: 4th offer Le Kaai with reservation-only branch.
+- 2026-02-05: Email + phone moved to per-participant; nationality autocomplete (195).
+- 2026-02-05: Share recap via Email/WhatsApp from confirmation page.
+- 2026-02-05: 5th offer Hébergement with checkout date + 3 room tiers + rooms counter.
+- 2026-05-10: Card / Mobile Money / Cash payment options with proper "Carte bancaire" labels.
+- 2026-05-10: Premium server-side PNG tickets (brown + gold QR for card/mobile, cream receipt for cash).
+- 2026-05-11: Fixed white-band issue on offer hero images by trimming 6% bottom + objectPosition shift.
+- **2026-05-11: Staff Back-Office Phase 2 — Modules 1 (Dashboard) + 3 (Embarquement & Traversée)
+  + 4 (Scanner QR) delivered. JWT staff auth, role-based sidebar (receptionist/manager/admin),
+  bateaux CRUD, traversées avec auto-retour, scan QR → mark arrived. 22/22 tests backend, 5/5
+  flux frontend validés par testing agent. Placeholders en place pour Modules 2/5/6/7.**
