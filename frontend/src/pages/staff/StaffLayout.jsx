@@ -15,6 +15,7 @@ import {
   Settings,
   Menu,
   X,
+  History,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -29,6 +30,7 @@ const NAV = [
   { to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: ["manager", "admin"] },
   { section: "Opérations", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: ["receptionist", "manager", "admin"] },
+  { to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/hebergement", icon: BedDouble, label: "Hébergement", roles: ["manager", "admin"] },
   { to: "/staff/kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: ["manager", "admin"] },
   { to: "/staff/loisirs", icon: Sparkles, label: "Loisirs", roles: ["manager", "admin"] },

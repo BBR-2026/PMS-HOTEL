@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 7 — Traversées history (jour/semaine/mois) + PDF report. Backend 21/21 pytest cases pass: role gating (admin/manager/reception all 200, no Authorization returns 401), period resolution (day/week mid-week snaps to Monday/month), validation (invalid period/date/status all 400), payload shape (period, reference_date, label, date_from, date_to, total, by_status{programmé,en_cours,terminé}, by_direction{aller,retour}, by_day[], by_boat[], total_passengers, total_guests, items[]), status filter (terminé only), PDF binary (status 200, content-type application/pdf, %PDF magic, >1KB, filename bbr-traversees-day-2026-05-11.pdf in Content-Disposition, week/month variants also work). Frontend smoke: page loads with data-testid='staff-traversees-history', period selector (day/week/month) reloads data, ref-prev/ref-next decrement/increment date by 1 day in day mode (verified 2026-05-11→2026-05-10→2026-05-11), status-filter-all/programmé/en_cours/terminé switch and re-query, KPI cards (Total/Programmées/En cours/Terminées/Passagers with aller·retour sub) render correctly, 'Répartition par horaire' chart in day view and 'Répartition par bateau' table render, sidebar 'Historique traversées' link is visible AND functional for both admin and reception (verified end-to-end). One real frontend bug found and fixed (see below) — PDF download now succeeds 200 with content-type application/pdf and 3085-byte payload starting with %PDF.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "StaffTraverseesHistory.jsx — downloadPdf()",
+        "issue": "Read localStorage.getItem('bbr_token') but the staff session is stored under 'bbr_staff_session' as a JSON envelope {user, token}. Result: PDF fetch always sent no Authorization header → backend 401 → toast 'Export PDF impossible'. Fixed by reading and parsing 'bbr_staff_session' to extract token. After fix the UI download succeeds (status=200, ct=application/pdf, len=3085, magic=%PDF).",
+        "selector": "[data-testid='download-pdf-btn']",
+        "priority": "HIGH (now fixed)"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7_traversees_history.py",
+    "/app/test_reports/pytest/iteration7_results.xml"
+  ],
+  "action_items": [
+    "/app/frontend/src/pages/staff/StaffClients.jsx:52 — same broken pattern: `localStorage.getItem('bbr_token')` is used for an Excel/CSV export fetch. If that flow exists, it will 401 the same way. Apply the same fix (read bbr_staff_session JSON → token).",
+    "Consider exposing a small helper (e.g. getStaffToken() in lib/api.js) so future raw fetch() calls reuse a single source of truth and avoid this class of bug.",
+    "Optional: French-locale month abbreviation in week label (currently 'Semaine du 11 May au 17 May 2026' because backend uses %b with system locale). Spec example matches the current output, so no action required unless product wants 'mai' instead of 'May'."
+  ],
+  "critical_code_review_comments": [
+    "Token-storage divergence between StaffAuthContext (bbr_staff_session JSON) and downstream raw fetch() callers (assumed plain bbr_token) is a footgun. Two files were already affected (StaffTraverseesHistory and StaffClients). Centralise via a getStaffToken() helper.",
+    "server.py is now 2675 lines — still well past the 700-line guideline. PDF generation, history aggregation, and existing modules are good candidates for extraction into a dedicated routers/traversees.py + services/pdf_reports.py. Imports inside the route handler (reportlab + StreamingResponse) work but should be top-of-file once split.",
+    "_resolve_period_range uses datetime.strptime → date math; correct, but the 'next month' computation `(start + timedelta(days=32)).replace(day=1)` is a bit clever — fine in practice but a dateutil.relativedelta(months=+1) would be more obvious.",
+    "Empty by_status entry guard: by_status is seeded with {programmé:0, en_cours:0, terminé:0} but an unexpected status from DB would still be incremented via .get(st, 0)+1, silently creating a new key. Either reject unknown statuses upstream or whitelist here.",
+    "PDF: by_boat['bateau_name'] falls back to '—' when boat_id is unknown; this leads to a literal '—' row in the PDF — acceptable but a minor UX wart for orphaned crossings.",
+    "_fetch_history loads up to 5000 crossings + 200 bateaux + an unbounded passenger find — at month granularity this is fine, but no pagination/limit on items[] in the JSON response. Consider capping items at e.g. 1000 with a 'truncated' flag for very busy months.",
+    "No automated test asserts the PDF actually contains 'Boulay Beach Resort' footer/text — only headers/length/magic. Could extract text with pdfminer to harden, but reportlab output stability + size assertion is generally enough."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7_traversees_history.py (new — 21 pytest cases)",
+    "/app/frontend/src/pages/staff/StaffTraverseesHistory.jsx (fix: read token from bbr_staff_session JSON envelope)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% of in-scope flows after token fix"},
+  "test_credentials": "admin@boulay.ci/Admin@2026, manager@boulay.ci/Manager@2026, reception@boulay.ci/Reception@2026 — all working.",
+  "seed_data_creation": "None. Used pre-seeded crossings on 2026-05-11 (10 crossings/day, 3 terminé) as advertised in the request.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file /app/backend/tests/test_iteration7_traversees_history.py loads REACT_APP_BACKEND_URL from /app/frontend/.env when not in env. Uses access_token field (not token) from /api/auth/staff/login. Same token-key bug pattern exists in StaffClients.jsx:52 — verify if/when that export flow is exercised.",
+  "rca of the issue": "PDF download UI failure RCA: Reproduction = login as admin, /staff/traversees/historique, click 'Rapport PDF' → toast 'Export PDF impossible'. Network shows /api/staff/traversees/history/report.pdf returning 401 because no Authorization header was sent. Root cause: StaffTraverseesHistory.downloadPdf() reads `localStorage.getItem('bbr_token')` but StaffAuthContext stores the staff session under the key `bbr_staff_session` as `{user, token}`. Mitigation applied: parse the JSON envelope and extract `.token`. Verified post-fix: PDF returns 200, content-type application/pdf, 3085 bytes, %PDF magic."
+}

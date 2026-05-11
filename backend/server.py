@@ -1393,6 +1393,291 @@ async def unboard_passenger(tid: str, booking_id: str, staff=Depends(get_current
     return {"ok": True}
 
 
+# ---------- Traversées — Historique & Rapport PDF ----------
+def _resolve_period_range(period: str, ref: str) -> tuple:
+    """Convert (period, ref date YYYY-MM-DD) to (start_date_iso, end_date_iso_exclusive, label)."""
+    try:
+        d = datetime.strptime(ref, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date (YYYY-MM-DD)")
+    if period == "day":
+        return d.isoformat(), (d + timedelta(days=1)).isoformat(), d.strftime("%A %d %B %Y")
+    if period == "week":
+        start = d - timedelta(days=d.weekday())  # Monday
+        end = start + timedelta(days=7)
+        return start.isoformat(), end.isoformat(), f"Semaine du {start.strftime('%d %b')} au {(end - timedelta(days=1)).strftime('%d %b %Y')}"
+    if period == "month":
+        start = d.replace(day=1)
+        next_month = (start + timedelta(days=32)).replace(day=1)
+        return start.isoformat(), next_month.isoformat(), start.strftime("%B %Y")
+    raise HTTPException(status_code=400, detail="period must be day|week|month")
+
+
+async def _fetch_history(date_from: str, date_to: str, status: Optional[str] = None) -> dict:
+    """Aggregate crossings + passenger counts in a date range. date_to is exclusive."""
+    q: dict = {"date": {"$gte": date_from, "$lt": date_to}}
+    if status:
+        q["status"] = status
+    crossings = await db.traversees.find(q, {"_id": 0}).sort([("date", 1), ("depart_time", 1)]).to_list(length=5000)
+    bateaux = await db.bateaux.find({}, {"_id": 0}).to_list(length=200)
+    boat_by_id = {b["id"]: b for b in bateaux}
+
+    # Aggregate passengers per crossing
+    tids = [c["id"] for c in crossings]
+    pax_by_tid: dict = {tid: {"count": 0, "guests": 0} for tid in tids}
+    if tids:
+        cur = db.traversee_passengers.find({"traversee_id": {"$in": tids}}, {"_id": 0})
+        async for p in cur:
+            tid = p["traversee_id"]
+            pax_by_tid[tid]["count"] += 1
+            pax_by_tid[tid]["guests"] += int(p.get("guests", 1))
+
+    by_status = {"programmé": 0, "en_cours": 0, "terminé": 0}
+    by_day: dict = {}
+    by_boat: dict = {}
+    by_direction = {"aller": 0, "retour": 0}
+    total_passengers = 0
+    total_guests = 0
+    items = []
+
+    for c in crossings:
+        st = c.get("status") or "programmé"
+        by_status[st] = by_status.get(st, 0) + 1
+        by_day.setdefault(c["date"], {"date": c["date"], "total": 0, "programmé": 0, "en_cours": 0, "terminé": 0, "guests": 0})
+        by_day[c["date"]]["total"] += 1
+        by_day[c["date"]][st] = by_day[c["date"]].get(st, 0) + 1
+        bid = c["bateau_id"]
+        bname = (boat_by_id.get(bid) or {}).get("name", "—")
+        by_boat.setdefault(bid, {"bateau_id": bid, "bateau_name": bname, "total": 0, "terminé": 0, "guests": 0})
+        by_boat[bid]["total"] += 1
+        if st == "terminé":
+            by_boat[bid]["terminé"] += 1
+        by_direction[c.get("direction", "aller")] = by_direction.get(c.get("direction", "aller"), 0) + 1
+        pax = pax_by_tid.get(c["id"], {"count": 0, "guests": 0})
+        total_passengers += pax["count"]
+        total_guests += pax["guests"]
+        by_day[c["date"]]["guests"] += pax["guests"]
+        by_boat[bid]["guests"] += pax["guests"]
+        items.append({
+            **c,
+            "bateau_name": bname,
+            "passenger_count": pax["count"],
+            "guests": pax["guests"],
+        })
+
+    return {
+        "total": len(crossings),
+        "by_status": by_status,
+        "by_direction": by_direction,
+        "by_day": [by_day[k] for k in sorted(by_day.keys())],
+        "by_boat": sorted(by_boat.values(), key=lambda x: x["total"], reverse=True),
+        "total_passengers": total_passengers,
+        "total_guests": total_guests,
+        "items": items,
+    }
+
+
+@api.get("/staff/traversees/history")
+async def traversees_history(
+    period: str = "day",
+    date: Optional[str] = None,
+    status: Optional[str] = None,
+    staff=Depends(get_current_staff),
+):
+    """Crossings history with stats. period=day|week|month, date=YYYY-MM-DD (default today),
+    status=programmé|en_cours|terminé (optional filter)."""
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    ref = date or datetime.now(timezone.utc).date().isoformat()
+    date_from, date_to, label = _resolve_period_range(period, ref)
+    if status and status not in ("programmé", "en_cours", "terminé"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    payload = await _fetch_history(date_from, date_to, status)
+    return {
+        "period": period,
+        "reference_date": ref,
+        "label": label,
+        "date_from": date_from,
+        "date_to": date_to,
+        "status_filter": status,
+        **payload,
+    }
+
+
+@api.get("/staff/traversees/history/report.pdf")
+async def traversees_history_pdf(
+    period: str = "day",
+    date: Optional[str] = None,
+    status: Optional[str] = None,
+    staff=Depends(get_current_staff),
+):
+    """Generate a luxury-styled PDF report of the crossings for the given period."""
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    ref = date or datetime.now(timezone.utc).date().isoformat()
+    date_from, date_to, label = _resolve_period_range(period, ref)
+    if status and status not in ("programmé", "en_cours", "terminé"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    data = await _fetch_history(date_from, date_to, status)
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.pdfgen import canvas as rl_canvas
+    from fastapi.responses import StreamingResponse
+
+    GOLD = colors.HexColor("#B8922A")
+    DARK = colors.HexColor("#0A0A0A")
+    LIGHT = colors.HexColor("#FAFAF7")
+    MUTED = colors.HexColor("#888888")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, textColor=DARK, alignment=0, spaceAfter=4)
+    sub = ParagraphStyle("sub", parent=styles["Normal"], fontName="Helvetica", fontSize=10, textColor=GOLD, alignment=0, spaceAfter=16, leading=14)
+    h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12, textColor=GOLD, spaceBefore=12, spaceAfter=6)
+    body = ParagraphStyle("body", parent=styles["Normal"], fontName="Helvetica", fontSize=9, textColor=DARK)
+    small = ParagraphStyle("small", parent=styles["Normal"], fontName="Helvetica", fontSize=8, textColor=MUTED)
+
+    elements = []
+    elements.append(Paragraph("Boulay Beach Resort", h1))
+    period_label = {"day": "Journalier", "week": "Hebdomadaire", "month": "Mensuel"}.get(period, period)
+    filter_label = f" — Statut : {status}" if status else ""
+    elements.append(Paragraph(f"Rapport des traversées · {period_label} · {label}{filter_label}", sub))
+
+    # KPI block
+    kpi_data = [
+        ["Total", "Programmées", "En cours", "Terminées", "Passagers"],
+        [
+            str(data["total"]),
+            str(data["by_status"].get("programmé", 0)),
+            str(data["by_status"].get("en_cours", 0)),
+            str(data["by_status"].get("terminé", 0)),
+            str(data["total_guests"]),
+        ],
+    ]
+    kpi_tbl = Table(kpi_data, colWidths=[3.4 * cm] * 5)
+    kpi_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, 1), 16),
+        ("TEXTCOLOR", (0, 1), (-1, 1), DARK),
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+        ("BOX", (0, 0), (-1, -1), 0.5, GOLD),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E0D5B5")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(kpi_tbl)
+
+    # By boat
+    if data["by_boat"]:
+        elements.append(Paragraph("Répartition par bateau", h2))
+        boat_rows = [["Bateau", "Total", "Terminées", "Passagers"]]
+        for b in data["by_boat"]:
+            boat_rows.append([b["bateau_name"], str(b["total"]), str(b["terminé"]), str(b["guests"])])
+        boat_tbl = Table(boat_rows, colWidths=[7 * cm, 3 * cm, 3 * cm, 3 * cm])
+        boat_tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(boat_tbl)
+
+    # By day (for week/month)
+    if period in ("week", "month") and data["by_day"]:
+        elements.append(Paragraph("Détail par jour", h2))
+        day_rows = [["Date", "Total", "Programmées", "En cours", "Terminées", "Passagers"]]
+        for d in data["by_day"]:
+            day_rows.append([d["date"], str(d["total"]), str(d.get("programmé", 0)),
+                             str(d.get("en_cours", 0)), str(d.get("terminé", 0)), str(d.get("guests", 0))])
+        day_tbl = Table(day_rows, colWidths=[3 * cm, 2 * cm, 2.5 * cm, 2.2 * cm, 2.3 * cm, 2.5 * cm])
+        day_tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 8.5),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(day_tbl)
+
+    # Detailed crossings
+    elements.append(Paragraph("Liste des traversées", h2))
+    if not data["items"]:
+        elements.append(Paragraph("Aucune traversée sur cette période.", body))
+    else:
+        rows = [["Date", "Heure", "Direction", "Bateau", "Statut", "Passagers"]]
+        status_map = {"programmé": "Programmée", "en_cours": "En cours", "terminé": "Terminée"}
+        for it in data["items"]:
+            rows.append([
+                it.get("date", ""),
+                it.get("depart_time", ""),
+                (it.get("direction") or "").capitalize(),
+                it.get("bateau_name", ""),
+                status_map.get(it.get("status"), it.get("status", "")),
+                str(it.get("guests", 0)),
+            ])
+        crossings_tbl = Table(rows, colWidths=[2.5 * cm, 1.6 * cm, 2.2 * cm, 4.5 * cm, 2.8 * cm, 2 * cm], repeatRows=1)
+        crossings_tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 8),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (4, 0), (-1, -1), "CENTER"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.2, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(crossings_tbl)
+
+    elements.append(Spacer(1, 0.5 * cm))
+    elements.append(Paragraph(
+        f"Rapport généré le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M UTC')} · Boulay Beach Resort, Abidjan",
+        small,
+    ))
+
+    def _footer(canvas, doc_):
+        canvas.saveState()
+        canvas.setStrokeColor(GOLD)
+        canvas.setLineWidth(0.5)
+        canvas.line(2 * cm, 1.5 * cm, A4[0] - 2 * cm, 1.5 * cm)
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(MUTED)
+        canvas.drawString(2 * cm, 1 * cm, "Boulay Beach Resort — Rapport interne — Confidentiel")
+        canvas.drawRightString(A4[0] - 2 * cm, 1 * cm, f"Page {doc_.page}")
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_footer, onLaterPages=_footer)
+    buf.seek(0)
+    filename = f"bbr-traversees-{period}-{ref}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # ---------- QR Scanner (Module 4) ----------
 @api.get("/staff/scan/{qr_token}")
 async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
