@@ -193,8 +193,13 @@ function BookingDrawer({ id, onClose, onUpdated }) {
 
   useEffect(() => {
     if (!id) return;
-    api.get(`/staff/bookings/${id}`).then((r) => setB(r.data));
-  }, [id]);
+    api.get(`/staff/bookings/${id}`)
+      .then((r) => setB(r.data))
+      .catch(() => {
+        toast.error("Impossible de charger cette réservation");
+        onClose?.();
+      });
+  }, [id, onClose]);
 
   const setStatus = async (status) => {
     setBusy(true);
@@ -345,7 +350,9 @@ function BookingDrawer({ id, onClose, onUpdated }) {
 function PaymentsPanel({ onOpen, refreshKey }) {
   const [summary, setSummary] = useState(null);
   useEffect(() => {
-    api.get("/staff/payments/summary").then((r) => setSummary(r.data));
+    api.get("/staff/payments/summary")
+      .then((r) => setSummary(r.data))
+      .catch(() => toast.error("Accès refusé"));
   }, [refreshKey]);
   if (!summary) return <p className="text-sm text-[#0A0A0A]/45 py-12 text-center">Chargement…</p>;
 
@@ -422,6 +429,11 @@ export default function StaffReservations() {
       .then((r) => {
         if (view === "list") setBookings(r.data);
         else setCalendarData(r.data);
+      })
+      .catch((e) => {
+        const code = e.response?.status;
+        if (code === 403) toast.error("Accès refusé — droits insuffisants");
+        else toast.error("Erreur de chargement des réservations");
       })
       .finally(() => setLoading(false));
   }, [view, tab, offerFilter, status, paymentStatus, search, month, refreshKey]);

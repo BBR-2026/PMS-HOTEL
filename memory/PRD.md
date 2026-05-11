@@ -40,19 +40,13 @@ stays**, plus a **Staff Back-office** for internal operations.
 3 roles: receptionist · manager · admin.
 
 ### ✅ Delivered modules
-- **Module 1 — Tableau de bord**: 4 KPIs (réservations / revenus / clients attendus / traversées),
-  planning du jour avec code couleur par offre + badges statut, panneau alertes (arrivées
-  imminentes ≤2h, impayés en attente).
-- **Module 3 — Embarquement & Traversée**: gestion CRUD bateaux (3 bateaux seedés), programmation
-  de traversées avec auto-création du retour à +5h, embarquement passager en 1 clic depuis les
-  réservations du jour, vérification capacité, marquage statut (programmé/en_cours/terminé).
-- **Module 4 — Scanner QR**: input plein écran, lookup par `qr_token`, affichage instantané fiche
-  client (offre, date, bateau, paiement, demandes spéciales) + bouton vert "Marquer comme arrivé".
-- **Auth + RBAC**: JWT staff, sidebar role-aware, endpoints `_require_role` (receptionist limité à
-  scan/embarquement, manager CRUD sans delete bateau, admin tout).
+- **Module 1 — Tableau de bord**: 4 KPIs + planning du jour + alertes.
+- **Module 2 — Réservations**: vue Liste / Calendrier, sous-onglets par offre (Day Pass / Sunset / Brunch / Le Kaai / Hébergement / Paiements), filtres (search nom/tel/email, statut, paiement), drawer détail avec actions (Confirmer / Terminer / Annuler / Marquer payé cash·card·mobile_money). Pipeline cohérent (cancelled non-réouvrable, paid ne régresse plus completed). `RoleGuard` côté frontend redirige les réceptionnistes vers le dashboard pour les routes manager-only.
+- **Module 3 — Embarquement & Traversée**: CRUD bateaux, programmation traversées avec auto-retour, embarquement passager 1 clic.
+- **Module 4 — Scanner QR**: input plein écran, fiche client + bouton "Marquer comme arrivé".
+- **Auth + RBAC**: JWT staff, sidebar role-aware, endpoints `_require_role`.
 
 ### 🟡 Backlog modules (placeholders en navigation)
-- **Module 2 — Réservations** (P0) : vue liste + calendrier, pipeline statuts, filtres, fiches.
 - **Module 5 — Clients** (P1) : DB clients, fiche détaillée, export CSV, avis.
 - **Module 6 — Le Kaai** (P1) : plan de salle, calendrier tables (`tables_kaai`, `réservations_kaai`).
 - **Module 7 — Chiffre d'affaires** (P1) : courbes par offre/période, top clients, comparatifs.

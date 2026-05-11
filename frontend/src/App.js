@@ -14,6 +14,9 @@ import StaffEmbarquement from "./pages/staff/StaffEmbarquement";
 import StaffScanner from "./pages/staff/StaffScanner";
 import StaffPlaceholder from "./pages/staff/StaffPlaceholder";
 import StaffReservations from "./pages/staff/StaffReservations";
+import RoleGuard from "./components/RoleGuard";
+
+const MANAGER_PLUS = ["manager", "admin"];
 
 function PublicLayout() {
   return (
@@ -54,12 +57,12 @@ function App() {
               <Route index element={<StaffDashboard />} />
               <Route path="scanner" element={<StaffScanner />} />
               <Route path="embarquement" element={<StaffEmbarquement />} />
-              <Route path="reservations" element={<StaffReservations />} />
-              <Route path="hebergement" element={<StaffPlaceholder title="Hébergement" description="Calendrier des chambres, réservations soldées/non soldées, statistiques." />} />
-              <Route path="clients" element={<StaffPlaceholder title="Clients" description="Base de données clients, historique, retours d'expérience." />} />
-              <Route path="loisirs" element={<StaffPlaceholder title="Loisirs" description="Activités aquatiques, sportives, spa & wellness, privatisation d'espaces." />} />
-              <Route path="kaai" element={<StaffPlaceholder title="Le Kaai" description="Calendrier des tables et statistiques du restaurant." />} />
-              <Route path="revenue" element={<StaffPlaceholder title="Chiffre d'affaires" description="Vue consolidée et répartition par offre." />} />
+              <Route path="reservations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffReservations /></RoleGuard>} />
+              <Route path="hebergement" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Hébergement" description="Calendrier des chambres, réservations soldées/non soldées, statistiques." /></RoleGuard>} />
+              <Route path="clients" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Clients" description="Base de données clients, historique, retours d'expérience." /></RoleGuard>} />
+              <Route path="loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Loisirs" description="Activités aquatiques, sportives, spa & wellness, privatisation d'espaces." /></RoleGuard>} />
+              <Route path="kaai" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Le Kaai" description="Calendrier des tables et statistiques du restaurant." /></RoleGuard>} />
+              <Route path="revenue" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPlaceholder title="Chiffre d'affaires" description="Vue consolidée et répartition par offre." /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>

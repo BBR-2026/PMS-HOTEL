@@ -1473,13 +1473,20 @@ async def booking_detail(booking_id: str, staff=Depends(get_current_staff)):
 
 @api.patch("/staff/bookings/{booking_id}/status")
 async def update_booking_status(booking_id: str, status: str = Body(..., embed=True), staff=Depends(get_current_staff)):
-    """Move booking through the lifecycle: pending → confirmed → arrived → completed → cancelled."""
+    """Move booking through the lifecycle: pending → confirmed → arrived → completed → cancelled.
+
+    Cancelled bookings cannot be re-opened directly; the only valid transition out
+    of `cancelled` is staying `cancelled` (use a brand-new booking instead).
+    """
     await _require_role(staff, ["manager", "admin"])
     if status not in ("pending", "confirmed", "arrived", "completed", "cancelled"):
         raise HTTPException(status_code=400, detail="Invalid status")
-    res = await db.bookings.update_one({"id": booking_id}, {"$set": {"status": status}})
-    if res.matched_count == 0:
+    existing = await db.bookings.find_one({"id": booking_id}, {"_id": 0, "status": 1})
+    if not existing:
         raise HTTPException(status_code=404, detail="Booking not found")
+    if existing.get("status") == "cancelled" and status != "cancelled":
+        raise HTTPException(status_code=400, detail="Cancelled bookings cannot be re-opened")
+    await db.bookings.update_one({"id": booking_id}, {"$set": {"status": status}})
     return {"ok": True, "status": status}
 
 
@@ -1490,17 +1497,23 @@ async def update_booking_payment(
     paid: bool = Body(True, embed=True),
     staff=Depends(get_current_staff),
 ):
-    """Mark a booking as paid / unpaid by staff (e.g. cash collected at counter)."""
+    """Mark a booking as paid / unpaid by staff (e.g. cash collected at counter).
+
+    Only auto-confirms when the booking is still `pending` — never regresses an
+    already-arrived or already-completed booking.
+    """
     await _require_role(staff, ["manager", "admin"])
-    update = {"payment_method": payment_method}
+    existing = await db.bookings.find_one({"id": booking_id}, {"_id": 0, "status": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    update: dict = {"payment_method": payment_method}
     if paid:
         update["paid_at"] = now_iso()
-        update["status"] = "confirmed"
+        if existing.get("status") == "pending":
+            update["status"] = "confirmed"
     else:
         update["paid_at"] = None
-    res = await db.bookings.update_one({"id": booking_id}, {"$set": update})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Booking not found")
+    await db.bookings.update_one({"id": booking_id}, {"$set": update})
     return {"ok": True}
 
 
