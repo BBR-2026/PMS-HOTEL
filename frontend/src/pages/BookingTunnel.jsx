@@ -20,6 +20,7 @@ export default function BookingTunnel() {
   const [step, setStep] = useState(1);
   const [selectedDate, setSelectedDate] = useState(null);
   const [checkoutDate, setCheckoutDate] = useState(null);
+  const [roomTier, setRoomTier] = useState(null);
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
   const [participants, setParticipants] = useState([]);
@@ -60,6 +61,9 @@ export default function BookingTunnel() {
   }, [adults, children]);
 
   const isOvernight = !!offer?.is_overnight;
+  const roomTiers = offer?.room_tiers || [];
+  const hasTiers = roomTiers.length > 0;
+  const selectedTier = hasTiers ? roomTiers.find((t) => t.id === roomTier) : null;
   const nights = useMemo(() => {
     if (!isOvernight || !selectedDate || !checkoutDate) return 0;
     const ms = checkoutDate.getTime() - selectedDate.getTime();
@@ -68,9 +72,12 @@ export default function BookingTunnel() {
 
   const total = useMemo(() => {
     if (!offer) return 0;
+    if (isOvernight && hasTiers) {
+      return selectedTier ? selectedTier.price * nights : 0;
+    }
     const base = adults * offer.price_adult + children * offer.price_child;
     return isOvernight ? base * nights : base;
-  }, [offer, adults, children, isOvernight, nights]);
+  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -127,7 +134,7 @@ export default function BookingTunnel() {
       remaining !== null &&
       remaining >= totalGuests &&
       totalGuests >= 1,
-    2: totalGuests >= 1 && (remaining === null || remaining >= totalGuests),
+    2: totalGuests >= 1 && (remaining === null || remaining >= totalGuests) && (!hasTiers || !!selectedTier),
     3: contactValid,
     4: true,
   };
@@ -145,6 +152,7 @@ export default function BookingTunnel() {
         offer_type: offerId,
         date: iso,
         checkout_date: checkoutIso,
+        room_tier: hasTiers ? roomTier : null,
         adults,
         children,
         participants: participants.map((p) => ({
@@ -334,29 +342,89 @@ export default function BookingTunnel() {
             )}
 
             {step === 2 && (
-              <div data-testid="booking-step-2" className="max-w-md">
+              <div data-testid="booking-step-2" className={hasTiers ? "max-w-2xl" : "max-w-md"}>
                 <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step2}
                 </h2>
                 <div className="gold-divider mb-8" />
 
+                {hasTiers && (
+                  <div className="mb-10" data-testid="room-tier-selector">
+                    <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4">
+                      {t.booking.roomType}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {roomTiers.map((tier) => {
+                        const selected = roomTier === tier.id;
+                        return (
+                          <button
+                            key={tier.id}
+                            type="button"
+                            onClick={() => setRoomTier(tier.id)}
+                            className={`text-left p-5 border transition-all ${
+                              selected
+                                ? "border-[#B8922A] bg-[#B8922A]/5"
+                                : "border-[#0A0A0A]/15 hover:border-[#B8922A]/50"
+                            }`}
+                            data-testid={`room-tier-${tier.id}`}
+                          >
+                            <div className="font-display-serif text-lg text-[#0A0A0A] mb-2 leading-tight">
+                              {lang === "fr" ? tier.name_fr : tier.name_en}
+                            </div>
+                            <div className="text-[#B8922A] font-medium">
+                              {formatXOF(tier.price)}
+                              <span className="text-[0.7rem] text-[#0A0A0A]/50 ml-1">
+                                {t.offers.perNight}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-8">
-                  <CounterRow
-                    label={t.booking.adults}
-                    sublabel={`${formatXOF(offer.price_adult)} / ${t.offers.adult}${isOvernight ? ` ${t.offers.perNight}` : ""}`}
-                    value={adults}
-                    onDec={() => setAdults(Math.max(0, adults - 1))}
-                    onInc={() => setAdults(adults + 1)}
-                    testId="counter-adults"
-                  />
-                  <CounterRow
-                    label={t.booking.children}
-                    sublabel={`${formatXOF(offer.price_child)} / ${t.offers.child}${isOvernight ? ` ${t.offers.perNight}` : ""} · ${t.booking.childrenHint}`}
-                    value={children}
-                    onDec={() => setChildren(Math.max(0, children - 1))}
-                    onInc={() => setChildren(children + 1)}
-                    testId="counter-children"
-                  />
+                  {!hasTiers && (
+                    <>
+                      <CounterRow
+                        label={t.booking.adults}
+                        sublabel={`${formatXOF(offer.price_adult)} / ${t.offers.adult}${isOvernight ? ` ${t.offers.perNight}` : ""}`}
+                        value={adults}
+                        onDec={() => setAdults(Math.max(0, adults - 1))}
+                        onInc={() => setAdults(adults + 1)}
+                        testId="counter-adults"
+                      />
+                      <CounterRow
+                        label={t.booking.children}
+                        sublabel={`${formatXOF(offer.price_child)} / ${t.offers.child}${isOvernight ? ` ${t.offers.perNight}` : ""} · ${t.booking.childrenHint}`}
+                        value={children}
+                        onDec={() => setChildren(Math.max(0, children - 1))}
+                        onInc={() => setChildren(children + 1)}
+                        testId="counter-children"
+                      />
+                    </>
+                  )}
+                  {hasTiers && (
+                    <>
+                      <CounterRow
+                        label={t.booking.adults}
+                        sublabel={t.booking.adultsHint}
+                        value={adults}
+                        onDec={() => setAdults(Math.max(0, adults - 1))}
+                        onInc={() => setAdults(adults + 1)}
+                        testId="counter-adults"
+                      />
+                      <CounterRow
+                        label={t.booking.children}
+                        sublabel={t.booking.childrenHint}
+                        value={children}
+                        onDec={() => setChildren(Math.max(0, children - 1))}
+                        onInc={() => setChildren(children + 1)}
+                        testId="counter-children"
+                      />
+                    </>
+                  )}
                 </div>
 
                 {isOvernight && nights > 0 && (
@@ -520,10 +588,18 @@ export default function BookingTunnel() {
                     />
                   )}
                   <SummaryRow label={t.booking.boatTime} value={contact.boat_time} />
+                  {hasTiers && selectedTier && (
+                    <SummaryRow
+                      label={t.booking.roomType}
+                      value={`${lang === "fr" ? selectedTier.name_fr : selectedTier.name_en} · ${formatXOF(selectedTier.price)} ${t.offers.perNight} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`}
+                    />
+                  )}
                   <SummaryRow
                     label={t.booking.adults}
                     value={
-                      offer.price_adult > 0
+                      hasTiers
+                        ? `${adults}`
+                        : offer.price_adult > 0
                         ? isOvernight
                           ? `${adults} × ${formatXOF(offer.price_adult)} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`
                           : `${adults} × ${formatXOF(offer.price_adult)}`
@@ -534,7 +610,9 @@ export default function BookingTunnel() {
                     <SummaryRow
                       label={t.booking.children}
                       value={
-                        offer.price_child > 0
+                        hasTiers
+                          ? `${children}`
+                          : offer.price_child > 0
                           ? isOvernight
                             ? `${children} × ${formatXOF(offer.price_child)} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`
                             : `${children} × ${formatXOF(offer.price_child)}`

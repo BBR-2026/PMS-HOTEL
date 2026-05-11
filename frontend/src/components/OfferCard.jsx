@@ -25,8 +25,8 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
         />
       </div>
 
-      <div className="p-8 md:p-10 flex flex-col flex-1">
-        <h3 className="font-display-serif text-2xl md:text-3xl xl:text-2xl 2xl:text-3xl text-[#0A0A0A] mb-2 tracking-tight">
+      <div className="p-8 md:p-10 flex flex-col flex-1 w-full">
+        <h3 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2 tracking-tight">
           {name}
         </h3>
         {schedule && (
@@ -36,7 +36,21 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
         )}
         <div className="gold-divider mb-6" />
 
-        {offer.price_adult > 0 ? (
+        {offer.room_tiers && offer.room_tiers.length > 0 ? (
+          <div className="space-y-2.5 mb-6">
+            {offer.room_tiers.map((tier) => (
+              <div key={tier.id} className="flex items-baseline justify-between gap-4">
+                <span className="text-sm text-[#0A0A0A]/70">
+                  {lang === "fr" ? tier.name_fr : tier.name_en}
+                </span>
+                <span className="font-medium tracking-wide text-[#0A0A0A] whitespace-nowrap">
+                  {formatXOF(tier.price)}
+                  <span className="text-[0.7rem] text-[#0A0A0A]/50 ml-1">{t.offers.perNight}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : offer.price_adult > 0 ? (
           <div className="space-y-2 mb-6">
             <div className="flex items-baseline justify-between gap-4">
               <span className="text-sm text-[#0A0A0A]/70">{t.offers.adult}</span>

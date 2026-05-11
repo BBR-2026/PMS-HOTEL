@@ -89,10 +89,30 @@ OFFERS = {
         "schedule_en": "Monday to Sunday · Hotel stay",
         "tagline_fr": "Une nuit en suspens entre lagune et océan, dans nos suites signature.",
         "tagline_en": "A night suspended between lagoon and ocean, in our signature suites.",
-        "price_adult": 120000,
-        "price_child": 60000,
+        "price_adult": 0,
+        "price_child": 0,
         "max_capacity": 60,
         "is_overnight": True,
+        "room_tiers": [
+            {
+                "id": "superieure",
+                "name_fr": "Chambre Supérieure",
+                "name_en": "Superior Room",
+                "price": 200000,
+            },
+            {
+                "id": "suite_jardin",
+                "name_fr": "Suite Côté Jardin",
+                "name_en": "Garden View Suite",
+                "price": 420000,
+            },
+            {
+                "id": "suite_mer",
+                "name_fr": "Suite Côté Mer",
+                "name_en": "Sea View Suite",
+                "price": 470000,
+            },
+        ],
     },
 }
 
@@ -153,6 +173,7 @@ class BookingCreate(BaseModel):
     offer_type: OfferType
     date: str  # YYYY-MM-DD (arrival date for overnight stays)
     checkout_date: Optional[str] = None  # YYYY-MM-DD, required if offer is_overnight
+    room_tier: Optional[str] = None  # required if offer has room_tiers
     adults: int = Field(ge=0, le=20)
     children: int = Field(ge=0, le=20)
     boat_time: str
@@ -370,6 +391,8 @@ async def create_booking(body: BookingCreate):
     bid = str(uuid.uuid4())
     reference_token = uuid.uuid4().hex
     is_overnight = bool(offer.get("is_overnight"))
+    room_tiers = offer.get("room_tiers") or []
+    selected_tier = None
     nights = 0
     checkout_iso = None
     if is_overnight:
@@ -383,7 +406,15 @@ async def create_booking(body: BookingCreate):
         if nights < 1:
             raise HTTPException(status_code=400, detail="Checkout date must be at least one day after arrival")
         checkout_iso = body.checkout_date
-        total = nights * (body.adults * offer["price_adult"] + body.children * offer["price_child"])
+        if room_tiers:
+            if not body.room_tier:
+                raise HTTPException(status_code=400, detail="room_tier is required for this offer")
+            selected_tier = next((t for t in room_tiers if t["id"] == body.room_tier), None)
+            if not selected_tier:
+                raise HTTPException(status_code=400, detail="Invalid room_tier")
+            total = nights * selected_tier["price"]
+        else:
+            total = nights * (body.adults * offer["price_adult"] + body.children * offer["price_child"])
     else:
         total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
     participants_docs = [
@@ -407,6 +438,9 @@ async def create_booking(body: BookingCreate):
         "date": body.date,
         "checkout_date": checkout_iso,
         "nights": nights,
+        "room_tier": selected_tier["id"] if selected_tier else None,
+        "room_tier_name": selected_tier["name_fr"] if selected_tier else None,
+        "room_tier_price": selected_tier["price"] if selected_tier else None,
         "adults": body.adults,
         "children": body.children,
         "total_amount": total,

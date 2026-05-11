@@ -49,7 +49,7 @@ export default function LandingPage() {
             <p className="text-base text-[#0A0A0A]/60 leading-relaxed">{t.offers.subtitle}</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 lg:gap-8 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 items-stretch justify-items-center">
             {offers.map((offer, i) => (
               <OfferCard
                 key={offer.id}
