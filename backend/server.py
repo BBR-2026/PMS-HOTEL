@@ -426,23 +426,9 @@ def make_ticket_image(
     else:
         draw.rectangle([hero_x, y, hero_x + hero_w, y + hero_h], fill=(220, 215, 205))
 
-    # Chevron strip: small brown triangles pointing up, sitting flush against
-    # the bottom of the hero image and the top of the brown details block.
-    tooth_w = 14
-    tooth_h = 14
-    base_y = y + hero_h  # bottom of hero / top of brown box
-    i = 0
-    while i < hero_w:
-        draw.polygon(
-            [
-                (hero_x + i, base_y),
-                (hero_x + min(i + tooth_w, hero_w), base_y),
-                (hero_x + i + tooth_w // 2, base_y - tooth_h),
-            ],
-            fill=BROWN,
-        )
-        i += tooth_w
-    y += hero_h  # brown box starts immediately, no gap
+    # No decorative chevron strip — the hero image sits flush against the brown
+    # details block below.
+    y += hero_h
 
     # ---- Brown details block ----
     box_x0, box_y0 = 30, y
