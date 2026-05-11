@@ -41,11 +41,11 @@ export default function StaffLayout() {
     <div className="min-h-screen flex bg-[#FAFAF7]">
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-[#B8922A]/20 flex flex-col">
-        <div className="px-6 py-6 border-b border-[#B8922A]/20 flex items-center justify-center">
+        <div className="px-4 py-8 border-b border-[#B8922A]/20 flex items-center justify-center">
           <img
             src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/5jjvd8zn_LOGO_BBr_VF_Plan_de_travail_1-removebg-preview.png"
             alt="Boulay Beach Resort"
-            className="h-20 w-auto"
+            className="h-36 w-auto"
             data-testid="staff-sidebar-logo"
           />
         </div>
