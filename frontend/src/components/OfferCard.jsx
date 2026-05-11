@@ -26,7 +26,7 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
       </div>
 
       <div className="p-8 md:p-10 flex flex-col flex-1">
-        <h3 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2 tracking-tight">
+        <h3 className="font-display-serif text-2xl md:text-3xl xl:text-2xl 2xl:text-3xl text-[#0A0A0A] mb-2 tracking-tight">
           {name}
         </h3>
         {schedule && (
@@ -42,6 +42,9 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
               <span className="text-sm text-[#0A0A0A]/70">{t.offers.adult}</span>
               <span className="font-medium tracking-wide text-[#0A0A0A]">
                 {formatXOF(offer.price_adult)}
+                {offer.is_overnight && (
+                  <span className="text-[0.7rem] text-[#0A0A0A]/50 ml-1">{t.offers.perNight}</span>
+                )}
               </span>
             </div>
             <div className="flex items-baseline justify-between gap-4">
@@ -53,6 +56,9 @@ export default function OfferCard({ offer, image, bullets = [], index = 0 }) {
               </span>
               <span className="font-medium tracking-wide text-[#0A0A0A]">
                 {formatXOF(offer.price_child)}
+                {offer.is_overnight && (
+                  <span className="text-[0.7rem] text-[#0A0A0A]/50 ml-1">{t.offers.perNight}</span>
+                )}
               </span>
             </div>
           </div>

@@ -7,12 +7,15 @@ const IMG_PASS_DAY = "https://customer-assets.emergentagent.com/job_reserve-bbr/
 const IMG_SUNSET = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/3g3onmkg_THE%20SUNSET.jpeg";
 const IMG_BRUNCH = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/1txrnqdp_B%20BRUNCH.jpeg";
 const IMG_LE_KAAI = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/kgqk46mw_LE%20KAAI.jpeg";
+// Stock luxury suite (placeholder until brand visual is supplied)
+const IMG_HEBERGEMENT = "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1600&q=80";
 
 const IMG_BY_ID = {
   pass_day: IMG_PASS_DAY,
   sunset: IMG_SUNSET,
   brunch: IMG_BRUNCH,
   le_kaai: IMG_LE_KAAI,
+  hebergement: IMG_HEBERGEMENT,
 };
 
 export default function LandingPage() {
@@ -28,6 +31,7 @@ export default function LandingPage() {
     sunset: t.offers.sunsetBullets,
     brunch: t.offers.brunchBullets,
     le_kaai: t.offers.leKaaiBullets,
+    hebergement: t.offers.hebergementBullets,
   };
 
   return (
@@ -45,7 +49,7 @@ export default function LandingPage() {
             <p className="text-base text-[#0A0A0A]/60 leading-relaxed">{t.offers.subtitle}</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 lg:gap-8 items-stretch">
             {offers.map((offer, i) => (
               <OfferCard
                 key={offer.id}

@@ -19,6 +19,7 @@ export default function BookingTunnel() {
   const [offer, setOffer] = useState(null);
   const [step, setStep] = useState(1);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [checkoutDate, setCheckoutDate] = useState(null);
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
   const [participants, setParticipants] = useState([]);
@@ -58,10 +59,18 @@ export default function BookingTunnel() {
     });
   }, [adults, children]);
 
+  const isOvernight = !!offer?.is_overnight;
+  const nights = useMemo(() => {
+    if (!isOvernight || !selectedDate || !checkoutDate) return 0;
+    const ms = checkoutDate.getTime() - selectedDate.getTime();
+    return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
+  }, [isOvernight, selectedDate, checkoutDate]);
+
   const total = useMemo(() => {
     if (!offer) return 0;
-    return adults * offer.price_adult + children * offer.price_child;
-  }, [offer, adults, children]);
+    const base = adults * offer.price_adult + children * offer.price_child;
+    return isOvernight ? base * nights : base;
+  }, [offer, adults, children, isOvernight, nights]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -112,7 +121,12 @@ export default function BookingTunnel() {
   if (!contact.boat_time) missingStep3.push(t.booking.missingBoatTime);
 
   const stepValid = {
-    1: !!selectedDate && remaining !== null && remaining >= totalGuests && totalGuests >= 1,
+    1:
+      !!selectedDate &&
+      (!isOvernight || (!!checkoutDate && nights >= 1)) &&
+      remaining !== null &&
+      remaining >= totalGuests &&
+      totalGuests >= 1,
     2: totalGuests >= 1 && (remaining === null || remaining >= totalGuests),
     3: contactValid,
     4: true,
@@ -126,9 +140,11 @@ export default function BookingTunnel() {
     setCreating(true);
     try {
       const iso = format(selectedDate, "yyyy-MM-dd");
+      const checkoutIso = isOvernight && checkoutDate ? format(checkoutDate, "yyyy-MM-dd") : null;
       const { data } = await api.post("/bookings", {
         offer_type: offerId,
         date: iso,
+        checkout_date: checkoutIso,
         adults,
         children,
         participants: participants.map((p) => ({
@@ -214,29 +230,95 @@ export default function BookingTunnel() {
                 <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step1}
                 </h2>
-                <p className="text-sm text-[#0A0A0A]/50 mb-8">{t.booking.pickDate}</p>
-                <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-4 inline-block">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={setSelectedDate}
-                    disabled={(d) => {
-                      if (d < new Date(new Date().setHours(0, 0, 0, 0))) return true;
-                      const pyWeekday = (d.getDay() + 6) % 7;
-                      if (offer.allowed_weekdays && !offer.allowed_weekdays.includes(pyWeekday)) return true;
-                      return false;
-                    }}
-                    locale={lang === "fr" ? frLocale : enUS}
-                    classNames={{
-                      day_today:
-                        "bg-transparent text-[#0A0A0A] hover:bg-[#B8922A]/10",
-                      day_selected:
-                        "bg-[#B8922A] text-[#0A0A0A] hover:bg-[#B8922A] hover:text-[#0A0A0A] focus:bg-[#B8922A] focus:text-[#0A0A0A]",
-                    }}
-                    data-testid="booking-calendar"
-                    className="text-[#0A0A0A]"
-                  />
-                </div>
+                <p className="text-sm text-[#0A0A0A]/50 mb-8">
+                  {isOvernight ? `${t.booking.pickArrival} · ${t.booking.pickCheckout}` : t.booking.pickDate}
+                </p>
+
+                {isOvernight ? (
+                  <div className="flex flex-col lg:flex-row gap-6">
+                    <div>
+                      <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
+                        {t.booking.pickArrival}
+                      </div>
+                      <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-4 inline-block">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={(d) => {
+                            setSelectedDate(d);
+                            // Reset checkout if it's no longer after arrival
+                            if (checkoutDate && d && checkoutDate <= d) setCheckoutDate(null);
+                          }}
+                          disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
+                          locale={lang === "fr" ? frLocale : enUS}
+                          classNames={{
+                            day_today: "bg-transparent text-[#0A0A0A] hover:bg-[#B8922A]/10",
+                            day_selected:
+                              "bg-[#B8922A] text-[#0A0A0A] hover:bg-[#B8922A] hover:text-[#0A0A0A] focus:bg-[#B8922A] focus:text-[#0A0A0A]",
+                          }}
+                          data-testid="booking-calendar-arrival"
+                          className="text-[#0A0A0A]"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
+                        {t.booking.pickCheckout}
+                      </div>
+                      <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-4 inline-block">
+                        <Calendar
+                          mode="single"
+                          selected={checkoutDate}
+                          onSelect={setCheckoutDate}
+                          disabled={(d) => {
+                            const minDate = selectedDate
+                              ? new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000)
+                              : new Date(new Date().setHours(0, 0, 0, 0));
+                            return d < minDate;
+                          }}
+                          locale={lang === "fr" ? frLocale : enUS}
+                          classNames={{
+                            day_today: "bg-transparent text-[#0A0A0A] hover:bg-[#B8922A]/10",
+                            day_selected:
+                              "bg-[#B8922A] text-[#0A0A0A] hover:bg-[#B8922A] hover:text-[#0A0A0A] focus:bg-[#B8922A] focus:text-[#0A0A0A]",
+                          }}
+                          data-testid="booking-calendar-checkout"
+                          className="text-[#0A0A0A]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-4 inline-block">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={setSelectedDate}
+                      disabled={(d) => {
+                        if (d < new Date(new Date().setHours(0, 0, 0, 0))) return true;
+                        const pyWeekday = (d.getDay() + 6) % 7;
+                        if (offer.allowed_weekdays && !offer.allowed_weekdays.includes(pyWeekday)) return true;
+                        return false;
+                      }}
+                      locale={lang === "fr" ? frLocale : enUS}
+                      classNames={{
+                        day_today:
+                          "bg-transparent text-[#0A0A0A] hover:bg-[#B8922A]/10",
+                        day_selected:
+                          "bg-[#B8922A] text-[#0A0A0A] hover:bg-[#B8922A] hover:text-[#0A0A0A] focus:bg-[#B8922A] focus:text-[#0A0A0A]",
+                      }}
+                      data-testid="booking-calendar"
+                      className="text-[#0A0A0A]"
+                    />
+                  </div>
+                )}
+
+                {isOvernight && nights > 0 && (
+                  <div className="mt-6 text-sm text-[#0A0A0A]/70" data-testid="nights-count">
+                    <span className="text-[#B8922A] font-medium">{nights}</span>{" "}
+                    {nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}
+                  </div>
+                )}
                 {availability && (
                   <div className="mt-6 text-sm">
                     {availability.remaining > 0 ? (
@@ -261,7 +343,7 @@ export default function BookingTunnel() {
                 <div className="space-y-8">
                   <CounterRow
                     label={t.booking.adults}
-                    sublabel={`${formatXOF(offer.price_adult)} / ${t.offers.adult}`}
+                    sublabel={`${formatXOF(offer.price_adult)} / ${t.offers.adult}${isOvernight ? ` ${t.offers.perNight}` : ""}`}
                     value={adults}
                     onDec={() => setAdults(Math.max(0, adults - 1))}
                     onInc={() => setAdults(adults + 1)}
@@ -269,13 +351,20 @@ export default function BookingTunnel() {
                   />
                   <CounterRow
                     label={t.booking.children}
-                    sublabel={`${formatXOF(offer.price_child)} / ${t.offers.child} · ${t.booking.childrenHint}`}
+                    sublabel={`${formatXOF(offer.price_child)} / ${t.offers.child}${isOvernight ? ` ${t.offers.perNight}` : ""} · ${t.booking.childrenHint}`}
                     value={children}
                     onDec={() => setChildren(Math.max(0, children - 1))}
                     onInc={() => setChildren(children + 1)}
                     testId="counter-children"
                   />
                 </div>
+
+                {isOvernight && nights > 0 && (
+                  <div className="mt-8 text-sm text-[#0A0A0A]/60" data-testid="step2-nights">
+                    × <span className="text-[#B8922A] font-medium">{nights}</span>{" "}
+                    {nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}
+                  </div>
+                )}
 
                 <div className="mt-12 pt-6 border-t border-[#F5F0E8]/10 flex justify-between items-baseline">
                   <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50">
@@ -409,19 +498,48 @@ export default function BookingTunnel() {
 
                 <div className="bg-[#FAFAF7] border border-[#0A0A0A]/10 p-8 space-y-5">
                   <SummaryRow label={t.booking.offer} value={offerName} />
-                  <SummaryRow
-                    label={t.booking.date}
-                    value={selectedDate ? format(selectedDate, "EEEE d MMMM yyyy", { locale: lang === "fr" ? frLocale : enUS }) : "—"}
-                  />
+                  {isOvernight ? (
+                    <>
+                      <SummaryRow
+                        label={t.booking.arrivalLabel}
+                        value={selectedDate ? format(selectedDate, "EEEE d MMMM yyyy", { locale: lang === "fr" ? frLocale : enUS }) : "—"}
+                      />
+                      <SummaryRow
+                        label={t.booking.checkoutLabel}
+                        value={checkoutDate ? format(checkoutDate, "EEEE d MMMM yyyy", { locale: lang === "fr" ? frLocale : enUS }) : "—"}
+                      />
+                      <SummaryRow
+                        label={t.booking.nights}
+                        value={`${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`}
+                      />
+                    </>
+                  ) : (
+                    <SummaryRow
+                      label={t.booking.date}
+                      value={selectedDate ? format(selectedDate, "EEEE d MMMM yyyy", { locale: lang === "fr" ? frLocale : enUS }) : "—"}
+                    />
+                  )}
                   <SummaryRow label={t.booking.boatTime} value={contact.boat_time} />
                   <SummaryRow
                     label={t.booking.adults}
-                    value={offer.price_adult > 0 ? `${adults} × ${formatXOF(offer.price_adult)}` : `${adults}`}
+                    value={
+                      offer.price_adult > 0
+                        ? isOvernight
+                          ? `${adults} × ${formatXOF(offer.price_adult)} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`
+                          : `${adults} × ${formatXOF(offer.price_adult)}`
+                        : `${adults}`
+                    }
                   />
                   {children > 0 && (
                     <SummaryRow
                       label={t.booking.children}
-                      value={offer.price_child > 0 ? `${children} × ${formatXOF(offer.price_child)}` : `${children}`}
+                      value={
+                        offer.price_child > 0
+                          ? isOvernight
+                            ? `${children} × ${formatXOF(offer.price_child)} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`
+                            : `${children} × ${formatXOF(offer.price_child)}`
+                          : `${children}`
+                      }
                     />
                   )}
 

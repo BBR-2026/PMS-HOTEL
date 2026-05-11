@@ -81,9 +81,22 @@ OFFERS = {
         "price_child": 0,
         "max_capacity": 250,
     },
+    "hebergement": {
+        "id": "hebergement",
+        "name_fr": "Hébergement",
+        "name_en": "Accommodation",
+        "schedule_fr": "Du lundi au dimanche · Séjour à l'hôtel",
+        "schedule_en": "Monday to Sunday · Hotel stay",
+        "tagline_fr": "Une nuit en suspens entre lagune et océan, dans nos suites signature.",
+        "tagline_en": "A night suspended between lagoon and ocean, in our signature suites.",
+        "price_adult": 120000,
+        "price_child": 60000,
+        "max_capacity": 60,
+        "is_overnight": True,
+    },
 }
 
-OfferType = Literal["pass_day", "sunset", "brunch", "le_kaai"]
+OfferType = Literal["pass_day", "sunset", "brunch", "le_kaai", "hebergement"]
 BookingStatus = Literal["pending", "confirmed", "arrived", "completed", "cancelled"]
 
 # Weekday boat times (every 2 hours) and weekend boat times (hourly)
@@ -95,7 +108,7 @@ BOAT_TIMES_BY_OFFER = {
     "pass_day": BOAT_TIMES_WEEKDAY,
     "sunset": BOAT_TIMES_WEEKEND,
     "brunch": BOAT_TIMES_WEEKEND,
-    # le_kaai is day-dependent — resolved via _boat_times_for_date()
+    # le_kaai + hebergement are day-dependent — resolved via _boat_times_for_date()
 }
 
 # Python weekday(): Monday=0, Sunday=6
@@ -104,12 +117,13 @@ ALLOWED_WEEKDAYS_BY_OFFER = {
     "sunset": [5],                     # Saturday only
     "brunch": [6],                     # Sunday only
     "le_kaai": [0, 1, 2, 3, 4, 5, 6],  # Every day
+    "hebergement": [0, 1, 2, 3, 4, 5, 6],  # Every day
 }
 
 
 def _boat_times_for_date(offer_id: str, weekday: int) -> list:
     """Return valid boat times for the given offer + weekday (Python Mon=0..Sun=6)."""
-    if offer_id == "le_kaai":
+    if offer_id in ("le_kaai", "hebergement"):
         return BOAT_TIMES_WEEKEND if weekday in (5, 6) else BOAT_TIMES_WEEKDAY
     return BOAT_TIMES_BY_OFFER.get(offer_id, [])
 
@@ -137,7 +151,8 @@ class Participant(BaseModel):
 
 class BookingCreate(BaseModel):
     offer_type: OfferType
-    date: str  # YYYY-MM-DD
+    date: str  # YYYY-MM-DD (arrival date for overnight stays)
+    checkout_date: Optional[str] = None  # YYYY-MM-DD, required if offer is_overnight
     adults: int = Field(ge=0, le=20)
     children: int = Field(ge=0, le=20)
     boat_time: str
@@ -354,7 +369,23 @@ async def create_booking(body: BookingCreate):
 
     bid = str(uuid.uuid4())
     reference_token = uuid.uuid4().hex
-    total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
+    is_overnight = bool(offer.get("is_overnight"))
+    nights = 0
+    checkout_iso = None
+    if is_overnight:
+        if not body.checkout_date:
+            raise HTTPException(status_code=400, detail="checkout_date is required for overnight stays")
+        try:
+            checkout = datetime.strptime(body.checkout_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid checkout_date format (YYYY-MM-DD)")
+        nights = (checkout - booking_date).days
+        if nights < 1:
+            raise HTTPException(status_code=400, detail="Checkout date must be at least one day after arrival")
+        checkout_iso = body.checkout_date
+        total = nights * (body.adults * offer["price_adult"] + body.children * offer["price_child"])
+    else:
+        total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
     participants_docs = [
         {
             "name": p.name.strip(),
@@ -374,6 +405,8 @@ async def create_booking(body: BookingCreate):
         "offer_type": body.offer_type,
         "offer_name": offer["name_fr"],
         "date": body.date,
+        "checkout_date": checkout_iso,
+        "nights": nights,
         "adults": body.adults,
         "children": body.children,
         "total_amount": total,
