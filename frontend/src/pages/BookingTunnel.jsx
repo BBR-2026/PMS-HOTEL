@@ -824,14 +824,14 @@ function PaymentView({ booking, onPay, paying, t }) {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Bank card option */}
-          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-7 flex flex-col">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Online payment option (card / mobile money handled by the gateway) */}
+          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 flex flex-col">
             <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">{t.booking.payCardLabel}</div>
-            <div className="font-display-serif text-xl text-[#0A0A0A] mb-2">
+            <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
               {t.booking.payNow}
             </div>
-            <p className="text-sm text-[#0A0A0A]/60 mb-6 flex-1">
+            <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
               {t.booking.fineoDisclaimer}
             </p>
             <button
@@ -844,34 +844,15 @@ function PaymentView({ booking, onPay, paying, t }) {
             </button>
           </div>
 
-          {/* Mobile money option */}
-          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-7 flex flex-col">
-            <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">{t.booking.payMobileLabel}</div>
-            <div className="font-display-serif text-xl text-[#0A0A0A] mb-2">
-              {t.booking.payMobile}
-            </div>
-            <p className="text-sm text-[#0A0A0A]/60 mb-6 flex-1">
-              {t.booking.payMobileDesc}
-            </p>
-            <button
-              onClick={() => onPay("mobile_money")}
-              disabled={!!paying}
-              className="btn-gold w-full"
-              data-testid="pay-mobile-btn"
-            >
-              {paying === "mobile_money" ? t.booking.payProcessing : t.booking.payMobile}
-            </button>
-          </div>
-
           {/* Cash option */}
-          <div className="bg-white border border-[#0A0A0A]/15 p-7 flex flex-col">
+          <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col">
             <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
               {t.booking.payCash}
             </div>
-            <div className="font-display-serif text-xl text-[#0A0A0A] mb-2">
+            <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
               {t.booking.payCash}
             </div>
-            <p className="text-sm text-[#0A0A0A]/60 mb-6 flex-1">
+            <p className="text-sm text-[#0A0A0A]/60 mb-7 flex-1">
               {t.booking.payCashDesc}
             </p>
             <button

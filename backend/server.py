@@ -49,8 +49,8 @@ OFFERS = {
     },
     "sunset": {
         "id": "sunset",
-        "name_fr": "The Sunset",
-        "name_en": "The Sunset",
+        "name_fr": "The Sunset experience",
+        "name_en": "The Sunset Experience",
         "schedule_fr": "Tous les samedis · 12h — 17h",
         "schedule_en": "Every Saturday · 12pm — 5pm",
         "tagline_fr": "Cocktails dorés et horizon flamboyant à l'heure magique.",
@@ -61,8 +61,8 @@ OFFERS = {
     },
     "brunch": {
         "id": "brunch",
-        "name_fr": "The Brunch",
-        "name_en": "The Brunch",
+        "name_fr": "B Brunch",
+        "name_en": "B Brunch",
         "schedule_fr": "Tous les dimanches · 12h — 16h",
         "schedule_en": "Every Sunday · 12pm — 4pm",
         "tagline_fr": "Un dimanche d'exception entre océan et gastronomie.",
