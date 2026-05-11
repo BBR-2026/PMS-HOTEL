@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import api, { API } from "../../lib/api";
+import api, { API, getStaffToken } from "../../lib/api";
 import { format, parseISO } from "date-fns";
 import { fr as frLocale } from "date-fns/locale";
 import { Anchor, FileDown, ChevronLeft, ChevronRight, Ship, Clock, CheckCircle2, Activity, Users } from "lucide-react";
@@ -70,8 +70,7 @@ export default function StaffTraverseesHistory() {
   const downloadPdf = async () => {
     setDownloading(true);
     try {
-      const raw = localStorage.getItem("bbr_staff_session");
-      const token = raw ? (JSON.parse(raw).token || "") : "";
+      const token = getStaffToken();
       const params = new URLSearchParams({ period, date: ref });
       if (status) params.set("status", status);
       const res = await fetch(`${API}/staff/traversees/history/report.pdf?${params}`, {

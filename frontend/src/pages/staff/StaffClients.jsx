@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import api, { API } from "../../lib/api";
+import api, { API, getStaffToken } from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { Users, Download, Search, X, Mail, Phone, Globe } from "lucide-react";
 import { toast } from "sonner";
@@ -49,7 +49,7 @@ export default function StaffClients() {
   };
 
   const downloadCsv = async () => {
-    const token = localStorage.getItem("bbr_token");
+    const token = getStaffToken();
     const res = await fetch(`${API}/staff/clients/export.csv`, {
       headers: { Authorization: `Bearer ${token}` },
     });
