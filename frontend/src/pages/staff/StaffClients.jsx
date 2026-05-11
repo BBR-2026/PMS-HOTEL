@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import api, { API, getStaffToken } from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { Users, Download, Search, X, Mail, Phone, Globe } from "lucide-react";
+import { Users, Download, FileDown, Search, X, Mail, Phone, Globe } from "lucide-react";
 import { toast } from "sonner";
 
 const OFFER_BADGES = {
@@ -67,17 +67,47 @@ export default function StaffClients() {
     toast.success("Export téléchargé");
   };
 
+  const downloadPdf = async () => {
+    const token = getStaffToken();
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("search", search.trim());
+    const res = await fetch(`${API}/staff/clients/report.pdf?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      toast.error("Export PDF impossible");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "bbr-clients.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Rapport PDF téléchargé");
+  };
+
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-clients">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
         <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A]">Clients</h1>
-        <button
-          onClick={downloadCsv}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-[#B8922A] text-[#B8922A] text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#B8922A]/5 transition-colors self-start sm:self-auto"
-          data-testid="export-csv-btn"
-        >
-          <Download size={13} /> Export CSV
-        </button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          <button
+            onClick={downloadCsv}
+            className="inline-flex items-center gap-2 px-4 py-2 border border-[#B8922A] text-[#B8922A] text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#B8922A]/5 transition-colors"
+            data-testid="export-csv-btn"
+          >
+            <Download size={13} /> CSV
+          </button>
+          <button
+            onClick={downloadPdf}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#B8922A] text-white text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] transition-colors"
+            data-testid="export-pdf-btn"
+          >
+            <FileDown size={13} /> PDF
+          </button>
+        </div>
       </div>
       <p className="text-sm text-[#0A0A0A]/55 mb-6">Base agrégée à partir des réservations confirmées et payées.</p>
 

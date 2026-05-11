@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import api from "../../lib/api";
+import api, { API, getStaffToken } from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { TrendingUp, Wallet, ShoppingBag, Users, BarChart3, Clock, Globe } from "lucide-react";
+import { TrendingUp, Wallet, ShoppingBag, Users, BarChart3, Clock, Globe, FileDown } from "lucide-react";
+import { toast } from "sonner";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -62,6 +63,25 @@ export default function StaffRevenue() {
     }
   }, [showAdvanced, advanced]);
 
+  const downloadPdf = async () => {
+    const token = getStaffToken();
+    const res = await fetch(`${API}/staff/revenue/report.pdf?period=${period}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      toast.error("Export PDF impossible");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bbr-revenue-${period}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Rapport PDF téléchargé");
+  };
+
   if (loading && !data) return <div className="p-10 text-[#0A0A0A]/50">Chargement…</div>;
   if (!data) return <div className="p-10 text-red-600">Impossible de charger le chiffre d'affaires.</div>;
 
@@ -72,7 +92,16 @@ export default function StaffRevenue() {
 
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-revenue">
-      <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">Chiffre d'affaires</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+        <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A]">Chiffre d'affaires</h1>
+        <button
+          onClick={downloadPdf}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-[#B8922A] text-white text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] transition-colors self-start sm:self-auto"
+          data-testid="export-pdf-btn"
+        >
+          <FileDown size={13} /> Rapport PDF
+        </button>
+      </div>
       <p className="text-sm text-[#0A0A0A]/55 mb-6">Revenus consolidés des réservations payées.</p>
 
       {/* Period selector */}

@@ -1678,6 +1678,54 @@ async def traversees_history_pdf(
     )
 
 
+# ---------- Shared PDF helpers ----------
+def _pdf_styles():
+    """Return common reportlab styles used by all BBr PDF reports."""
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    GOLD = colors.HexColor("#B8922A")
+    DARK = colors.HexColor("#0A0A0A")
+    LIGHT = colors.HexColor("#FAFAF7")
+    MUTED = colors.HexColor("#888888")
+    base = getSampleStyleSheet()
+    return {
+        "GOLD": GOLD, "DARK": DARK, "LIGHT": LIGHT, "MUTED": MUTED,
+        "h1": ParagraphStyle("h1", parent=base["Title"], fontName="Helvetica-Bold", fontSize=22, textColor=DARK, alignment=0, spaceAfter=4),
+        "sub": ParagraphStyle("sub", parent=base["Normal"], fontName="Helvetica", fontSize=10, textColor=GOLD, alignment=0, spaceAfter=16, leading=14),
+        "h2": ParagraphStyle("h2", parent=base["Heading2"], fontName="Helvetica-Bold", fontSize=12, textColor=GOLD, spaceBefore=12, spaceAfter=6),
+        "body": ParagraphStyle("body", parent=base["Normal"], fontName="Helvetica", fontSize=9, textColor=DARK),
+        "small": ParagraphStyle("small", parent=base["Normal"], fontName="Helvetica", fontSize=8, textColor=MUTED),
+    }
+
+
+def _pdf_footer_factory(styles):
+    """Return a (canvas, doc) footer drawer using shared style."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    GOLD, MUTED = styles["GOLD"], styles["MUTED"]
+
+    def _footer(canvas, doc_):
+        canvas.saveState()
+        canvas.setStrokeColor(GOLD)
+        canvas.setLineWidth(0.5)
+        canvas.line(2 * cm, 1.5 * cm, A4[0] - 2 * cm, 1.5 * cm)
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(MUTED)
+        canvas.drawString(2 * cm, 1 * cm, "Boulay Beach Resort — Rapport interne — Confidentiel")
+        canvas.drawRightString(A4[0] - 2 * cm, 1 * cm, f"Page {doc_.page}")
+        canvas.restoreState()
+    return _footer
+
+
+def _format_xof(amount: int) -> str:
+    """Format an integer as XOF amount, e.g. 1 500 000 FCFA."""
+    try:
+        n = int(amount or 0)
+    except Exception:
+        n = 0
+    return f"{n:,}".replace(",", " ") + " FCFA"
+
+
 # ---------- QR Scanner (Module 4) ----------
 @api.get("/staff/scan/{qr_token}")
 async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
@@ -1992,6 +2040,144 @@ async def export_clients_csv(staff=Depends(get_current_staff)):
     )
 
 
+@api.get("/staff/clients/report.pdf")
+async def export_clients_pdf(search: Optional[str] = None, staff=Depends(get_current_staff)):
+    """Stylized PDF export of the aggregated clients list."""
+    await _require_role(staff, ["manager", "admin"])
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from fastapi.responses import StreamingResponse
+
+    pipeline = [
+        {"$match": {"status": {"$ne": "cancelled"}, "email": {"$nin": [None, ""]}}},
+        {
+            "$group": {
+                "_id": {"$toLower": "$email"},
+                "email": {"$first": "$email"},
+                "phone": {"$first": "$phone"},
+                "name": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.name", 0]}, {"$arrayElemAt": ["$participants.name", 0]}]},
+                    }
+                }},
+                "surname": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.surname", 0]}, {"$arrayElemAt": ["$participants.surname", 0]}]},
+                    }
+                }},
+                "nationality": {"$first": {
+                    "$let": {
+                        "vars": {"adults": {"$filter": {"input": "$participants", "as": "p", "cond": {"$eq": ["$$p.kind", "adult"]}}}},
+                        "in": {"$ifNull": [{"$arrayElemAt": ["$$adults.nationality", 0]}, {"$arrayElemAt": ["$participants.nationality", 0]}]},
+                    }
+                }},
+                "bookings_count": {"$sum": 1},
+                "total_spent": {"$sum": {"$cond": [{"$ne": ["$paid_at", None]}, "$total_amount", 0]}},
+                "last_visit": {"$max": "$date"},
+                "first_visit": {"$min": "$date"},
+            }
+        },
+        {"$sort": {"total_spent": -1, "last_visit": -1}},
+        {"$limit": 2000},
+    ]
+    items = await db.bookings.aggregate(pipeline).to_list(length=2000)
+    if search:
+        s = search.strip().lower()
+        items = [
+            it for it in items
+            if s in (it.get("email") or "").lower()
+            or s in (it.get("phone") or "").lower()
+            or s in (it.get("name") or "").lower()
+            or s in (it.get("surname") or "").lower()
+        ]
+
+    total_clients = len(items)
+    total_revenue = sum(int(it.get("total_spent") or 0) for it in items)
+    total_bookings = sum(int(it.get("bookings_count") or 0) for it in items)
+
+    styles = _pdf_styles()
+    GOLD, DARK, LIGHT, MUTED = styles["GOLD"], styles["DARK"], styles["LIGHT"], styles["MUTED"]
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
+    elements = []
+    elements.append(Paragraph("Boulay Beach Resort", styles["h1"]))
+    sub_label = f"Base clients — {total_clients} client(s)"
+    if search:
+        sub_label += f" — Recherche : {search}"
+    elements.append(Paragraph(sub_label, styles["sub"]))
+
+    kpi_rows = [
+        ["Clients", "Réservations cumulées", "Revenu cumulé"],
+        [str(total_clients), str(total_bookings), _format_xof(total_revenue)],
+    ]
+    kpi_tbl = Table(kpi_rows, colWidths=[5.6 * cm, 5.6 * cm, 5.6 * cm])
+    kpi_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, 1), 14),
+        ("TEXTCOLOR", (0, 1), (-1, 1), DARK),
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+        ("BOX", (0, 0), (-1, -1), 0.5, GOLD),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E0D5B5")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(kpi_tbl)
+
+    elements.append(Paragraph("Liste des clients", styles["h2"]))
+    if not items:
+        elements.append(Paragraph("Aucun client.", styles["body"]))
+    else:
+        rows = [["#", "Nom", "Email", "Téléphone", "Résa", "Total dépensé", "Dernière visite"]]
+        for i, it in enumerate(items, start=1):
+            rows.append([
+                str(i),
+                f"{it.get('surname') or ''} {it.get('name') or ''}".strip() or "—",
+                it.get("email") or "—",
+                it.get("phone") or "—",
+                str(it.get("bookings_count") or 0),
+                _format_xof(it.get("total_spent") or 0),
+                it.get("last_visit") or "—",
+            ])
+        tbl = Table(rows, colWidths=[0.8 * cm, 3.8 * cm, 4.7 * cm, 2.6 * cm, 1.2 * cm, 2.8 * cm, 2.1 * cm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 7.5),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (4, 0), (5, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.2, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(tbl)
+
+    elements.append(Spacer(1, 0.5 * cm))
+    elements.append(Paragraph(
+        f"Rapport généré le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M UTC')} · Boulay Beach Resort, Abidjan",
+        styles["small"],
+    ))
+
+    doc.build(elements, onFirstPage=_pdf_footer_factory(styles), onLaterPages=_pdf_footer_factory(styles))
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="bbr-clients.pdf"'},
+    )
+
+
 @api.get("/staff/clients/{email}")
 async def client_detail(email: str, staff=Depends(get_current_staff)):
     """Full client history for the given email (case-insensitive)."""
@@ -2102,6 +2288,178 @@ async def revenue_overview(
         "daily_trend": daily_trend,
         "top_clients": top_clients,
     }
+
+
+@api.get("/staff/revenue/report.pdf")
+async def export_revenue_pdf(
+    period: str = "month",  # day | week | month | year | all
+    staff=Depends(get_current_staff),
+):
+    """Stylized PDF report of the revenue dashboard for the selected period."""
+    await _require_role(staff, ["manager", "admin"])
+    # Reuse the revenue aggregator to compute the same payload (no auth re-check)
+    data = await revenue_overview(period=period, staff=staff)  # type: ignore
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from fastapi.responses import StreamingResponse
+
+    period_label = {
+        "day": "Aujourd'hui",
+        "week": "7 derniers jours",
+        "month": "30 derniers jours",
+        "year": "12 derniers mois",
+        "all": "Depuis le lancement",
+    }.get(period, period)
+
+    method_label = {
+        "fineo": "FINEO",
+        "card": "Carte bancaire",
+        "mobile_money": "Mobile Money",
+        "cash": "Espèces",
+        "unknown": "Inconnu",
+    }
+
+    styles = _pdf_styles()
+    GOLD, DARK, LIGHT, MUTED = styles["GOLD"], styles["DARK"], styles["LIGHT"], styles["MUTED"]
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
+    elements = []
+    elements.append(Paragraph("Boulay Beach Resort", styles["h1"]))
+    elements.append(Paragraph(f"Rapport de chiffre d'affaires — {period_label}", styles["sub"]))
+
+    # KPIs
+    kpi_rows = [
+        ["Revenu total", "Réservations payées", "Panier moyen"],
+        [_format_xof(data["total_revenue"]), str(data["total_bookings"]), _format_xof(data["avg_basket"])],
+    ]
+    kpi_tbl = Table(kpi_rows, colWidths=[5.6 * cm, 5.6 * cm, 5.6 * cm])
+    kpi_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, 1), 14),
+        ("TEXTCOLOR", (0, 1), (-1, 1), DARK),
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+        ("BOX", (0, 0), (-1, -1), 0.5, GOLD),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E0D5B5")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(kpi_tbl)
+
+    # By offer
+    if data.get("by_offer"):
+        elements.append(Paragraph("Répartition par offre", styles["h2"]))
+        rows = [["Offre", "Réservations", "Revenu", "Part"]]
+        total = data["total_revenue"] or 1
+        for o in sorted(data["by_offer"], key=lambda x: x["total"], reverse=True):
+            pct = (o["total"] / total * 100) if total else 0
+            rows.append([o["offer_name"], str(o["count"]), _format_xof(o["total"]), f"{pct:.1f}%"])
+        tbl = Table(rows, colWidths=[7 * cm, 3 * cm, 4 * cm, 2.5 * cm])
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(tbl)
+
+    # By payment method
+    if data.get("by_method"):
+        elements.append(Paragraph("Répartition par méthode de paiement", styles["h2"]))
+        rows = [["Méthode", "Réservations", "Revenu", "Part"]]
+        total = data["total_revenue"] or 1
+        for m in sorted(data["by_method"], key=lambda x: x["total"], reverse=True):
+            pct = (m["total"] / total * 100) if total else 0
+            rows.append([method_label.get(m["method"], m["method"]), str(m["count"]), _format_xof(m["total"]), f"{pct:.1f}%"])
+        tbl = Table(rows, colWidths=[7 * cm, 3 * cm, 4 * cm, 2.5 * cm])
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(tbl)
+
+    # Top clients
+    if data.get("top_clients"):
+        elements.append(Paragraph("Top 10 clients", styles["h2"]))
+        rows = [["#", "Client", "Email", "Résa", "Total dépensé"]]
+        for i, c in enumerate(data["top_clients"], start=1):
+            full_name = f"{c.get('surname','')} {c.get('name','')}".strip() or "—"
+            rows.append([str(i), full_name, c.get("email") or "—", str(c.get("count") or 0), _format_xof(c.get("total") or 0)])
+        tbl = Table(rows, colWidths=[1 * cm, 4.5 * cm, 5.5 * cm, 1.8 * cm, 3.7 * cm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 8.5),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(tbl)
+
+    # Daily trend (compact table)
+    if data.get("daily_trend"):
+        elements.append(Paragraph("Évolution journalière", styles["h2"]))
+        rows = [["Date", "Revenu"]]
+        for d in data["daily_trend"]:
+            rows.append([d["date"], _format_xof(d["amount"])])
+        tbl = Table(rows, colWidths=[4 * cm, 4 * cm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 8.5),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(tbl)
+
+    elements.append(Spacer(1, 0.5 * cm))
+    elements.append(Paragraph(
+        f"Rapport généré le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M UTC')} · Boulay Beach Resort, Abidjan",
+        styles["small"],
+    ))
+
+    doc.build(elements, onFirstPage=_pdf_footer_factory(styles), onLaterPages=_pdf_footer_factory(styles))
+    buf.seek(0)
+    filename = f"bbr-revenue-{period}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # =================================================================

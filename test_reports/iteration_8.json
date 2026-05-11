@@ -1,0 +1,26 @@
+{
+  "summary": "Iteration 8 — PDF exports for /api/staff/clients/report.pdf and /api/staff/revenue/report.pdf. Backend: 14/14 pytest passed (auth/role gating, magic %PDF, Content-Disposition, search filter, route ordering vs /clients/{email}, all periods day/week/month/year/all). PDF content (extracted via pypdf) verified: clients PDF contains Boulay Beach Resort title, 'Base clients — N client(s)' subtitle (+ 'Recherche : X' when filtered), KPI block (Clients / Réservations cumulées / Revenu cumulé), table 'Liste des clients' with columns # / Nom / Email / Téléphone / Résa / Total dépensé / Dernière visite, and corporate footer 'Boulay Beach Resort — Rapport interne — Confidentiel'. Revenue PDF contains KPI block (Revenu total / Réservations payées / Panier moyen), 'Répartition par offre' with %, 'Répartition par méthode de paiement' with %, 'Top 10 clients', 'Évolution journalière'. Frontend: manager login OK, /staff/clients [export-csv-btn]→bbr-clients.csv (200 text/csv), [export-pdf-btn]→bbr-clients.pdf (200 application/pdf); /staff/revenue [export-pdf-btn] correctly forwards selected period in URL (verified period=week and period=all from the UI period buttons) and returns 200 application/pdf with filename bbr-revenue-{period}.pdf. Tokens read via getStaffToken() — no 401s observed in the UI flow.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_pdf_exports.py",
+    "/app/test_reports/pytest/iter8_pdf_exports.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Route ordering is correct: /staff/clients/report.pdf is declared BEFORE /staff/clients/{email} (server.py L2043 vs L2181) — verified empirically.",
+    "export_revenue_pdf reuses revenue_overview() by calling the route function directly (server.py L2301). This works because both apply _require_role to the same staff dependency, but it couples the endpoint to the function signature. Acceptable for now (matches the agent_to_agent_context_note 'no duplicate logic'), but consider extracting a private async _compute_revenue(period, db) helper to decouple HTTP-layer concerns from data aggregation if more PDF/CSV variants are added.",
+    "server.py is 3033 lines — exceeds the >700-line module-split guideline. Recommend splitting into modules: routes/staff_clients.py, routes/staff_revenue.py, routes/staff_traversees.py, plus a shared pdf/pdf_helpers.py for _pdf_styles, _pdf_footer_factory, _format_xof. Not blocking for this feature.",
+    "PDF generation imports (reportlab.*) are done lazily inside each PDF endpoint — fine for cold-start latency, but could be promoted to module-level imports to reduce per-request overhead now that there are 3 PDF endpoints sharing the same imports."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_pdf_exports.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "manager@boulay.ci / Manager@2026 (used for both backend pytest and Playwright UI test); admin and reception accounts also tested for role gating.",
+  "seed_data_creation": "None — relied on the existing seeded bookings (105 unique clients, 87 paid bookings, 9 035 000 FCFA total revenue in period=all). The 'jean' search returned 3 clients including 'Dupont Jean / jean@test.com', confirming the search filter operates on email/name/surname/phone case-insensitive.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The shared PDF helpers (_pdf_styles, _pdf_footer_factory, _format_xof) now power 3 endpoints: /staff/traversees/history/report.pdf, /staff/clients/report.pdf, /staff/revenue/report.pdf. Use pypdf to extract PDF text content for assertions. Pre-existing failing tests (test_staff_backoffice.TestBateaux.test_list_seeded expecting >=3 bateaux, test_bbr_phase1.test_list_offers_has_four expecting 4 offers) are obsolete per main agent's context note — IGNORE.",
+  "rca of the issue": "N/A — no defects."
+}
