@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 4 — full E2E validation of Module 2 (Réservations back-office). Backend: 20/20 pytest cases pass against the new endpoints. Coverage: GET /api/staff/bookings (default + offer_type, status, payment_status=paid/unpaid, search filters), GET /api/staff/bookings/calendar (valid month grouping + 400 on bad month), GET /api/staff/bookings/{id} (detail without QR/ticket base64 payloads + 404), PATCH /staff/bookings/{id}/status (200 on valid + 400 on invalid + 404 on missing), PATCH /staff/bookings/{id}/payment (cash → sets paid_at + payment_method + auto-confirms status, 404 on missing), GET /staff/payments/summary (shape: unpaid[], unpaid_count, unpaid_total, by_method{cash,card,mobile_money}), and role-gating (receptionist receives 403 on bookings list, calendar, payments summary). Frontend (/staff/reservations as admin): page loads with 74 rows; tab 'Day Pass' correctly filters to 43 pass_day rows; search='Module2' narrows to 2 rows; status & payment selects filter correctly; calendar view renders 31 day cells with prev/next month navigation; clicking a row opens the right drawer (HTTP 200 on GET /api/staff/bookings/{id}); 'Confirmer' button on a pending booking moves it to CONFIRMÉE (PATCH /status 200, drawer refreshes); 'Espèces' under 'Marquer comme payé' on an unpaid booking sets paid_at + payment_method='cash' + auto-confirms (PATCH /payment 200, drawer shows PAYÉ + CONFIRMÉE, success toast 'Marqué comme payé (cash)'); Paiements tab loads the 4 KPI cards (Impayés 22/6 575 000 FCFA, Espèces 21/1 315 000, Carte 15/970 000, Mobile Money 1/100 000) and a clickable list of 22 unpaid bookings.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "StaffReservations route guard", "issue": "When a receptionist directly navigates to /staff/reservations via URL, the page mounts and fires GET /api/staff/bookings which returns 403; the axios rejection is NOT caught (`.then().finally()` without `.catch()`) so React's dev error overlay appears with 'Uncaught runtime errors: AxiosError 403'. Sidebar link is correctly hidden for receptionist, so this only happens on direct URL access. Recommend wrapping the route with a role guard (manager+/admin) similar to other restricted areas, OR adding `.catch()` on the axios call to display a friendly 'Accès refusé' state.", "selector": "/staff/reservations as receptionist", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/staff/reservations list view", "issues": ["Client column for several legacy bookings shows only '+225' (the dialling-code prefix) because old test bookings have an empty phone field; not a Module 2 bug — purely stale seed data from earlier iterations. The Participants section in the drawer also shows 'Participants (0)' for those same legacy bookings, confirming the schema mismatch on old data."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_module2_reservations.py",
+    "/app/test_reports/pytest/module2_results.xml"
+  ],
+  "action_items": [
+    "Add a role-based route guard (or .catch() handler) on /staff/reservations so receptionists who type the URL directly see an 'Accès refusé' message instead of triggering an uncaught AxiosError overlay (dev-mode only, but still ugly UX). The sidebar already hides the link correctly."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1552 lines — exceeded the 700-line guideline since iteration 3; please split into routers (auth, dashboard, embarquement, scanner, bookings_admin, public_bookings). Mentioned previously — still pending.",
+    "PATCH /staff/bookings/{id}/status — does NOT validate pipeline transitions (e.g. cancelled → arrived is allowed). Spec wording suggests pending → confirmed → arrived → completed → cancelled; consider enforcing or at least guarding against re-opening cancelled bookings.",
+    "PATCH /staff/bookings/{id}/payment — when paid=true the endpoint forces status='confirmed' even if the booking was already 'arrived' or 'completed'. This would regress a completed booking back to confirmed if a late cash payment is recorded. Recommend: only force confirmed if current status is 'pending'.",
+    "GET /staff/payments/summary — `by_method` aggregates ALL historical paid bookings without any date filter; on a real production dataset this list can grow unbounded (`to_list(length=5000)` cap). Consider adding `date_from/date_to` query params and a MongoDB `$group` aggregation for performance.",
+    "GET /staff/bookings — `limit` query param accepted but no minimum/maximum guard; a caller could pass `limit=100000` and exhaust memory.",
+    "Frontend StaffReservations.jsx — the bookings GET inside useEffect uses `.then().finally()` without `.catch()`, leaving 403/500 axios errors unhandled (visible during the receptionist direct-URL test). Add a `.catch()` and a friendly empty/error state.",
+    "Frontend BookingDrawer — `api.get(/staff/bookings/{id})` has no error handler; if backend 404/500s the drawer stays stuck on 'Chargement…' forever. Add `.catch()` + auto-close on failure.",
+    "ObjectId `_id` is correctly excluded on every server.py find query for Module 2 (verified). QR / ticket base64 payloads are correctly excluded from list, calendar, and detail endpoints to keep the payload light."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_module2_reservations.py (new — 20 pytest cases covering all Module 2 endpoints)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% on the in-scope admin flows (list, filters, calendar, drawer + confirm + cash-mark, payments tab). Receptionist sidebar hiding ✅; receptionist direct-URL handling — graceful error UX missing (medium priority)."},
+  "test_credentials": "admin@boulay.ci / Admin@2026, manager@boulay.ci / Manager@2026, reception@boulay.ci / Reception@2026 (already seeded).",
+  "seed_data_creation": "Tests create TEST_M2_* prefixed pass_day bookings (1 unpaid + 1 unpaid-then-paid). They remain in the DB but are identifiable by participants.surname='Module2' and email pattern m2*@example.com.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Module 2 backend lives at server.py lines 1392-1532. Test suite is /app/backend/tests/test_module2_reservations.py (20 tests, ~3s). All tests pass against the live preview URL. Frontend page /staff/reservations renders correctly for admin/manager. Known limitations: (1) receptionist direct-URL access shows dev error overlay because the 403 axios rejection is not caught — recommend a route guard fix in App.js OR a .catch() in StaffReservations.jsx; (2) several legacy test bookings from prior iterations have empty participants array and '+225' phone — these surface in the list as 'Client: +225 / Participants (0)' but the Module 2 code is correctly handling them; no fix needed in Module 2 itself. The PATCH /payment endpoint unconditionally sets status='confirmed' which can regress 'arrived' or 'completed' bookings — flagged in critical_code_review_comments.",
+  "rca of the issue": "No P0/P1 bugs. One medium UX issue: receptionist navigating /staff/reservations via URL triggers an uncaught AxiosError 403 (dev overlay only, prod build wouldn't show it). RCA: StaffReservations.jsx and BookingDrawer use `.then().finally()` without `.catch()`. Reproduction: log in as reception@boulay.ci, paste /staff/reservations in URL bar → red 'Uncaught runtime errors' overlay. Mitigation: either wrap the route in a manager+ guard in App.js, or add `.catch(() => setLoading(false))` plus an error state in the component. Two additional backend correctness concerns flagged (status pipeline not validated; payment endpoint regresses arrived/completed back to confirmed)."
+}

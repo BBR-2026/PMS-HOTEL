@@ -1389,6 +1389,150 @@ async def mark_arrived(booking_id: str, staff=Depends(get_current_staff)):
     return {"ok": True}
 
 
+# =================================================================
+# MODULE 2 — Reservations management (list, filters, detail, actions)
+# =================================================================
+
+@api.get("/staff/bookings")
+async def list_bookings(
+    offer_type: Optional[str] = None,
+    status: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 200,
+    staff=Depends(get_current_staff),
+):
+    """List bookings with filters. payment_status = paid | unpaid."""
+    await _require_role(staff, ["manager", "admin"])
+    q: dict = {}
+    if offer_type:
+        q["offer_type"] = offer_type
+    if status:
+        q["status"] = status
+    if date_from or date_to:
+        d: dict = {}
+        if date_from:
+            d["$gte"] = date_from
+        if date_to:
+            d["$lte"] = date_to
+        q["date"] = d
+    if payment_status == "paid":
+        q["paid_at"] = {"$ne": None}
+    elif payment_status == "unpaid":
+        q["$or"] = [{"paid_at": None}, {"paid_at": {"$exists": False}}]
+    if search:
+        s = search.strip()
+        q.setdefault("$or", []).extend([
+            {"phone": {"$regex": s, "$options": "i"}},
+            {"email": {"$regex": s, "$options": "i"}},
+            {"participants.name": {"$regex": s, "$options": "i"}},
+            {"participants.surname": {"$regex": s, "$options": "i"}},
+        ])
+    cursor = db.bookings.find(
+        q,
+        {"_id": 0, "reference_token": 0, "qr_codes.qr_code": 0, "qr_codes.qr_payload": 0, "qr_codes.ticket_image": 0},
+    ).sort([("date", -1), ("created_at", -1)]).limit(limit)
+    items = await cursor.to_list(length=limit)
+    return items
+
+
+@api.get("/staff/bookings/calendar")
+async def bookings_calendar(month: str, staff=Depends(get_current_staff)):
+    """Return all bookings for a month (YYYY-MM) grouped by date for calendar view."""
+    await _require_role(staff, ["manager", "admin"])
+    if not month or len(month) != 7:
+        raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+    date_from = f"{month}-01"
+    next_month = datetime.strptime(date_from, "%Y-%m-%d").date() + timedelta(days=32)
+    date_to = next_month.replace(day=1).isoformat()
+    cursor = db.bookings.find(
+        {"date": {"$gte": date_from, "$lt": date_to}},
+        {"_id": 0, "id": 1, "date": 1, "offer_type": 1, "offer_name": 1, "status": 1, "adults": 1, "children": 1, "boat_time": 1, "total_amount": 1, "paid_at": 1},
+    )
+    items = await cursor.to_list(length=2000)
+    by_date: dict = {}
+    for b in items:
+        by_date.setdefault(b["date"], []).append(b)
+    return {"month": month, "by_date": by_date, "total": len(items)}
+
+
+@api.get("/staff/bookings/{booking_id}")
+async def booking_detail(booking_id: str, staff=Depends(get_current_staff)):
+    """Full booking detail (excludes heavy ticket_image / qr_code base64 payloads)."""
+    await _require_role(staff, ["manager", "admin"])
+    booking = await db.bookings.find_one(
+        {"id": booking_id},
+        {"_id": 0, "reference_token": 0, "qr_codes.qr_code": 0, "qr_codes.qr_payload": 0, "qr_codes.ticket_image": 0},
+    )
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return booking
+
+
+@api.patch("/staff/bookings/{booking_id}/status")
+async def update_booking_status(booking_id: str, status: str = Body(..., embed=True), staff=Depends(get_current_staff)):
+    """Move booking through the lifecycle: pending → confirmed → arrived → completed → cancelled."""
+    await _require_role(staff, ["manager", "admin"])
+    if status not in ("pending", "confirmed", "arrived", "completed", "cancelled"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    res = await db.bookings.update_one({"id": booking_id}, {"$set": {"status": status}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return {"ok": True, "status": status}
+
+
+@api.patch("/staff/bookings/{booking_id}/payment")
+async def update_booking_payment(
+    booking_id: str,
+    payment_method: str = Body(..., embed=True),
+    paid: bool = Body(True, embed=True),
+    staff=Depends(get_current_staff),
+):
+    """Mark a booking as paid / unpaid by staff (e.g. cash collected at counter)."""
+    await _require_role(staff, ["manager", "admin"])
+    update = {"payment_method": payment_method}
+    if paid:
+        update["paid_at"] = now_iso()
+        update["status"] = "confirmed"
+    else:
+        update["paid_at"] = None
+    res = await db.bookings.update_one({"id": booking_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return {"ok": True}
+
+
+@api.get("/staff/payments/summary")
+async def payments_summary(staff=Depends(get_current_staff)):
+    """Quick KPIs for the Paiements tab: unpaid + by-method breakdown."""
+    await _require_role(staff, ["manager", "admin"])
+    unpaid_cursor = db.bookings.find(
+        {"$or": [{"paid_at": None}, {"paid_at": {"$exists": False}}], "status": {"$ne": "cancelled"}},
+        {"_id": 0, "id": 1, "offer_name": 1, "date": 1, "total_amount": 1, "phone": 1, "email": 1, "participants": 1},
+    )
+    unpaid = await unpaid_cursor.to_list(length=500)
+    unpaid_total = sum(b.get("total_amount", 0) for b in unpaid)
+    paid = await db.bookings.find(
+        {"paid_at": {"$ne": None}},
+        {"_id": 0, "payment_method": 1, "total_amount": 1},
+    ).to_list(length=5000)
+    by_method: dict = {}
+    for b in paid:
+        m = b.get("payment_method") or "unknown"
+        by_method.setdefault(m, {"count": 0, "total": 0})
+        by_method[m]["count"] += 1
+        by_method[m]["total"] += b.get("total_amount", 0)
+    return {
+        "unpaid": unpaid,
+        "unpaid_count": len(unpaid),
+        "unpaid_total": unpaid_total,
+        "by_method": by_method,
+    }
+
+
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()

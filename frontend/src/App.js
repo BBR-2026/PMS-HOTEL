@@ -13,6 +13,7 @@ import StaffDashboard from "./pages/staff/StaffDashboard";
 import StaffEmbarquement from "./pages/staff/StaffEmbarquement";
 import StaffScanner from "./pages/staff/StaffScanner";
 import StaffPlaceholder from "./pages/staff/StaffPlaceholder";
+import StaffReservations from "./pages/staff/StaffReservations";
 
 function PublicLayout() {
   return (
@@ -53,7 +54,7 @@ function App() {
               <Route index element={<StaffDashboard />} />
               <Route path="scanner" element={<StaffScanner />} />
               <Route path="embarquement" element={<StaffEmbarquement />} />
-              <Route path="reservations" element={<StaffPlaceholder title="Réservations" description="Gestion complète des réservations Day Pass / Sunset / Brunch / Le Kaai / Paiements." />} />
+              <Route path="reservations" element={<StaffReservations />} />
               <Route path="hebergement" element={<StaffPlaceholder title="Hébergement" description="Calendrier des chambres, réservations soldées/non soldées, statistiques." />} />
               <Route path="clients" element={<StaffPlaceholder title="Clients" description="Base de données clients, historique, retours d'expérience." />} />
               <Route path="loisirs" element={<StaffPlaceholder title="Loisirs" description="Activités aquatiques, sportives, spa & wellness, privatisation d'espaces." />} />
