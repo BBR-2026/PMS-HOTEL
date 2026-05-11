@@ -3,6 +3,7 @@ import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { Sparkles, Search, Plus, X, Trash2, Lock, CreditCard, Check, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useStaffAuth } from "../../context/StaffAuthContext";
 
 const STATUS_LABEL = {
   open: { label: "Ouvert", color: "bg-green-50 text-green-700 border-green-200" },
@@ -10,6 +11,8 @@ const STATUS_LABEL = {
 };
 
 export default function StaffActivities() {
+  const { user } = useStaffAuth();
+  const canManage = ["manager", "admin"].includes(user?.role);
   const [activities, setActivities] = useState([]);
   const [tokenInput, setTokenInput] = useState("");
   const [wallet, setWallet] = useState(null);
@@ -258,7 +261,7 @@ export default function StaffActivities() {
                             {formatXOF(t.amount)}
                           </td>
                           <td className="py-2.5 text-right">
-                            {!voided && !closed && (
+                            {!voided && !closed && canManage && (
                               <button
                                 onClick={() => voidTx(t.id)}
                                 className="text-red-600 hover:text-red-800 inline-flex items-center gap-1 text-[0.6rem] uppercase tracking-[0.18em]"
@@ -278,7 +281,7 @@ export default function StaffActivities() {
           </div>
 
           {/* Close action */}
-          {!closed && wallet.total_charged > 0 && (
+          {!closed && wallet.total_charged > 0 && canManage && (
             <div className="text-right">
               <button
                 onClick={close}
@@ -288,6 +291,11 @@ export default function StaffActivities() {
               >
                 <CreditCard size={13} /> Solder la carte ({formatXOF(wallet.total_charged)})
               </button>
+            </div>
+          )}
+          {!closed && wallet.total_charged > 0 && !canManage && (
+            <div className="text-right text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45 italic">
+              Soldeur réservé au manager
             </div>
           )}
           {closed && (
