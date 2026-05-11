@@ -174,6 +174,7 @@ class BookingCreate(BaseModel):
     date: str  # YYYY-MM-DD (arrival date for overnight stays)
     checkout_date: Optional[str] = None  # YYYY-MM-DD, required if offer is_overnight
     room_tier: Optional[str] = None  # required if offer has room_tiers
+    rooms: int = Field(default=1, ge=1, le=20)
     adults: int = Field(ge=0, le=20)
     children: int = Field(ge=0, le=20)
     boat_time: str
@@ -412,7 +413,7 @@ async def create_booking(body: BookingCreate):
             selected_tier = next((t for t in room_tiers if t["id"] == body.room_tier), None)
             if not selected_tier:
                 raise HTTPException(status_code=400, detail="Invalid room_tier")
-            total = nights * selected_tier["price"]
+            total = nights * body.rooms * selected_tier["price"]
         else:
             total = nights * (body.adults * offer["price_adult"] + body.children * offer["price_child"])
     else:
@@ -441,6 +442,7 @@ async def create_booking(body: BookingCreate):
         "room_tier": selected_tier["id"] if selected_tier else None,
         "room_tier_name": selected_tier["name_fr"] if selected_tier else None,
         "room_tier_price": selected_tier["price"] if selected_tier else None,
+        "rooms": body.rooms,
         "adults": body.adults,
         "children": body.children,
         "total_amount": total,

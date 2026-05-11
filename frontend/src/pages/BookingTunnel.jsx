@@ -21,6 +21,7 @@ export default function BookingTunnel() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [checkoutDate, setCheckoutDate] = useState(null);
   const [roomTier, setRoomTier] = useState(null);
+  const [rooms, setRooms] = useState(1);
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
   const [participants, setParticipants] = useState([]);
@@ -73,11 +74,11 @@ export default function BookingTunnel() {
   const total = useMemo(() => {
     if (!offer) return 0;
     if (isOvernight && hasTiers) {
-      return selectedTier ? selectedTier.price * nights : 0;
+      return selectedTier ? selectedTier.price * nights * rooms : 0;
     }
     const base = adults * offer.price_adult + children * offer.price_child;
     return isOvernight ? base * nights : base;
-  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights]);
+  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -153,6 +154,7 @@ export default function BookingTunnel() {
         date: iso,
         checkout_date: checkoutIso,
         room_tier: hasTiers ? roomTier : null,
+        rooms: hasTiers ? rooms : 1,
         adults,
         children,
         participants: participants.map((p) => ({
@@ -408,6 +410,14 @@ export default function BookingTunnel() {
                   {hasTiers && (
                     <>
                       <CounterRow
+                        label={t.booking.rooms}
+                        sublabel={t.booking.roomsHint}
+                        value={rooms}
+                        onDec={() => setRooms(Math.max(1, rooms - 1))}
+                        onInc={() => setRooms(rooms + 1)}
+                        testId="counter-rooms"
+                      />
+                      <CounterRow
                         label={t.booking.adults}
                         sublabel={t.booking.adultsHint}
                         value={adults}
@@ -589,10 +599,16 @@ export default function BookingTunnel() {
                   )}
                   <SummaryRow label={t.booking.boatTime} value={contact.boat_time} />
                   {hasTiers && selectedTier && (
-                    <SummaryRow
-                      label={t.booking.roomType}
-                      value={`${lang === "fr" ? selectedTier.name_fr : selectedTier.name_en} · ${formatXOF(selectedTier.price)} ${t.offers.perNight} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`}
-                    />
+                    <>
+                      <SummaryRow
+                        label={t.booking.rooms}
+                        value={`${rooms}`}
+                      />
+                      <SummaryRow
+                        label={t.booking.roomType}
+                        value={`${lang === "fr" ? selectedTier.name_fr : selectedTier.name_en} · ${formatXOF(selectedTier.price)} ${t.offers.perNight}${rooms > 1 ? ` × ${rooms}` : ""} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`}
+                      />
+                    </>
                   )}
                   <SummaryRow
                     label={t.booking.adults}
