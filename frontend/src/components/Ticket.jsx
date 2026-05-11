@@ -59,13 +59,24 @@ export default function Ticket({ booking, qr, t, lang, index = 0 }) {
         </div>
       </div>
 
-      {/* Hero image with the offer's own brand title (already baked into the asset) */}
+      {/* Hero image with the offer's own brand title (already baked into the
+          asset). object-position is shifted UP to hide the white footer band
+          that brand marketing photos contain below the chevron decoration. */}
       <div className="relative overflow-hidden aspect-[16/9]">
-        <img src={image} alt={booking.offer_name} className="absolute inset-0 w-full h-full object-cover" />
+        <img
+          src={image}
+          alt={booking.offer_name}
+          className="absolute inset-0 w-full h-full object-cover block"
+          style={{ objectPosition: "50% 35%" }}
+        />
       </div>
 
-      {/* Brown body with details */}
-      <div className="grid grid-cols-2 gap-5 p-6 md:p-7 text-white" style={{ backgroundColor: BROWN }}>
+      {/* Brown body with details — negative margin to eliminate sub-pixel gap
+          that browsers can render between aspect-ratio'd images and siblings */}
+      <div
+        className="grid grid-cols-2 gap-5 p-6 md:p-7 text-white relative"
+        style={{ backgroundColor: BROWN, marginTop: "-1px" }}
+      >
         <div className="space-y-3">
           <div className="font-semibold leading-snug text-[0.95rem]">
             {t.booking.ticketGreetingLine1}

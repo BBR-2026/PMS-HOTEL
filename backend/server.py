@@ -310,6 +310,14 @@ def _fetch_hero(offer_id: str):
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
         img = Image.open(io.BytesIO(data)).convert("RGB")
+        # Trim the bottom white/cream "footer band" that brand marketing assets
+        # commonly include below the chevron decoration. Without this, that band
+        # bleeds into the ticket layout as an unwanted white strip between the
+        # photo and the brown / cream details block. 6% empirically matches the
+        # standard BBR offer assets (DAY PASS, THE SUNSET, B BRUNCH, LE KAAI).
+        trim = max(2, int(img.height * 0.06))
+        if img.height - trim > 50:
+            img = img.crop((0, 0, img.width, img.height - trim))
         _HERO_CACHE[url] = img
         return img.copy()
     except Exception as e:
