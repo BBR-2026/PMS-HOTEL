@@ -726,6 +726,146 @@ def make_cash_receipt_image(
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+# ---------- Activities catalog (jet ski, quad, ...) ----------
+DEFAULT_ACTIVITIES = [
+    {"id": "jetski", "name_fr": "Jet Ski (30 min)", "name_en": "Jet Ski (30 min)", "category": "Nautique", "price": 45000, "active": True},
+    {"id": "jetski_60", "name_fr": "Jet Ski (60 min)", "name_en": "Jet Ski (60 min)", "category": "Nautique", "price": 80000, "active": True},
+    {"id": "quad", "name_fr": "Quad (1h)", "name_en": "Quad (1h)", "category": "Terrestre", "price": 35000, "active": True},
+    {"id": "paddle", "name_fr": "Stand-up Paddle (1h)", "name_en": "Stand-up Paddle (1h)", "category": "Nautique", "price": 10000, "active": True},
+    {"id": "kayak", "name_fr": "Kayak (1h)", "name_en": "Kayak (1h)", "category": "Nautique", "price": 10000, "active": True},
+    {"id": "ski_nautique", "name_fr": "Ski nautique (15 min)", "name_en": "Water Ski (15 min)", "category": "Nautique", "price": 25000, "active": True},
+    {"id": "massage", "name_fr": "Massage Signature (60 min)", "name_en": "Signature Massage (60 min)", "category": "Bien-être", "price": 45000, "active": True},
+    {"id": "spa_day", "name_fr": "Forfait Spa Journée", "name_en": "Spa Day Pass", "category": "Bien-être", "price": 60000, "active": True},
+    {"id": "boat_tour", "name_fr": "Excursion bateau (2h)", "name_en": "Boat Tour (2h)", "category": "Nautique", "price": 90000, "active": True},
+]
+
+
+async def _seed_default_activities():
+    if await db.activities.count_documents({}) == 0:
+        await db.activities.insert_many([dict(a) for a in DEFAULT_ACTIVITIES])
+
+
+# ---------- Wallet QR card (sandstone cream styling — distinct from gold ticket) ----------
+def make_wallet_image(
+    owner_name: str,
+    wallet_token: str,
+    booking_ref: str,
+    lang: str = "fr",
+) -> str:
+    """Build a printable wallet card image (PNG data URL) shown next to the
+    travel tickets. The wallet QR is scanned at point of sale (jet ski / quad /
+    massage etc.) to charge activities to the guest's stay."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    W, H = 980, 1320
+    CREAM = (250, 246, 232)
+    GOLD = (184, 146, 42)
+    DARK = (10, 10, 10)
+    MUTED = (90, 80, 60)
+
+    img = Image.new("RGB", (W, H), CREAM)
+    draw = ImageDraw.Draw(img)
+
+    # Gold ornamental border
+    draw.rectangle([(24, 24), (W - 24, H - 24)], outline=GOLD, width=2)
+    draw.rectangle([(40, 40), (W - 40, H - 40)], outline=GOLD, width=1)
+
+    # Logo
+    logo_h = _paste_logo(img, top=64, max_h=160, max_w_ratio=0.6)
+
+    # Fonts
+    try:
+        f_eyebrow = ImageFont.truetype("DejaVuSans.ttf", 22)
+        f_title = ImageFont.truetype("DejaVuSerif-Bold.ttf", 50)
+        f_body = ImageFont.truetype("DejaVuSans.ttf", 22)
+        f_small = ImageFont.truetype("DejaVuSans.ttf", 18)
+        f_ref = ImageFont.truetype("DejaVuSansMono-Bold.ttf", 22)
+    except Exception:
+        f_eyebrow = f_title = f_body = f_small = f_ref = ImageFont.load_default()
+
+    y = 64 + logo_h + 30
+
+    eyebrow_text = "CARTE ACTIVITÉS" if lang == "fr" else "ACTIVITIES CARD"
+    w_eb = draw.textlength(eyebrow_text, font=f_eyebrow)
+    draw.text(((W - w_eb) / 2, y), eyebrow_text, fill=GOLD, font=f_eyebrow)
+    y += 36
+
+    title_text = "Boulay Beach Resort" if lang == "fr" else "Boulay Beach Resort"
+    w_t = draw.textlength(title_text, font=f_title)
+    draw.text(((W - w_t) / 2, y), title_text, fill=DARK, font=f_title)
+    y += 70
+
+    # Owner line
+    draw.line([(W * 0.18, y), (W * 0.82, y)], fill=GOLD, width=1)
+    y += 18
+    name_text = f"Au nom de · {owner_name}" if lang == "fr" else f"In the name of · {owner_name}"
+    w_n = draw.textlength(name_text, font=f_body)
+    draw.text(((W - w_n) / 2, y), name_text, fill=DARK, font=f_body)
+    y += 36
+    ref_text = f"Réservation #{booking_ref}" if lang == "fr" else f"Booking #{booking_ref}"
+    w_r = draw.textlength(ref_text, font=f_small)
+    draw.text(((W - w_r) / 2, y), ref_text, fill=MUTED, font=f_small)
+    y += 24
+    draw.line([(W * 0.18, y), (W * 0.82, y)], fill=GOLD, width=1)
+    y += 30
+
+    # QR
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=2,
+    )
+    qr_payload = json.dumps({"type": "wallet", "token": wallet_token, "booking_ref": booking_ref})
+    qr.add_data(qr_payload)
+    qr.make(fit=True)
+    from qrcode.image.styledpil import StyledPilImage
+    from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
+    from qrcode.image.styles.colormasks import SolidFillColorMask
+    qr_img = qr.make_image(
+        image_factory=StyledPilImage,
+        module_drawer=RoundedModuleDrawer(),
+        color_mask=SolidFillColorMask(back_color=CREAM, front_color=(120, 90, 36)),
+    ).convert("RGB")
+    qr_size = 460
+    qr_img = qr_img.resize((qr_size, qr_size))
+    qx = (W - qr_size) // 2
+    img.paste(qr_img, (qx, y))
+    y += qr_size + 24
+
+    # Caption
+    lines = (
+        [
+            "Présentez ce QR aux points d'activités du resort",
+            "(Jet Ski, Quad, Paddle, Spa, Excursions…)",
+            "pour ajouter une prestation à votre séjour.",
+            "Le solde est réglé au moment du check-out.",
+        ]
+        if lang == "fr"
+        else [
+            "Show this QR at any resort activity point",
+            "(Jet Ski, Quad, Paddle, Spa, Excursions…)",
+            "to add a service to your stay.",
+            "Balance is settled at check-out.",
+        ]
+    )
+    for line in lines:
+        w_l = draw.textlength(line, font=f_small)
+        draw.text(((W - w_l) / 2, y), line, fill=MUTED, font=f_small)
+        y += 24
+
+    # Footer ref
+    short = wallet_token[:10].upper()
+    foot_text = f"WALLET · {short}"
+    w_f = draw.textlength(foot_text, font=f_ref)
+    draw.text(((W - w_f) / 2, H - 80), foot_text, fill=GOLD, font=f_ref)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -1117,11 +1257,45 @@ async def pay_booking(booking_id: str, body: PayBooking):
         qr_codes.append(entry)
 
     paid_at = now_iso()
+
+    # ---------- Wallet creation (activity payment QR) ----------
+    primary = next((p for p in participants if p["kind"] == "adult"), participants[0] if participants else {})
+    owner_name = f"{primary.get('name','')} {primary.get('surname','')}".strip() or "Invité"
+    wallet_token = str(uuid.uuid4())
+    booking_ref_short = booking_id[:8].upper()
+    wallet_doc = {
+        "id": str(uuid.uuid4()),
+        "token": wallet_token,
+        "booking_id": booking_id,
+        "booking_ref": booking_ref_short,
+        "owner_name": owner_name,
+        "phone": booking.get("phone", ""),
+        "email": booking.get("email", ""),
+        "transactions": [],
+        "total_charged": 0,
+        "status": "open",
+        "created_at": paid_at,
+    }
+    await db.wallets.insert_one(dict(wallet_doc))
+    wallet_doc.pop("_id", None)
+    wallet_qr = {
+        "wallet_token": wallet_token,
+        "qr_code": make_qr(json.dumps({"type": "wallet", "token": wallet_token, "booking_ref": booking_ref_short}), styled=True),
+        "ticket_image": make_wallet_image(
+            owner_name=owner_name,
+            wallet_token=wallet_token,
+            booking_ref=booking_ref_short,
+            lang="fr",
+        ),
+    }
+
     await db.bookings.update_one(
         {"id": booking_id},
         {"$set": {
             "status": "confirmed",
             "qr_codes": qr_codes,
+            "wallet_qr": wallet_qr,
+            "wallet_token": wallet_token,
             "paid_at": paid_at,
             "payment_method": body.payment_method,
             "paid_amount": int(paid_amount),
@@ -1131,6 +1305,8 @@ async def pay_booking(booking_id: str, body: PayBooking):
     )
     booking["status"] = "confirmed"
     booking["qr_codes"] = qr_codes
+    booking["wallet_qr"] = wallet_qr
+    booking["wallet_token"] = wallet_token
     booking["paid_at"] = paid_at
     booking["payment_method"] = body.payment_method
     booking["paid_amount"] = int(paid_amount)
@@ -2494,6 +2670,194 @@ async def export_revenue_pdf(
 
 # =================================================================
 # MODULE 6 — LE KAAI (TABLES)
+# =================================================================
+
+# ---------- Activities & Wallets (in-resort spend) ----------
+class ActivityModel(BaseModel):
+    id: str
+    name_fr: str
+    name_en: Optional[str] = None
+    category: Optional[str] = "Activité"
+    price: int = Field(ge=0)
+    active: bool = True
+
+
+class WalletCharge(BaseModel):
+    activity_id: Optional[str] = None
+    label: Optional[str] = None
+    amount: int = Field(default=0, ge=0)
+    note: Optional[str] = ""
+    quantity: int = Field(default=1, ge=1, le=20)
+
+
+@api.get("/activities")
+async def list_activities_public():
+    """Public list of activities — used to inform the booking UX of available services."""
+    await _seed_default_activities()
+    items = await db.activities.find({"active": True}, {"_id": 0}).sort("category", 1).to_list(length=200)
+    return {"items": items}
+
+
+@api.get("/staff/activities")
+async def list_activities_staff(staff=Depends(get_current_staff)):
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    await _seed_default_activities()
+    items = await db.activities.find({}, {"_id": 0}).sort("category", 1).to_list(length=200)
+    return {"items": items}
+
+
+@api.post("/staff/activities")
+async def create_activity(body: ActivityModel, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    if await db.activities.find_one({"id": body.id}):
+        raise HTTPException(status_code=400, detail="Activity id already exists")
+    doc = body.model_dump()
+    await db.activities.insert_one(dict(doc))
+    return doc
+
+
+@api.patch("/staff/activities/{activity_id}")
+async def update_activity(activity_id: str, body: ActivityModel, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    payload = body.model_dump(exclude={"id"})
+    res = await db.activities.update_one({"id": activity_id}, {"$set": payload})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return {"ok": True}
+
+
+@api.delete("/staff/activities/{activity_id}")
+async def delete_activity(activity_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    res = await db.activities.delete_one({"id": activity_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return {"ok": True}
+
+
+async def _wallet_summary(wallet: dict) -> dict:
+    """Build a serialisable summary of a wallet doc + linked booking info."""
+    wallet = dict(wallet)
+    wallet.pop("_id", None)
+    booking_id = wallet.get("booking_id")
+    if booking_id:
+        b = await db.bookings.find_one(
+            {"id": booking_id},
+            {"_id": 0, "id": 1, "offer_name": 1, "date": 1, "checkout_date": 1, "phone": 1,
+             "email": 1, "status": 1, "boat_time": 1, "return_boat_time": 1, "balance_due": 1,
+             "total_amount": 1, "paid_amount": 1, "deposit_pct": 1, "participants": 1,
+             "room_tier_name": 1, "rooms": 1, "adults": 1, "children": 1},
+        )
+        wallet["booking"] = b
+    txs = wallet.get("transactions", [])
+    wallet["total_charged"] = sum(t.get("amount", 0) for t in txs if t.get("status") != "voided")
+    return wallet
+
+
+@api.get("/staff/wallets/{token}")
+async def get_wallet(token: str, staff=Depends(get_current_staff)):
+    """Look up a wallet by its QR token (scanner) or short reference."""
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    wallet = await db.wallets.find_one({"token": token}, {"_id": 0})
+    if not wallet:
+        # Try short token (first 10 chars uppercase) as fallback
+        short = token.strip().lower()
+        async for w in db.wallets.find({}, {"_id": 0}):
+            if w["token"].lower().startswith(short) or w.get("booking_ref", "").lower() == short:
+                wallet = w
+                break
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    return await _wallet_summary(wallet)
+
+
+@api.post("/staff/wallets/{token}/charge")
+async def charge_wallet(token: str, body: WalletCharge, staff=Depends(get_current_staff)):
+    """Add an activity charge to the wallet. Either ``activity_id`` (catalog
+    lookup, amount × quantity) or a custom ``label + amount`` is required."""
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    wallet = await db.wallets.find_one({"token": token}, {"_id": 0})
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    if wallet.get("status") == "closed":
+        raise HTTPException(status_code=400, detail="Wallet already closed")
+
+    activity_label = body.label or "Prestation"
+    unit_price = body.amount
+    if body.activity_id:
+        activity = await db.activities.find_one({"id": body.activity_id, "active": True}, {"_id": 0})
+        if not activity:
+            raise HTTPException(status_code=404, detail="Activity not found")
+        activity_label = activity["name_fr"]
+        unit_price = int(activity["price"])
+    if unit_price <= 0:
+        raise HTTPException(status_code=400, detail="amount must be > 0 (or provide a valid activity_id)")
+    total = unit_price * body.quantity
+    tx = {
+        "id": str(uuid.uuid4()),
+        "activity_id": body.activity_id,
+        "label": activity_label,
+        "unit_price": unit_price,
+        "quantity": body.quantity,
+        "amount": total,
+        "note": body.note or "",
+        "status": "active",
+        "created_at": now_iso(),
+        "created_by": staff.get("name"),
+        "created_by_role": staff.get("role"),
+    }
+    await db.wallets.update_one(
+        {"token": token},
+        {
+            "$push": {"transactions": tx},
+            "$inc": {"total_charged": total},
+        },
+    )
+    fresh = await db.wallets.find_one({"token": token}, {"_id": 0})
+    return await _wallet_summary(fresh)
+
+
+@api.delete("/staff/wallets/{token}/charge/{tx_id}")
+async def void_wallet_charge(token: str, tx_id: str, staff=Depends(get_current_staff)):
+    """Void a charge (kept in history, balance adjusted)."""
+    await _require_role(staff, ["manager", "admin"])
+    wallet = await db.wallets.find_one({"token": token, "transactions.id": tx_id}, {"_id": 0})
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Wallet or charge not found")
+    tx = next((t for t in wallet.get("transactions", []) if t["id"] == tx_id), None)
+    if not tx or tx.get("status") == "voided":
+        raise HTTPException(status_code=400, detail="Charge already voided")
+    await db.wallets.update_one(
+        {"token": token, "transactions.id": tx_id},
+        {
+            "$set": {
+                "transactions.$.status": "voided",
+                "transactions.$.voided_at": now_iso(),
+                "transactions.$.voided_by": staff.get("name"),
+            },
+            "$inc": {"total_charged": -tx["amount"]},
+        },
+    )
+    fresh = await db.wallets.find_one({"token": token}, {"_id": 0})
+    return await _wallet_summary(fresh)
+
+
+@api.post("/staff/wallets/{token}/close")
+async def close_wallet(token: str, staff=Depends(get_current_staff)):
+    """Mark the wallet as settled (paid at check-out)."""
+    await _require_role(staff, ["manager", "admin"])
+    res = await db.wallets.update_one(
+        {"token": token},
+        {"$set": {"status": "closed", "closed_at": now_iso(), "closed_by": staff.get("name")}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    fresh = await db.wallets.find_one({"token": token}, {"_id": 0})
+    return await _wallet_summary(fresh)
+
+
+# =================================================================
+# MODULE 6 — LE KAAI (TABLES) — historical anchor
 # =================================================================
 
 class KaaiTable(BaseModel):

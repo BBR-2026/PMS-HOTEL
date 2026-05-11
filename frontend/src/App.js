@@ -21,6 +21,7 @@ import StaffHebergement from "./pages/staff/StaffHebergement";
 import StaffLoisirs from "./pages/staff/StaffLoisirs";
 import StaffConfig from "./pages/staff/StaffConfig";
 import StaffTraverseesHistory from "./pages/staff/StaffTraverseesHistory";
+import StaffActivities from "./pages/staff/StaffActivities";
 import RoleGuard from "./components/RoleGuard";
 
 const MANAGER_PLUS = ["manager", "admin"];
@@ -66,6 +67,7 @@ function App() {
               <Route path="scanner" element={<StaffScanner />} />
               <Route path="embarquement" element={<StaffEmbarquement />} />
               <Route path="traversees/historique" element={<StaffTraverseesHistory />} />
+              <Route path="activites" element={<StaffActivities />} />
               <Route path="reservations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffReservations /></RoleGuard>} />
               <Route path="hebergement" element={<RoleGuard allowed={MANAGER_PLUS}><StaffHebergement /></RoleGuard>} />
               <Route path="clients" element={<RoleGuard allowed={MANAGER_PLUS}><StaffClients /></RoleGuard>} />

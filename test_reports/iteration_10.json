@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 10 — Wallet (on-site activity payment QR). Backend pytest 13/13 PASS covering: (1) GET /api/activities public catalogue returns >=9 items with id/name_fr/price/category active=true (jetski/quad/paddle/massage/spa_day/boat_tour all present); (2) POST /api/bookings/{id}/pay creates a wallet for every payment_method (card, fineo, mobile_money, cash) and returns wallet_token (UUID v4) + wallet_qr {wallet_token, qr_code base64 PNG, ticket_image base64 PNG}; (3) GET /api/staff/wallets/{token} (reception OK) returns {token, booking_ref, owner_name, transactions[], total_charged=0, status='open', booking{id,offer_name,date,phone…}} + 12-char prefix lookup works; (4) POST charge body {activity_id:'jetski', quantity:2} returns total_charged=90000 (45000*2); invalid activity_id → 404; empty payload {label:'Vide'} → 400; (5) Adding a custom {label:'Cocktail', amount:8000, quantity:3} increments total by 24000; (6) DELETE /charge/{tx_id} (manager) sets tx.status='voided' and decrements total_charged; second void → 400; (7) Reception POST /close → 403; manager close OK → status='closed' + closed_at + closed_by; subsequent charge → 400 'Wallet already closed'; (8) /staff/activities CRUD (POST/PATCH/DELETE) — reception 403, manager 403, admin OK; activity GET visible after create. Frontend Playwright PASS: reception login → sidebar 'Activités sur place' visible → /staff/activites loads → paste full wallet token → wallet-detail renders with carte ref + owner + offer/date + 'Ouvert' badge + Solde 0; click [data-testid='activity-jetski'] adds 45 000 FCFA; custom-charge modal (label/amount/qty/note → submit) adds 16 000; reception attempt to close-wallet-btn shows toast 'Insufficient privileges' (server 403 — wallet stays open); reception attempt to click void-tx-{id} also rejected by server with 403 (console 403). After re-login as manager, close-wallet-btn → 'Carte soldée' toast, API verify confirms status='closed' total_charged=61000. Wallet-card on confirmation: code at BookingTunnel.jsx L1211 is conditionally rendered on booking.wallet_qr?.ticket_image which backend always populates on /pay (verified by 4 parametrized backend tests).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "StaffActivities.jsx", "issue": "close-wallet-btn and void-tx-* buttons are rendered for receptionist users — server correctly returns 403 and a toast shows 'Insufficient privileges', but UX would be cleaner if those affordances were hidden client-side based on current staff role (manager/admin only). Functionally non-blocking; security is server-enforced.", "selector": "[data-testid='close-wallet-btn'], [data-testid^='void-tx-']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration10_wallets.py",
+    "/app/test_reports/pytest/iter10_wallets.xml"
+  ],
+  "action_items": [
+    "Optional UX polish: hide close-wallet-btn and void-tx-{id} buttons for receptionist accounts in StaffActivities.jsx (use staff role from useStaffAuth context). Server already enforces the rule via 403."
+  ],
+  "critical_code_review_comments": [
+    "_wallet_summary recomputes total_charged from non-voided transactions on every read (server.py L2753) AND charge/void also $inc the persisted field (L2813, L2838). The recomputed value is what is returned, so any drift between the two is masked. Acceptable safety net but the persisted total_charged is effectively redundant — consider removing the $inc to keep a single source of truth.",
+    "GET /staff/wallets/{token} prefix lookup (server.py L2765) iterates ALL wallets when the full-token lookup misses. With many wallets in DB this becomes O(N) per scan. Consider storing a denormalized 'token_short' (first 10 chars upper) indexed field and querying it directly.",
+    "Wallet doc keeps _id from MongoDB (inserted via dict, so a fresh _id is added). _wallet_summary correctly strips it with wallet.pop('_id', None) — verified, no leak.",
+    "WalletCharge model defaults amount=0; the explicit `unit_price <= 0` check at L2793 handles the 'no amount + no activity_id' case → 400. Good.",
+    "ActivityModel's PATCH endpoint requires the full payload (Pydantic strict model with required id/name_fr/price). A real PATCH should accept partial updates; today the UI must always send all fields. Minor — works for the admin UI which already pre-fills the form.",
+    "server.py still 3427 lines (was 3063 in iter9) — module-split recommendation continues to grow. Wallet/activity routes (~190 LOC) are a natural candidate for /backend/routers/activities.py.",
+    "Wallet creation on /pay (L1261–1309) is always unconditional — even for cash bookings without an overnight stay where on-resort activity QR may be irrelevant. Per spec this is intentional (any new booking gets a wallet). Confirmed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration10_wallets.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@boulay.ci / Admin@2026 · manager@boulay.ci / Manager@2026 · reception@boulay.ci / Reception@2026 — login endpoint is POST /api/auth/staff/login (not /staff/auth/login), response key is 'access_token'.",
+  "seed_data_creation": "Multiple TEST_ pass_day bookings created during pytest + Playwright run (email TEST_wallet@example.ci, TEST_uiwallet@example.ci). Each booking spawned an associated wallet doc in db.wallets; one wallet was closed (status='closed', total_charged=61000) by the manager UI flow. Several test_act_<hash> activities were created+deleted cleanly during admin CRUD tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Wallet creation on POST /api/bookings/{id}/pay is unconditional (every payment method including cash). Wallet token is UUID v4 stored in wallets collection as 'token'; staff prefix lookup uses .lower().startswith(short). Custom charges need either activity_id OR amount>0 — both can be combined but activity_id wins (catalog price * quantity). Reception can charge/lookup but cannot void or close (manager+ for both). Activities catalog has 9 seeded entries (jetski 45000, jetski_60 80000, quad 35000, paddle 10000, kayak 10000, ski_nautique 25000, massage 45000, spa_day 60000, boat_tour 90000). Public /api/activities returns active=true items only; staff /api/staff/activities returns all. POST /api/bookings/{id}/pay requires {payment_method, reference_token} — reference_token is returned in POST /api/bookings response. Frontend renders [data-testid='wallet-card'] only when booking.wallet_qr.ticket_image truthy — confirmed always present from backend.",
+  "rca of the issue": "N/A — feature works as specified."
+}
