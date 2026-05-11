@@ -245,41 +245,12 @@ def make_qr(payload: str, styled: bool = False) -> str:
         from qrcode.image.styledpil import StyledPilImage
         from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
         from qrcode.image.styles.colormasks import SolidFillColorMask
-        from PIL import Image, ImageDraw, ImageFont
         gold = (140, 95, 38)  # warm brown-gold matching the ticket palette
         img = qr.make_image(
             image_factory=StyledPilImage,
             module_drawer=RoundedModuleDrawer(),
             color_mask=SolidFillColorMask(back_color=(255, 255, 255), front_color=gold),
         ).convert("RGB")
-        # Stamp "BBr" in the centre on a white square (covered by ECC level H)
-        w, h = img.size
-        box = int(min(w, h) * 0.22)
-        x0, y0 = (w - box) // 2, (h - box) // 2
-        draw = ImageDraw.Draw(img)
-        draw.rectangle([x0, y0, x0 + box, y0 + box], fill="white")
-        # Best-effort font load — fall back to default if unavailable
-        font = None
-        for path in (
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        ):
-            try:
-                font = ImageFont.truetype(path, size=int(box * 0.5))
-                break
-            except Exception:
-                continue
-        if font is None:
-            font = ImageFont.load_default()
-        text = "BBr"
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        draw.text(
-            (x0 + (box - tw) / 2 - bbox[0], y0 + (box - th) / 2 - bbox[1]),
-            text,
-            fill=gold,
-            font=font,
-        )
     else:
         img = qr.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
@@ -295,6 +266,40 @@ OFFER_HERO_URLS = {
     "le_kaai": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/kgqk46mw_LE%20KAAI.jpeg",
     "hebergement": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1600&q=80",
 }
+
+BBR_LOGO_URL = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2p8ulkeu_LOGO_BBr_VF_Plan_de_travail_1-removebg-preview.png"
+_LOGO_CACHE: dict = {}
+
+
+def _fetch_logo():
+    """Fetch + cache the BBr logo (RGBA, transparent background)."""
+    if BBR_LOGO_URL in _LOGO_CACHE:
+        return _LOGO_CACHE[BBR_LOGO_URL].copy()
+    try:
+        req = urllib.request.Request(BBR_LOGO_URL, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+        logo = Image.open(io.BytesIO(data)).convert("RGBA")
+        _LOGO_CACHE[BBR_LOGO_URL] = logo
+        return logo.copy()
+    except Exception as e:
+        logging.warning("Failed to fetch BBr logo: %s", e)
+        return None
+
+
+def _paste_logo(canvas, top: int, max_h: int = 110):
+    """Paste the BBr logo centred horizontally on ``canvas`` at vertical ``top``,
+    sized so its height does not exceed ``max_h``. Returns the actual rendered
+    height so callers can advance their layout cursor."""
+    logo = _fetch_logo()
+    if logo is None:
+        return 0
+    w0, h0 = logo.size
+    new_h = max_h
+    new_w = int(w0 * (new_h / h0))
+    logo = logo.resize((new_w, new_h))
+    canvas.paste(logo, ((canvas.width - new_w) // 2, top), logo)
+    return new_h
 
 _HERO_CACHE: dict = {}
 
@@ -393,25 +398,14 @@ def make_ticket_image(
     # Outer gold border to match printed template
     draw.rectangle([8, 8, W - 8, H - 8], outline=GOLD, width=2)
 
-    # ---- Header ----
+    # ---- Header: BBr logo (image) ----
     y = H_PAD
-    f_logo = _load_font(60, bold=True)
-    f_sub = _load_font(13, bold=True)
-    f_sub2 = _load_font(10)
-
-    bbox = draw.textbbox((0, 0), "BBr", font=f_logo)
-    tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) / 2 - bbox[0], y), "BBr", fill=GOLD, font=f_logo)
-    y += 72
-    text = "BOULAY BEACH RESORT"
-    bbox = draw.textbbox((0, 0), text, font=f_sub)
-    tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) / 2 - bbox[0], y), text, fill=GOLD, font=f_sub)
-    y += 18
-    text = "HOTEL & BEACH LIFE"
-    bbox = draw.textbbox((0, 0), text, font=f_sub2)
-    tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) / 2 - bbox[0], y), text, fill=GOLD, font=f_sub2)
+    logo_h = _paste_logo(img, y, max_h=H_HEADER - 10)
+    if logo_h == 0:
+        # Fallback: text-only header if the logo failed to load
+        f_logo = _load_font(60, bold=True)
+        bbox = draw.textbbox((0, 0), "BBr", font=f_logo)
+        draw.text(((W - (bbox[2] - bbox[0])) / 2 - bbox[0], y), "BBr", fill=GOLD, font=f_logo)
     y = H_PAD + H_HEADER
 
     # ---- Hero image ----
@@ -525,15 +519,6 @@ def make_ticket_image(
         .convert("RGB")
         .resize((QR_SIZE, QR_SIZE))
     )
-    # Stamp BBr in the centre of the QR
-    qr_draw = ImageDraw.Draw(qr_img)
-    cbox = int(QR_SIZE * 0.22)
-    cx, cy = QR_SIZE // 2, QR_SIZE // 2
-    qr_draw.rectangle([cx - cbox // 2, cy - cbox // 2, cx + cbox // 2, cy + cbox // 2], fill="white")
-    f_bbr = _load_font(int(cbox * 0.5), bold=True)
-    bbox = qr_draw.textbbox((0, 0), "BBr", font=f_bbr)
-    bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    qr_draw.text((cx - bw / 2 - bbox[0], cy - bh / 2 - bbox[1]), "BBr", fill=GOLD, font=f_bbr)
 
     qr_x = (W - QR_SIZE) // 2
     img.paste(qr_img, (qr_x, y + 10))
@@ -582,31 +567,33 @@ def make_cash_receipt_image(
     img = Image.new("RGB", (W, H), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    # --- Header: gold-bordered box with BBr logo + subtitles centred ---
+    # --- Header: gold-bordered box with BBr logo image ---
     y = H_PAD
     box_x0, box_x1 = 60, W - 60
     box_y0 = y
     box_y1 = y + H_HEADER
     draw.rectangle([box_x0, box_y0, box_x1, box_y1], outline=GOLD, width=2)
 
-    f_logo = _load_font(60, bold=True)
-    f_sub = _load_font(13, bold=True)
-    f_sub2 = _load_font(10)
-
-    inner_y = box_y0 + 20
-    bbox = draw.textbbox((0, 0), "BBr", font=f_logo)
-    tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) / 2 - bbox[0], inner_y), "BBr", fill=GOLD, font=f_logo)
-    inner_y += 70
-    text = "BOULAY BEACH RESORT"
-    bbox = draw.textbbox((0, 0), text, font=f_sub)
-    tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) / 2 - bbox[0], inner_y), text, fill=GOLD, font=f_sub)
-    inner_y += 16
-    text = "HOTEL & BEACH LIFE"
-    bbox = draw.textbbox((0, 0), text, font=f_sub2)
-    tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) / 2 - bbox[0], inner_y), text, fill=GOLD, font=f_sub2)
+    # Paste the logo centred inside the bordered box
+    logo = _fetch_logo()
+    if logo is not None:
+        inner_h = H_HEADER - 24
+        w0, h0 = logo.size
+        new_h = inner_h
+        new_w = int(w0 * (new_h / h0))
+        # Cap width so the logo doesn't bleed over the gold border
+        max_w = (box_x1 - box_x0) - 24
+        if new_w > max_w:
+            new_w = max_w
+            new_h = int(h0 * (new_w / w0))
+        logo_r = logo.resize((new_w, new_h))
+        cx = box_x0 + (box_x1 - box_x0 - new_w) // 2
+        cy = box_y0 + (H_HEADER - new_h) // 2
+        img.paste(logo_r, (cx, cy), logo_r)
+    else:
+        f_logo = _load_font(60, bold=True)
+        bbox = draw.textbbox((0, 0), "BBr", font=f_logo)
+        draw.text((box_x0 + (box_x1 - box_x0 - (bbox[2] - bbox[0])) / 2 - bbox[0], box_y0 + 30), "BBr", fill=GOLD, font=f_logo)
 
     y = box_y1 + 20
 

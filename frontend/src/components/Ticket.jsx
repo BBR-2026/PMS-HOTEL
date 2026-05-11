@@ -43,20 +43,14 @@ export default function Ticket({ booking, qr, t, lang, index = 0 }) {
       className="bg-white border border-[#B8922A]/30 p-4 max-w-md mx-auto w-full"
       data-testid={`ticket-${index}`}
     >
-      {/* Header: BBr logo */}
-      <div className="border-y border-[#B8922A]/40 py-4 mb-2 flex flex-col items-center">
-        <div className="font-display-serif text-3xl tracking-tight" style={{ color: BROWN }}>
-          BBr
-        </div>
-        <div
-          className="text-[0.55rem] tracking-[0.35em] mt-1"
-          style={{ color: BROWN }}
-        >
-          BOULAY BEACH RESORT
-        </div>
-        <div className="text-[0.5rem] tracking-[0.3em] opacity-60" style={{ color: BROWN }}>
-          HÔTEL &amp; BEACH LIFE
-        </div>
+      {/* Header: official BBr logo */}
+      <div className="border-y border-[#B8922A]/40 py-5 mb-2 flex items-center justify-center bg-white">
+        <img
+          src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2p8ulkeu_LOGO_BBr_VF_Plan_de_travail_1-removebg-preview.png"
+          alt="Boulay Beach Resort"
+          className="h-20 w-auto"
+          data-testid={`ticket-${index}-logo`}
+        />
       </div>
 
       {/* Hero image with the offer's own brand title (already baked into the
