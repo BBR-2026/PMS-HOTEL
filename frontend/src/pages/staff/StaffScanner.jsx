@@ -28,7 +28,11 @@ export default function StaffScanner() {
   }, []);
 
   const handleScanned = async (decodedText) => {
-    // Detect wallet vs reservation QR
+    // Detect QR type. The QR can contain:
+    //  - {"type":"ticket","token":"…"}  (current compact format)
+    //  - {"type":"wallet","token":"…"}  (activities wallet)
+    //  - {"guest_token":"…",…}          (legacy full JSON payload)
+    //  - raw token string               (manual entry fallback)
     let payload = decodedText.trim();
     let isWallet = false;
     let walletToken = null;
@@ -39,8 +43,10 @@ export default function StaffScanner() {
         if (obj.type === "wallet" && obj.token) {
           isWallet = true;
           walletToken = obj.token;
+        } else if (obj.type === "ticket" && obj.token) {
+          guestToken = obj.token;
         } else {
-          guestToken = obj.guest_token || obj.qr_token || null;
+          guestToken = obj.guest_token || obj.qr_token || obj.token || null;
         }
       } catch {
         /* not JSON */
@@ -70,7 +76,11 @@ export default function StaffScanner() {
             navigate(`/staff/activites?token=${encodeURIComponent(obj.token)}`);
             return;
           }
-          qrToken = obj.guest_token || obj.qr_token || qrToken;
+          if (obj.type === "ticket" && obj.token) {
+            qrToken = obj.token;
+          } else {
+            qrToken = obj.guest_token || obj.qr_token || obj.token || qrToken;
+          }
         } catch {
           /* keep as-is */
         }

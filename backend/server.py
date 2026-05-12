@@ -1217,6 +1217,13 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "guest_token": token,
         }
         payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
+        # Compact QR payload — only the ticket token. The full guest payload stays in DB (qr_payload)
+        # for auditing. This keeps the encoded QR small enough to be scanned by mobile cameras even
+        # when rendered in styled gold + rounded modules with H-level error correction.
+        compact_qr = json.dumps(
+            {"type": "ticket", "token": token, "ref": booking_id[:8].upper()},
+            ensure_ascii=False, separators=(",", ":"),
+        )
         token_short = token[:10].upper()
         entry = {
             "label_fr": label_fr,
@@ -1229,7 +1236,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "guest_nationality": p["nationality"],
             "qr_token": token,
             "qr_payload": payload_str,
-            "qr_code": make_qr(payload_str, styled=styled_qr),
+            "qr_code": make_qr(compact_qr, styled=styled_qr),
         }
         if styled_qr:
             # Card / mobile-money payments: composite ticket with brown details + gold QR
@@ -1239,7 +1246,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
                 date_iso=booking["date"],
                 boat_time=booking.get("boat_time", ""),
                 owner_name=f"{p['name']} {p['surname']}",
-                qr_payload=payload_str,
+                qr_payload=compact_qr,
                 ref_code=token_short,
                 lang="fr",
             )
