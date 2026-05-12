@@ -17,10 +17,31 @@ const PAYMENT_FR = {
 const STATUS_FR = {
   pending: "En attente",
   confirmed: "Confirmée",
-  arrived: "Arrivée",
-  completed: "Terminée",
+  arrived: "Embarqué (aller)",
+  completed: "Embarqué (aller + retour)",
   cancelled: "Annulée",
 };
+const DIRECTION_FR = { aller: "Aller", retour: "Retour" };
+
+// Format ISO date (YYYY-MM-DD) to DD/MM/YYYY for display.
+function formatDateFR(iso) {
+  if (!iso || typeof iso !== "string") return "—";
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+// Format ISO timestamp to DD/MM/YYYY HH:MM (local).
+function formatDateTimeFR(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return iso;
+  }
+}
 
 export default function StaffScanner() {
   const navigate = useNavigate();
@@ -120,12 +141,25 @@ export default function StaffScanner() {
 
   const startCamera = async () => {
     setCameraError(null);
+    // If a previous instance is still around, stop it first.
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        await scannerRef.current.clear();
+      } catch { /* ignore */ }
+      scannerRef.current = null;
+    }
     try {
-      // Wait one tick so the DOM element is mounted
-      await new Promise((r) => setTimeout(r, 50));
-      const Html5QrcodeCtor = Html5Qrcode;
-      scannerRef.current = new Html5QrcodeCtor(SCAN_REGION_ID);
-      await scannerRef.current.start(
+      // Wait two animation frames so React has actually committed the <div id> to the DOM.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      // Sanity check: the scan region must exist before instantiating Html5Qrcode.
+      if (!document.getElementById(SCAN_REGION_ID)) {
+        setCameraError("Zone de scan introuvable. Rechargez la page.");
+        return;
+      }
+      const instance = new Html5Qrcode(SCAN_REGION_ID);
+      scannerRef.current = instance;
+      await instance.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
         (decodedText) => handleScanned(decodedText),
@@ -136,9 +170,10 @@ export default function StaffScanner() {
       setCameraError(
         e?.message?.includes("permission") || e?.name === "NotAllowedError"
           ? "Autorisation caméra refusée. Activez l'accès dans votre navigateur."
-          : "Caméra indisponible sur cet appareil.",
+          : (e?.message || "Caméra indisponible sur cet appareil."),
       );
       setCameraOn(false);
+      scannerRef.current = null;
     }
   };
 
@@ -146,7 +181,7 @@ export default function StaffScanner() {
     if (scannerRef.current) {
       try {
         await scannerRef.current.stop();
-        scannerRef.current.clear();
+        await scannerRef.current.clear();
       } catch {
         /* already stopped */
       }
@@ -155,18 +190,37 @@ export default function StaffScanner() {
     setCameraOn(false);
   };
 
-  const markArrived = async () => {
-    if (!result) return;
-    await api.post(`/staff/bookings/${result.booking_id}/arrived`);
-    toast.success("Client marqué comme arrivé");
-    setResult({ ...result, status: "arrived" });
+  const doCheckin = async () => {
+    if (!result || !result.qr_token) return;
+    try {
+      const { data } = await api.post(`/staff/scan/${result.qr_token}/checkin`);
+      const dirLabel = DIRECTION_FR[data.direction] || data.direction;
+      toast.success(`Embarquement ${dirLabel.toLowerCase()} enregistré`);
+      const newScan = {
+        direction: data.direction,
+        scanned_at: data.scanned_at,
+        staff_email: data.staff_email,
+      };
+      setResult({
+        ...result,
+        scans: [...(result.scans || []), newScan],
+        scan_count: data.scan_count,
+        next_direction: data.next_direction,
+        fully_used: data.fully_used,
+        status: data.booking_status,
+      });
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur lors de l'embarquement");
+    }
   };
 
   const reset = async () => {
-    setResult(null);
-    setTokenInput("");
+    // Stop camera FIRST so it releases its media stream before we unmount the scan region.
+    await stopCamera();
     processingRef.current = false;
-    // Camera will auto-restart via the useEffect below (no need to start it manually).
+    setTokenInput("");
+    setResult(null);
+    // useEffect below will re-mount the scan region and restart the camera if in camera mode.
   };
 
   // Auto-start camera when mode = camera and no result is shown
@@ -294,14 +348,14 @@ export default function StaffScanner() {
               <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">
                 {result.checkout_date ? "Arrivée" : "Date"}
               </dt>
-              <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.date || "—"}</dd>
+              <dd className="text-[#0A0A0A] font-medium mt-0.5">{formatDateFR(result.date)}</dd>
             </div>
             {result.checkout_date && (
               <>
                 <div>
                   <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Départ</dt>
                   <dd className="text-[#0A0A0A] font-medium mt-0.5">
-                    {result.checkout_date}
+                    {formatDateFR(result.checkout_date)}
                     {result.nights > 0 && (
                       <span className="text-[0.7rem] text-[#0A0A0A]/55 ml-2">
                         · {result.nights} nuit{result.nights > 1 ? "s" : ""}
@@ -368,20 +422,51 @@ export default function StaffScanner() {
             </div>
           )}
 
-          {result.status !== "arrived" ? (
+          {/* Scans history */}
+          {(result.scans && result.scans.length > 0) && (
+            <div className="mt-6 bg-[#FAFAF7] border border-[#0A0A0A]/8 px-4 py-3" data-testid="scanner-scans-history">
+              <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">
+                Embarquements enregistrés · {result.scans.length}/2
+              </div>
+              <ul className="space-y-1.5">
+                {result.scans.map((s, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center justify-between text-sm text-[#0A0A0A]"
+                    data-testid={`scan-history-${i}`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <CheckCircle2 size={13} className="text-green-600" />
+                      <span className="font-medium">{DIRECTION_FR[s.direction] || s.direction}</span>
+                    </span>
+                    <span className="text-[0.72rem] text-[#0A0A0A]/55">
+                      {formatDateTimeFR(s.scanned_at)}
+                      {s.staff_email && <span className="ml-2">· {s.staff_email}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Embarkation CTA — single button whose label depends on next_direction */}
+          {result.next_direction ? (
             <button
-              onClick={markArrived}
-              className="mt-8 w-full bg-green-600 hover:bg-green-700 text-white py-4 text-sm uppercase tracking-[0.22em] inline-flex items-center justify-center gap-3 transition-colors"
-              data-testid="scanner-mark-arrived-btn"
+              onClick={doCheckin}
+              className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white py-4 text-sm uppercase tracking-[0.22em] inline-flex items-center justify-center gap-3 transition-colors"
+              data-testid={`scanner-checkin-${result.next_direction}-btn`}
             >
-              <CheckCircle2 size={18} /> Marquer comme arrivé
+              <CheckCircle2 size={18} />
+              {result.next_direction === "aller"
+                ? "Embarquement aller"
+                : "Embarquement retour"}
             </button>
           ) : (
             <div
-              className="mt-8 w-full bg-green-50 border border-green-200 text-green-700 py-4 text-sm uppercase tracking-[0.22em] flex items-center justify-center gap-3"
-              data-testid="scanner-already-arrived"
+              className="mt-6 w-full bg-green-50 border border-green-200 text-green-700 py-4 text-sm uppercase tracking-[0.22em] flex items-center justify-center gap-3"
+              data-testid="scanner-fully-used"
             >
-              <CheckCircle2 size={18} /> Déjà arrivé
+              <CheckCircle2 size={18} /> QR entièrement utilisé (aller + retour)
             </div>
           )}
 

@@ -1942,11 +1942,13 @@ def _format_xof(amount: int) -> str:
 # ---------- QR Scanner (Module 4) ----------
 @api.get("/staff/scan/{qr_token}")
 async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
-    """Look up a booking by QR token. Returns the participant + booking summary."""
+    """Look up a booking by QR token. Returns the participant + booking summary + scan history."""
     booking = await db.bookings.find_one({"qr_codes.qr_token": qr_token}, {"_id": 0})
     if not booking:
         raise HTTPException(status_code=404, detail="QR code not recognised")
     guest = next((q for q in booking.get("qr_codes", []) if q.get("qr_token") == qr_token), None)
+    scans = (guest or {}).get("scans", [])
+    next_direction = "aller" if len(scans) == 0 else ("retour" if len(scans) == 1 else None)
     summary = {
         "booking_id": booking["id"],
         "offer_type": booking.get("offer_type"),
@@ -1977,8 +1979,72 @@ async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
         "guest_phone": guest.get("guest_phone") if guest else "",
         "guest_email": guest.get("guest_email") if guest else "",
         "guest_label_fr": guest.get("label_fr") if guest else "",
+        "qr_token": qr_token,
+        "scans": scans,
+        "scan_count": len(scans),
+        "next_direction": next_direction,
+        "fully_used": next_direction is None,
     }
     return summary
+
+
+@api.post("/staff/scan/{qr_token}/checkin")
+async def checkin_qr(qr_token: str, staff=Depends(get_current_staff)):
+    """Register an embarkation scan (aller then retour). Max 2 scans per QR.
+
+    Rules:
+    - First scan → direction='aller' and booking status becomes 'arrived' if not already
+    - Second scan → direction='retour' and booking status becomes 'completed'
+    - Third scan → 400 'QR code déjà utilisé entièrement'
+    Each scan stores: direction, scanned_at, staff_email.
+    """
+    booking = await db.bookings.find_one({"qr_codes.qr_token": qr_token}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="QR code non reconnu")
+    qrs = booking.get("qr_codes", [])
+    idx = next((i for i, q in enumerate(qrs) if q.get("qr_token") == qr_token), -1)
+    if idx == -1:
+        raise HTTPException(status_code=404, detail="QR code non reconnu")
+    scans = qrs[idx].get("scans") or []
+    if len(scans) >= 2:
+        raise HTTPException(status_code=400, detail="QR code déjà scanné (aller + retour). Plus aucun embarquement possible.")
+    direction = "aller" if len(scans) == 0 else "retour"
+    entry = {
+        "direction": direction,
+        "scanned_at": now_iso(),
+        "staff_email": staff.get("email"),
+    }
+    scans = scans + [entry]
+    # Aggregate booking-level status across all QR codes:
+    #  - 'arrived' if at least one aller scan and not everyone has done a return
+    #  - 'completed' once all participants have done both aller + retour
+    all_scans_after = [
+        (q.get("scans") or []) + ([entry] if i == idx else [])
+        for i, q in enumerate(qrs)
+    ]
+    all_arrived = all(len(s) >= 1 for s in all_scans_after)
+    all_completed = all(len(s) >= 2 for s in all_scans_after)
+    new_status = booking.get("status")
+    set_ops = {f"qr_codes.{idx}.scans": scans}
+    if all_completed:
+        new_status = "completed"
+        set_ops["status"] = "completed"
+        set_ops["completed_at"] = now_iso()
+    elif all_arrived and booking.get("status") in (None, "confirmed", "pending"):
+        new_status = "arrived"
+        set_ops["status"] = "arrived"
+        set_ops["arrived_at"] = booking.get("arrived_at") or now_iso()
+    await db.bookings.update_one({"id": booking["id"]}, {"$set": set_ops})
+    return {
+        "ok": True,
+        "direction": direction,
+        "scanned_at": entry["scanned_at"],
+        "staff_email": entry["staff_email"],
+        "scan_count": len(scans),
+        "next_direction": "retour" if len(scans) == 1 else None,
+        "fully_used": len(scans) >= 2,
+        "booking_status": new_status,
+    }
 
 
 @api.post("/staff/bookings/{booking_id}/arrived")
