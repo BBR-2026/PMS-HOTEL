@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { toast } from "sonner";
@@ -451,9 +452,18 @@ export default function StaffReservations() {
 
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-reservations">
-      <div className="mb-8">
-        <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Réservations</h1>
-        <p className="text-sm text-[#0A0A0A]/55 mt-1">Pipeline complet des réservations</p>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Réservations</h1>
+          <p className="text-sm text-[#0A0A0A]/55 mt-1">Pipeline complet des réservations</p>
+        </div>
+        <Link
+          to="/staff/reservations/nouvelle"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#a37e1f] transition-all self-start sm:self-auto"
+          data-testid="newbooking-cta"
+        >
+          + Nouvelle réservation
+        </Link>
       </div>
 
       {/* Offer tabs */}

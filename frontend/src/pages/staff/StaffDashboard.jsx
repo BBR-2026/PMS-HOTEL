@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
+import { useStaffAuth } from "../../context/StaffAuthContext";
 import { CalendarDays, Wallet, Users, Anchor, AlertTriangle, Clock } from "lucide-react";
 
 const STATUS_COLORS = {
@@ -38,6 +40,8 @@ function KpiCard({ icon: Icon, label, value, sub }) {
 export default function StaffDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useStaffAuth();
+  const isManager = user && (user.role === "manager" || user.role === "admin");
 
   useEffect(() => {
     api.get("/staff/dashboard")
@@ -53,9 +57,20 @@ export default function StaffDashboard() {
 
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-dashboard">
-      <div className="mb-8">
-        <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Tableau de bord</h1>
-        <p className="text-sm text-[#0A0A0A]/55 mt-1">Vue opérationnelle de la journée</p>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Tableau de bord</h1>
+          <p className="text-sm text-[#0A0A0A]/55 mt-1">Vue opérationnelle de la journée</p>
+        </div>
+        {isManager && (
+          <Link
+            to="/staff/reservations/nouvelle"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#a37e1f] transition-all self-start sm:self-auto"
+            data-testid="dashboard-newbooking-cta"
+          >
+            + Nouvelle réservation
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-10">

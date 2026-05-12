@@ -3055,6 +3055,423 @@ async def hebergement_calendar(month: str, staff=Depends(get_current_staff)):
     return {"month": month, "days": days, "tier_inventory": tier_inventory, "total_inventory": total_inventory}
 
 
+# ---------- Hébergement: history & stats ----------
+def _heb_period_window(period: str):
+    """Return (date_from_iso, date_to_iso, label) covering a period. Filters on check-in date.
+    Periods: day, week, month, year, all. Bounds are inclusive."""
+    today = datetime.now(timezone.utc).date()
+    if period == "day":
+        return today.isoformat(), today.isoformat(), "Aujourd'hui"
+    if period == "week":
+        return (today - timedelta(days=6)).isoformat(), today.isoformat(), "7 derniers jours"
+    if period == "month":
+        return (today - timedelta(days=29)).isoformat(), today.isoformat(), "30 derniers jours"
+    if period == "year":
+        return (today - timedelta(days=364)).isoformat(), today.isoformat(), "12 derniers mois"
+    return "1970-01-01", "2999-12-31", "Depuis le lancement"
+
+
+@api.get("/staff/hebergement/stats")
+async def hebergement_stats(period: str = "month", staff=Depends(get_current_staff)):
+    """Hébergement statistics over a period: occupancy, revenue, by tier, top guests, history."""
+    await _require_role(staff, ["manager", "admin"])
+    date_from, date_to, label = _heb_period_window(period)
+    cursor = db.bookings.find(
+        {
+            "offer_type": "hebergement",
+            "status": {"$ne": "cancelled"},
+            "date": {"$gte": date_from, "$lte": date_to},
+        },
+        {"_id": 0, "id": 1, "date": 1, "checkout_date": 1, "nights": 1, "rooms": 1,
+         "room_tier": 1, "room_tier_name": 1, "total_amount": 1, "paid_amount": 1,
+         "balance_due": 1, "adults": 1, "children": 1, "participants": 1,
+         "boat_time": 1, "return_boat_time": 1, "payment_method": 1, "deposit_pct": 1,
+         "status": 1, "paid_at": 1, "created_at": 1, "phone": 1, "email": 1},
+    )
+    bookings = await cursor.to_list(length=2000)
+
+    heb_offer = OFFERS.get("hebergement", {})
+    tier_inventory = {t["id"]: int(t.get("inventory", 0)) for t in heb_offer.get("room_tiers", [])}
+    tier_name_by_id = {t["id"]: t.get("name_fr", t["id"]) for t in heb_offer.get("room_tiers", [])}
+    total_inventory = sum(tier_inventory.values())
+
+    nights_sold = 0
+    revenue_total = 0
+    revenue_paid = 0
+    balance_due_total = 0
+    total_stays = len(bookings)
+    by_tier_agg: dict = {tid: {"tier_id": tid, "tier_name": tier_name_by_id.get(tid, tid),
+                                 "stays": 0, "rooms": 0, "nights": 0, "revenue": 0,
+                                 "inventory": tier_inventory.get(tid, 0)} for tid in tier_inventory}
+    # Per-day occupancy across the window
+    try:
+        d_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+        d_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+    except Exception:
+        d_from = datetime.now(timezone.utc).date()
+        d_to = d_from
+    daily_nights: dict = {}
+    daily_revenue: dict = {}
+    cur = d_from
+    while cur <= d_to:
+        daily_nights[cur.isoformat()] = 0
+        daily_revenue[cur.isoformat()] = 0
+        cur += timedelta(days=1)
+    days_in_window = max(1, (d_to - d_from).days + 1)
+    # Top guests aggregation
+    guest_agg: dict = {}
+    for b in bookings:
+        n = int(b.get("nights") or 0)
+        r = int(b.get("rooms") or 1)
+        room_nights = n * r
+        nights_sold += room_nights
+        amount = int(b.get("total_amount") or 0)
+        paid = int(b.get("paid_amount") or 0)
+        bal = int(b.get("balance_due") or 0)
+        revenue_total += amount
+        revenue_paid += paid
+        balance_due_total += bal
+        tid = b.get("room_tier") or "unknown"
+        if tid in by_tier_agg:
+            by_tier_agg[tid]["stays"] += 1
+            by_tier_agg[tid]["rooms"] += r
+            by_tier_agg[tid]["nights"] += room_nights
+            by_tier_agg[tid]["revenue"] += amount
+        # Daily occupancy: each night between arrival and checkout-1
+        try:
+            arr = datetime.strptime(b["date"], "%Y-%m-%d").date()
+            chk = datetime.strptime(b.get("checkout_date") or b["date"], "%Y-%m-%d").date()
+        except Exception:
+            continue
+        per_night_rev = (amount // n) if n > 0 else 0
+        nd = arr
+        while nd < chk:
+            key = nd.isoformat()
+            if key in daily_nights:
+                daily_nights[key] += r
+                daily_revenue[key] += per_night_rev
+            nd += timedelta(days=1)
+        # Guest
+        primary = next((p for p in (b.get("participants") or []) if p.get("kind") == "adult"), None) or {}
+        if primary:
+            email = (primary.get("email") or b.get("email") or "").lower()
+            if email:
+                g = guest_agg.setdefault(email, {
+                    "email": email,
+                    "name": primary.get("name", ""),
+                    "surname": primary.get("surname", ""),
+                    "nationality": primary.get("nationality", ""),
+                    "stays": 0,
+                    "nights": 0,
+                    "revenue": 0,
+                })
+                g["stays"] += 1
+                g["nights"] += room_nights
+                g["revenue"] += amount
+
+    available_room_nights = total_inventory * days_in_window
+    occupancy_rate = round((nights_sold / available_room_nights * 100), 1) if available_room_nights else 0
+    avg_stay_nights = round((nights_sold / total_stays), 1) if total_stays else 0
+    avg_revenue_per_stay = int(revenue_total / total_stays) if total_stays else 0
+    avg_revenue_per_night = int(revenue_total / nights_sold) if nights_sold else 0
+
+    by_tier = []
+    for tid, agg in by_tier_agg.items():
+        share = (agg["revenue"] / revenue_total * 100) if revenue_total else 0
+        tier_available = agg["inventory"] * days_in_window
+        tier_occ = round((agg["nights"] / tier_available * 100), 1) if tier_available else 0
+        by_tier.append({**agg, "revenue_share_pct": round(share, 1), "occupancy_pct": tier_occ})
+    by_tier.sort(key=lambda x: x["revenue"], reverse=True)
+
+    daily_trend = [
+        {"date": d, "nights": daily_nights[d], "revenue": daily_revenue[d]}
+        for d in sorted(daily_nights.keys())
+    ]
+    top_guests = sorted(guest_agg.values(), key=lambda x: x["nights"], reverse=True)[:10]
+
+    # History (most recent first, limited)
+    history = sorted(bookings, key=lambda b: (b.get("date") or "", b.get("created_at") or ""), reverse=True)
+    # Strip heavy fields for the history table
+    history_lite = [
+        {
+            "id": b["id"],
+            "date": b.get("date"),
+            "checkout_date": b.get("checkout_date"),
+            "nights": int(b.get("nights") or 0),
+            "rooms": int(b.get("rooms") or 1),
+            "room_tier": b.get("room_tier"),
+            "room_tier_name": b.get("room_tier_name"),
+            "adults": int(b.get("adults") or 0),
+            "children": int(b.get("children") or 0),
+            "total_amount": int(b.get("total_amount") or 0),
+            "paid_amount": int(b.get("paid_amount") or 0),
+            "balance_due": int(b.get("balance_due") or 0),
+            "deposit_pct": b.get("deposit_pct"),
+            "payment_method": b.get("payment_method"),
+            "status": b.get("status"),
+            "boat_time": b.get("boat_time"),
+            "return_boat_time": b.get("return_boat_time"),
+            "phone": b.get("phone"),
+            "email": b.get("email"),
+            "primary_name": (
+                next((p for p in (b.get("participants") or []) if p.get("kind") == "adult"), None) or {}
+            ).get("name", ""),
+            "primary_surname": (
+                next((p for p in (b.get("participants") or []) if p.get("kind") == "adult"), None) or {}
+            ).get("surname", ""),
+        }
+        for b in history
+    ]
+    return {
+        "period": period,
+        "period_label": label,
+        "date_from": date_from,
+        "date_to": date_to,
+        "days_in_window": days_in_window,
+        "total_inventory": total_inventory,
+        "tier_inventory": tier_inventory,
+        "kpis": {
+            "total_stays": total_stays,
+            "nights_sold": nights_sold,
+            "occupancy_rate_pct": occupancy_rate,
+            "revenue_total": revenue_total,
+            "revenue_paid": revenue_paid,
+            "balance_due_total": balance_due_total,
+            "avg_stay_nights": avg_stay_nights,
+            "avg_revenue_per_stay": avg_revenue_per_stay,
+            "avg_revenue_per_night": avg_revenue_per_night,
+        },
+        "by_tier": by_tier,
+        "daily_trend": daily_trend,
+        "top_guests": top_guests,
+        "history": history_lite,
+    }
+
+
+@api.get("/staff/hebergement/report.pdf")
+async def export_hebergement_pdf(period: str = "month", staff=Depends(get_current_staff)):
+    """Stylized PDF report of Hébergement statistics for the selected period."""
+    await _require_role(staff, ["manager", "admin"])
+    data = await hebergement_stats(period=period, staff=staff)  # type: ignore
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from fastapi.responses import StreamingResponse
+
+    styles = _pdf_styles()
+    GOLD, DARK, LIGHT, MUTED = styles["GOLD"], styles["DARK"], styles["LIGHT"], styles["MUTED"]
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
+    elements = []
+    elements.append(Paragraph("Boulay Beach Resort", styles["h1"]))
+    elements.append(Paragraph(f"Rapport Hébergement — {data['period_label']} ({data['date_from']} → {data['date_to']})", styles["sub"]))
+
+    k = data["kpis"]
+    kpi_rows = [
+        ["Séjours", "Nuitées vendues", "Taux d'occupation", "Revenu total"],
+        [str(k["total_stays"]), str(k["nights_sold"]), f"{k['occupancy_rate_pct']}%", _format_xof(k["revenue_total"])],
+    ]
+    kpi_tbl = Table(kpi_rows, colWidths=[4.2 * cm, 4.2 * cm, 4.2 * cm, 4.2 * cm])
+    kpi_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, 1), 12),
+        ("TEXTCOLOR", (0, 1), (-1, 1), DARK),
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+        ("BOX", (0, 0), (-1, -1), 0.5, GOLD),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E0D5B5")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(kpi_tbl)
+    elements.append(Spacer(1, 0.2 * cm))
+    sub_rows = [
+        ["Séjour moyen", "Revenu / séjour", "Revenu / nuitée", "Encaissé / Solde dû"],
+        [
+            f"{k['avg_stay_nights']} nuits",
+            _format_xof(k["avg_revenue_per_stay"]),
+            _format_xof(k["avg_revenue_per_night"]),
+            f"{_format_xof(k['revenue_paid'])} / {_format_xof(k['balance_due_total'])}",
+        ],
+    ]
+    sub_tbl = Table(sub_rows, colWidths=[4.2 * cm, 4.2 * cm, 4.2 * cm, 4.2 * cm])
+    sub_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, 1), 10),
+        ("TEXTCOLOR", (0, 1), (-1, 1), DARK),
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+        ("BOX", (0, 0), (-1, -1), 0.5, GOLD),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E0D5B5")),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(sub_tbl)
+
+    # By tier
+    if data.get("by_tier"):
+        elements.append(Paragraph("Répartition par catégorie", styles["h2"]))
+        rows = [["Catégorie", "Séjours", "Nuitées", "Taux occ.", "Revenu", "Part"]]
+        for t in data["by_tier"]:
+            rows.append([
+                t["tier_name"],
+                str(t["stays"]),
+                str(t["nights"]),
+                f"{t['occupancy_pct']}%",
+                _format_xof(t["revenue"]),
+                f"{t['revenue_share_pct']}%",
+            ])
+        tbl = Table(rows, colWidths=[5 * cm, 2.2 * cm, 2.2 * cm, 2.2 * cm, 3.5 * cm, 1.8 * cm])
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(tbl)
+
+    # Top guests
+    if data.get("top_guests"):
+        elements.append(Paragraph("Top 10 clients (par nuitées)", styles["h2"]))
+        rows = [["#", "Client", "Nationalité", "Séjours", "Nuitées", "Total dépensé"]]
+        for i, g in enumerate(data["top_guests"], start=1):
+            full = f"{g.get('surname','')} {g.get('name','')}".strip() or "—"
+            rows.append([str(i), full, g.get("nationality") or "—", str(g["stays"]), str(g["nights"]), _format_xof(g["revenue"])])
+        tbl = Table(rows, colWidths=[1 * cm, 4.5 * cm, 3.5 * cm, 2 * cm, 2 * cm, 3.5 * cm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 8.5),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(tbl)
+
+    # History (recent stays)
+    if data.get("history"):
+        elements.append(Paragraph("Historique des séjours", styles["h2"]))
+        rows = [["Arrivée", "Départ", "Client", "Cat.", "Ch.", "Nuits", "Total", "Solde"]]
+        for b in data["history"][:60]:
+            full = f"{b.get('primary_surname','')} {b.get('primary_name','')}".strip() or "—"
+            rows.append([
+                b.get("date") or "—",
+                b.get("checkout_date") or "—",
+                full[:24],
+                (b.get("room_tier_name") or "—")[:18],
+                str(b.get("rooms") or 1),
+                str(b.get("nights") or 0),
+                _format_xof(b.get("total_amount") or 0),
+                _format_xof(b.get("balance_due") or 0),
+            ])
+        tbl = Table(rows, colWidths=[2.1 * cm, 2.1 * cm, 4 * cm, 3 * cm, 1 * cm, 1.2 * cm, 2.8 * cm, 2.6 * cm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 7.5),
+            ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+            ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+            ("FONTSIZE", (0, 1), (-1, -1), 7.5),
+            ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+            ("ALIGN", (4, 0), (-1, -1), "RIGHT"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(tbl)
+
+    elements.append(Spacer(1, 0.5 * cm))
+    elements.append(Paragraph(
+        f"Rapport généré le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M UTC')} · Boulay Beach Resort, Abidjan",
+        styles["small"],
+    ))
+
+    doc.build(elements, onFirstPage=_pdf_footer_factory(styles), onLaterPages=_pdf_footer_factory(styles))
+    buf.seek(0)
+    filename = f"bbr-hebergement-{period}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------- Staff-created bookings (manager+) ----------
+class StaffBookingCreate(BaseModel):
+    """Body for POST /staff/bookings — manager creates a booking on behalf of a guest."""
+    offer_type: OfferType
+    date: str
+    checkout_date: Optional[str] = None
+    room_tier: Optional[str] = None
+    rooms: int = Field(default=1, ge=1, le=20)
+    adults: int = Field(ge=0, le=20)
+    children: int = Field(ge=0, le=20)
+    boat_time: str
+    return_boat_time: Optional[str] = None
+    participants: List[Participant]
+    special_requests: Optional[str] = ""
+    # Payment: manager picks the method directly. For 'deposit', supply deposit_pct.
+    payment_method: Literal["card", "mobile_money", "cash", "deposit"] = "cash"
+    deposit_pct: Optional[Literal[10, 30, 70]] = None
+
+
+@api.post("/staff/bookings")
+async def staff_create_booking(body: StaffBookingCreate, staff=Depends(get_current_staff)):
+    """Manager creates a confirmed booking + immediate payment, generating tickets + wallet."""
+    await _require_role(staff, ["manager", "admin"])
+    # Step 1: create booking (reuses public validator)
+    payload = BookingCreate(
+        offer_type=body.offer_type,
+        date=body.date,
+        checkout_date=body.checkout_date,
+        room_tier=body.room_tier,
+        rooms=body.rooms,
+        adults=body.adults,
+        children=body.children,
+        boat_time=body.boat_time,
+        return_boat_time=body.return_boat_time,
+        participants=body.participants,
+        special_requests=body.special_requests or "",
+    )
+    booking = await create_booking(payload)  # type: ignore
+    # Mark as staff-created for audit/reporting
+    await db.bookings.update_one(
+        {"id": booking["id"]},
+        {"$set": {"created_by_staff": True, "created_by_email": staff.get("email")}},
+    )
+    # Step 2: pay immediately with chosen method
+    pay = PayBooking(
+        reference_token=booking["reference_token"],
+        payment_method=body.payment_method,
+        deposit_pct=body.deposit_pct,
+    )
+    paid = await pay_booking(booking["id"], pay)  # type: ignore
+    paid["created_by_staff"] = True
+    paid["created_by_email"] = staff.get("email")
+    return paid
+
+
 # =================================================================
 # MODULE LOISIRS — Event privatization requests
 # =================================================================

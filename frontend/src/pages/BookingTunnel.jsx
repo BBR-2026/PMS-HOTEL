@@ -227,23 +227,23 @@ export default function BookingTunnel() {
   const setC = (k) => (e) => setContact({ ...contact, [k]: e.target.value });
 
   return (
-    <div data-testid="booking-tunnel" className="min-h-screen bg-white text-[#0A0A0A] pt-32 pb-24 px-6 md:px-12">
+    <div data-testid="booking-tunnel" className="min-h-screen bg-white text-[#0A0A0A] pt-24 sm:pt-28 md:pt-32 pb-24 px-4 sm:px-6 md:px-12">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-12">
-          <Link to="/" className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors inline-flex items-center gap-2 mb-6">
+        <div className="mb-8 sm:mb-12">
+          <Link to="/" className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors inline-flex items-center gap-2 mb-5 sm:mb-6">
             <ArrowLeft size={14} />
             {t.booking.back}
           </Link>
-          <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">
+          <div className="text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.28em] sm:tracking-[0.4em] text-[#B8922A] mb-2 sm:mb-3">
             {offer.schedule_fr && lang === "fr" ? offer.schedule_fr : offer.schedule_en}
           </div>
-          <h1 className="font-display-serif text-4xl md:text-5xl lg:text-6xl text-[#0A0A0A] tracking-tight">
+          <h1 className="font-display-serif text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-[#0A0A0A] tracking-tight leading-tight">
             {offerName}
           </h1>
-          <div className="gold-divider mt-5" />
+          <div className="gold-divider mt-4 sm:mt-5" />
         </div>
 
-        <div className="flex items-center gap-3 mb-14">
+        <div className="flex items-center gap-2 sm:gap-3 mb-10 sm:mb-14">
           {[1, 2, 3, 4, 5].map((n) => (
             <div
               key={n}
@@ -264,20 +264,20 @@ export default function BookingTunnel() {
           >
             {step === 1 && (
               <div data-testid="booking-step-1">
-                <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
+                <h2 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step1}
                 </h2>
-                <p className="text-sm text-[#0A0A0A]/50 mb-8">
+                <p className="text-sm text-[#0A0A0A]/50 mb-6 sm:mb-8">
                   {isOvernight ? `${t.booking.pickArrival} · ${t.booking.pickCheckout}` : t.booking.pickDate}
                 </p>
 
                 {isOvernight ? (
                   <div className="flex flex-col lg:flex-row gap-6">
-                    <div>
+                    <div className="min-w-0 w-full lg:w-auto">
                       <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
                         {t.booking.pickArrival}
                       </div>
-                      <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-4 inline-block">
+                      <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-2 sm:p-4 overflow-x-auto">
                         <Calendar
                           mode="single"
                           selected={selectedDate}
@@ -298,11 +298,11 @@ export default function BookingTunnel() {
                         />
                       </div>
                     </div>
-                    <div>
+                    <div className="min-w-0 w-full lg:w-auto">
                       <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
                         {t.booking.pickCheckout}
                       </div>
-                      <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-4 inline-block">
+                      <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-2 sm:p-4 overflow-x-auto">
                         <Calendar
                           mode="single"
                           selected={checkoutDate}
@@ -326,7 +326,7 @@ export default function BookingTunnel() {
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-4 inline-block">
+                  <div className="bg-[#FAFAF7] border border-[#F5F0E8]/10 p-2 sm:p-4 overflow-x-auto">
                     <Calendar
                       mode="single"
                       selected={selectedDate}
@@ -372,7 +372,7 @@ export default function BookingTunnel() {
 
             {step === 2 && (
               <div data-testid="booking-step-2" className={hasTiers ? "max-w-2xl" : "max-w-md"}>
-                <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
+                <h2 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step2}
                 </h2>
                 <div className="gold-divider mb-8" />
@@ -482,13 +482,13 @@ export default function BookingTunnel() {
 
             {step === 3 && (
               <div data-testid="booking-step-3" className="max-w-3xl">
-                <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
+                <h2 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.step3}
                 </h2>
-                <div className="gold-divider mb-8" />
+                <div className="gold-divider mb-6 sm:mb-8" />
 
                 {/* Participants */}
-                <div className="space-y-6">
+                <div className="space-y-5 sm:space-y-6">
                   {participants.map((p, i) => {
                     const isFirst = i === 0;
                     const adultIndex = participants.slice(0, i + 1).filter((x) => x.kind === "adult").length;
@@ -506,12 +506,12 @@ export default function BookingTunnel() {
                       <div
                         key={i}
                         data-testid={`participant-${i}`}
-                        className="border border-[#0A0A0A]/10 bg-[#FAFAF7] p-6 md:p-7"
+                        className="border border-[#0A0A0A]/10 bg-[#FAFAF7] p-4 sm:p-6 md:p-7"
                       >
-                        <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-5">
+                        <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4 sm:mb-5">
                           {label}
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                           <Field
                             label={t.booking.surname}
                             value={p.surname}
@@ -663,12 +663,12 @@ export default function BookingTunnel() {
 
             {step === 4 && (
               <div data-testid="booking-step-4" className="max-w-2xl">
-                <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
+                <h2 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">
                   {t.booking.summary}
                 </h2>
-                <div className="gold-divider mb-8" />
+                <div className="gold-divider mb-6 sm:mb-8" />
 
-                <div className="bg-[#FAFAF7] border border-[#0A0A0A]/10 p-8 space-y-5">
+                <div className="bg-[#FAFAF7] border border-[#0A0A0A]/10 p-5 sm:p-8 space-y-4 sm:space-y-5">
                   <SummaryRow label={t.booking.offer} value={offerName} />
                   {isOvernight ? (
                     <>
@@ -846,12 +846,12 @@ export default function BookingTunnel() {
 
 function CounterRow({ label, sublabel, value, onDec, onInc, testId }) {
   return (
-    <div className="flex items-center justify-between border-b border-[#F5F0E8]/10 pb-6">
-      <div>
-        <div className="font-display-serif text-2xl text-[#0A0A0A]">{label}</div>
-        <div className="text-[0.75rem] text-[#0A0A0A]/40 mt-1">{sublabel}</div>
+    <div className="flex items-center justify-between gap-3 border-b border-[#F5F0E8]/10 pb-5 sm:pb-6">
+      <div className="min-w-0">
+        <div className="font-display-serif text-xl sm:text-2xl text-[#0A0A0A]">{label}</div>
+        <div className="text-[0.7rem] sm:text-[0.75rem] text-[#0A0A0A]/40 mt-1">{sublabel}</div>
       </div>
-      <div className="flex items-center gap-5" data-testid={testId}>
+      <div className="flex items-center gap-3 sm:gap-5 flex-shrink-0" data-testid={testId}>
         <button
           onClick={onDec}
           className="w-9 h-9 border border-[#B8922A]/40 text-[#B8922A] flex items-center justify-center hover:bg-[#B8922A]/10 transition-colors"
@@ -883,9 +883,9 @@ function Field({ label, value, onChange, testId, type = "text", min, max }) {
 
 function SummaryRow({ label, value }) {
   return (
-    <div className="flex items-start justify-between gap-6">
-      <span className="text-[0.7rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50">{label}</span>
-      <span className="text-sm text-[#0A0A0A] text-right max-w-[60%]">{value}</span>
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <span className="text-[0.7rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 mb-1 sm:mb-0">{label}</span>
+      <span className="text-sm text-[#0A0A0A] sm:text-right sm:max-w-[60%] break-words">{value}</span>
     </div>
   );
 }
@@ -894,11 +894,11 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
   const isFree = (booking.total_amount || 0) <= 0;
   return (
     <div data-testid="payment-view">
-      <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-2">
+      <h2 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">
         {isFree ? t.booking.confirmReservation : t.booking.step5}
       </h2>
       <div className="gold-divider mb-3" />
-      <p className="text-sm text-[#0A0A0A]/60 mb-8">
+      <p className="text-sm text-[#0A0A0A]/60 mb-6 sm:mb-8">
         {t.booking.summary} — <span className="text-[#B8922A] font-medium">
           {isFree ? t.offers.reservationOnly : formatXOF(booking.total_amount)}
         </span>
@@ -906,7 +906,7 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
       </p>
 
       {isFree ? (
-        <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 md:p-10 max-w-xl">
+        <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-6 sm:p-8 md:p-10 max-w-xl">
           <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">
             {booking.offer_name}
           </div>
@@ -928,7 +928,7 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Online payment option (card / mobile money handled by the gateway) */}
-          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-8 flex flex-col">
+          <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-6 sm:p-8 flex flex-col">
             <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">{t.booking.payCardLabel}</div>
             <div className="font-display-serif text-2xl text-[#0A0A0A] mb-2">
               {t.booking.payNow}
@@ -948,7 +948,7 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
 
           {/* Right column: deposit for hebergement, otherwise cash */}
           {isOvernight ? (
-            <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col" data-testid="deposit-card">
+            <div className="bg-white border border-[#0A0A0A]/15 p-6 sm:p-8 flex flex-col" data-testid="deposit-card">
               <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
                 {t.booking.payDepositLabel}
               </div>
@@ -969,15 +969,15 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
                       key={pct}
                       onClick={() => onPay("deposit", { deposit_pct: pct })}
                       disabled={!!paying}
-                      className="btn-ghost-gold w-full text-left flex items-center justify-between px-4 py-3"
+                      className="btn-ghost-gold w-full text-left flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 px-4 py-3"
                       data-testid={`pay-deposit-${pct}-btn`}
                     >
                       <span className="text-[0.7rem] uppercase tracking-[0.22em]">
                         {busy ? t.booking.payProcessing : `${t.booking.payDepositCta} ${pct}%`}
                       </span>
-                      <span className="text-sm font-medium">
-                        {new Intl.NumberFormat("fr-FR").format(amount)} FCFA
-                        <span className="text-[0.65rem] text-[#0A0A0A]/45 ml-2">
+                      <span className="text-sm font-medium flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                        <span>{new Intl.NumberFormat("fr-FR").format(amount)} FCFA</span>
+                        <span className="text-[0.65rem] text-[#0A0A0A]/45">
                           · {t.booking.balanceDue} {new Intl.NumberFormat("fr-FR").format(balance)} FCFA
                         </span>
                       </span>
@@ -987,7 +987,7 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
               </div>
             </div>
           ) : (
-            <div className="bg-white border border-[#0A0A0A]/15 p-8 flex flex-col">
+            <div className="bg-white border border-[#0A0A0A]/15 p-6 sm:p-8 flex flex-col">
               <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#0A0A0A]/60 mb-3">
                 {t.booking.payCash}
               </div>

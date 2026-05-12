@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 11 — Hébergement stats/PDF + Manager-side booking creation + scanner mode + mobile responsive tunnel. Backend pytest 20/20 PASS: GET /api/staff/hebergement/stats parameterized over period=day|week|month|year|all returns expected schema (kpis with 9 fields, by_tier, daily_trend, top_guests, history) and is 403 for receptionist & unauth; invalid period falls through to 'all'. GET /api/staff/hebergement/report.pdf returns application/pdf > 2KB starting with %PDF for manager; 403 for receptionist. POST /api/staff/bookings — receptionist 403, unauth rejected; manager creates pass_day (cash) → status=confirmed, qr_codes>=2, created_by_staff=true, created_by_email=manager email, paid_amount>0, balance_due=0, wallet_qr present, no _id leak; manager creates hebergement (deposit_pct=30) → paid_amount=30%·total, balance_due=70%·total, status=confirmed, nights=2. Public regression: POST /api/bookings + /pay (pass_day card, hebergement deposit 30%) end-to-end OK. Existing staff endpoints (heb/today, heb/calendar, /staff/revenue, /staff/clients) all 200 for manager. Frontend Playwright PASS: manager login → /staff/reservations shows [data-testid='newbooking-cta'] → click navigates to /staff/reservations/nouvelle (staff-new-booking visible) → pick newbooking-offer-pass_day → fill newbooking-date with next Monday → adults adjusted to 2 / children=0 → first boat-time button (6 options for weekday) → fill 2 participants + cash payment → newbooking-submit enabled → submit → URL redirects to /staff/reservations (toast 'Réservation créée'). /staff/hebergement renders [data-testid='heb-stats-section'] with heb-period-month, heb-pdf-btn; switching to heb-period-week reloads stats and history-toggle becomes clickable. /staff/scanner renders staff-scanner with scanner-mode-camera & scanner-mode-manual + scanner-camera-card; switching to manual exposes scanner-token-input + scanner-lookup-btn; invalid token returns 'QR code not recognised'. Mobile (390x844) /booking/pass_day: horizontal overflow = 0px, calendar fully visible, RETOUR/SUIVANT reachable on step 1.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_staff_bookings.py",
+    "/app/test_reports/pytest/iter11.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 3844 lines (was 3427 in iter10) — the file keeps growing. Hébergement stats/PDF (~190 LOC at 3057-3417) and the staff_create_booking endpoint (~50 LOC at 3420-3473) are cohesive units that belong in /backend/routers/hebergement.py and /backend/routers/staff_bookings.py respectively. Splitting would shrink server.py by ~250 LOC.",
+    "staff_create_booking (server.py:3440) calls create_booking() then patches the booking with $set created_by_staff/created_by_email — the response from create_booking is what is paid in step 2, but the patch is not reflected on the returned `paid` dict until the test manually merges them (the code does `paid['created_by_staff']=True` after pay_booking). This works, but if a future change makes pay_booking refetch the booking, the patch would already be in DB so the manual override would still match. Minor code-smell: prefer setting these flags BEFORE create_booking finalizes (pass kwargs) or refetch after pay_booking to keep a single source of truth.",
+    "hebergement_stats (server.py:3074) iterates up to 2000 bookings into Python — fine for current scale but at >5K stays per period this will get slow. Consider a $match + $group MongoDB aggregation for kpis/by_tier and keep the per-day occupancy loop only.",
+    "hebergement_stats computes `per_night_rev = amount // n` (integer division) for daily_revenue; this drops up to (n-1) FCFA per stay on totals — acceptable rounding for reporting but be aware sum(daily_revenue) won't always equal revenue_total.",
+    "Public regression confirmed: /api/bookings + /pay flows work end-to-end including deposit 30% (paid=30%·total, balance=70%·total). No _id leakage observed in any staff response.",
+    "Scanner page renders camera card by default; on environments where camera permission is denied the graceful fallback should be visible — manual fallback works correctly (tested with invalid token → 'QR code not recognised').",
+    "Mobile booking tunnel /booking/pass_day at 390x844: horizontal scrollwidth - clientwidth = 0px (no overflow), calendar grid sized to viewport, footer buttons reachable. Responsive padding/font tweaks confirmed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11_staff_bookings.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@boulay.ci / Admin@2026 · manager@boulay.ci / Manager@2026 · reception@boulay.ci / Reception@2026. Login endpoint POST /api/auth/staff/login → 'access_token'.",
+  "seed_data_creation": "Backend pytest created TEST_ prefixed bookings: 1× staff-created pass_day cash (manager), 1× staff-created hebergement deposit-30 (manager), 1× public pass_day card, 1× public hebergement deposit-30 — all on future dates. Each spawned a wallet doc. Frontend Playwright added 1× pass_day cash booking via UI on next-Monday (target ~2026-05-25). Hebergement room_tiers are: ['superieure','suite_jardin','suite_mer'] (not 'deluxe'/'classic').",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Hebergement offer's room_tier IDs are 'superieure', 'suite_jardin', 'suite_mer'. Pydantic EmailStr rejects '@boulay.test' (reserved TLD) — use @boulay.ci or @example.ci for participant emails. /api/staff/bookings reuses create_booking + pay_booking so weekday/capacity validators still apply; deposit_pct must be in (10,30,70). For boat_time pick BOAT_TIMES_WEEKDAY=['10H','12H','14H','16H','18H','20H'] on Mon-Fri and BOAT_TIMES_WEEKEND=hourly 10H-20H on weekends. StaffNewBooking defaults adults=2 — when scripting Playwright, read the counter value and adjust accordingly rather than blindly clicking +. /staff/revenue response keys: avg_basket, by_method, by_offer, daily_trend (no 'total'/'revenue_total'/'kpis').",
+  "rca of the issue": "N/A — all iteration 11 features (Hébergement stats/PDF, manager-side booking, scanner camera/manual modes, mobile booking tunnel) function as specified."
+}
