@@ -56,6 +56,10 @@ export default function StaffScanner() {
   // a QR is recognised, so without this flag we'd trigger several /staff/scan
   // requests in parallel (flickering UI + spurious errors).
   const processingRef = useRef(false);
+  // Block concurrent camera starts (React StrictMode runs effects twice in dev,
+  // and rapid mode switches can otherwise create two Html5Qrcode instances on the
+  // same DOM region → camera locks up).
+  const startingRef = useRef(false);
 
   // Stop scanner on unmount
   useEffect(() => {
@@ -140,6 +144,8 @@ export default function StaffScanner() {
   };
 
   const startCamera = async () => {
+    if (startingRef.current) return; // concurrent guard
+    startingRef.current = true;
     setCameraError(null);
     // If a previous instance is still around, stop it first.
     if (scannerRef.current) {
@@ -153,10 +159,15 @@ export default function StaffScanner() {
       // Wait two animation frames so React has actually committed the <div id> to the DOM.
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       // Sanity check: the scan region must exist before instantiating Html5Qrcode.
-      if (!document.getElementById(SCAN_REGION_ID)) {
-        setCameraError("Zone de scan introuvable. Rechargez la page.");
+      const regionEl = document.getElementById(SCAN_REGION_ID);
+      if (!regionEl) {
+        // Component unmounted or mode switched away — silently abort.
+        startingRef.current = false;
         return;
       }
+      // Clear any leftover DOM children inside the region (a previous stopped instance
+      // may have left an injected <video> / <canvas> behind).
+      regionEl.innerHTML = "";
       const instance = new Html5Qrcode(SCAN_REGION_ID);
       scannerRef.current = instance;
       await instance.start(
@@ -174,6 +185,8 @@ export default function StaffScanner() {
       );
       setCameraOn(false);
       scannerRef.current = null;
+    } finally {
+      startingRef.current = false;
     }
   };
 
