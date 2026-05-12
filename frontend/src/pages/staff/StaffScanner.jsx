@@ -2,10 +2,25 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../lib/api";
 import { toast } from "sonner";
-import { QrCode, CheckCircle2, ScanLine, Camera, CameraOff, Keyboard, Sparkles } from "lucide-react";
+import { QrCode, CheckCircle2, ScanLine, Camera, CameraOff, Keyboard, Sparkles, Wallet } from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
 
 const SCAN_REGION_ID = "qr-scan-region";
+
+const PAYMENT_FR = {
+  card: "Carte bancaire",
+  fineo: "Carte bancaire",
+  mobile_money: "Mobile Money",
+  cash: "Espèces",
+  deposit: "Acompte",
+};
+const STATUS_FR = {
+  pending: "En attente",
+  confirmed: "Confirmée",
+  arrived: "Arrivée",
+  completed: "Terminée",
+  cancelled: "Annulée",
+};
 
 export default function StaffScanner() {
   const navigate = useNavigate();
@@ -16,6 +31,10 @@ export default function StaffScanner() {
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const scannerRef = useRef(null);
+  // Block duplicate decodes: html5-qrcode fires the callback on every frame where
+  // a QR is recognised, so without this flag we'd trigger several /staff/scan
+  // requests in parallel (flickering UI + spurious errors).
+  const processingRef = useRef(false);
 
   // Stop scanner on unmount
   useEffect(() => {
@@ -28,6 +47,8 @@ export default function StaffScanner() {
   }, []);
 
   const handleScanned = async (decodedText) => {
+    if (processingRef.current) return; // ignore subsequent frames
+    processingRef.current = true;
     // Detect QR type. The QR can contain:
     //  - {"type":"ticket","token":"…"}  (current compact format)
     //  - {"type":"wallet","token":"…"}  (activities wallet)
@@ -52,16 +73,19 @@ export default function StaffScanner() {
         /* not JSON */
       }
     }
-    if (isWallet) {
-      // Stop camera and route to the activities page with the token prefilled
+    try {
+      if (isWallet) {
+        await stopCamera();
+        toast.success("Carte Activités détectée");
+        navigate(`/staff/activites?token=${encodeURIComponent(walletToken)}`);
+        return;
+      }
       await stopCamera();
-      toast.success("Carte Activités détectée");
-      navigate(`/staff/activites?token=${encodeURIComponent(walletToken)}`);
-      return;
+      await lookup(guestToken || payload);
+    } finally {
+      // Allow the next manual scan attempt once UI is in `result` mode.
+      // (reset() will clear this on the next scan request.)
     }
-    // Otherwise: reservation QR
-    await stopCamera();
-    await lookup(guestToken || payload);
   };
 
   const lookup = async (token) => {
@@ -141,12 +165,14 @@ export default function StaffScanner() {
   const reset = async () => {
     setResult(null);
     setTokenInput("");
-    if (mode === "camera" && !cameraOn) await startCamera();
+    processingRef.current = false;
+    // Camera will auto-restart via the useEffect below (no need to start it manually).
   };
 
-  // Auto-start camera when mode = camera
+  // Auto-start camera when mode = camera and no result is shown
   useEffect(() => {
     if (mode === "camera" && !cameraOn && !result) {
+      processingRef.current = false;
       startCamera();
     } else if (mode !== "camera" && cameraOn) {
       stopCamera();
@@ -248,23 +274,64 @@ export default function StaffScanner() {
         <div className="bg-white border border-[#B8922A]/40 p-5 sm:p-8" data-testid="scanner-result">
           <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">QR Valide</div>
           <h2 className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A] mb-1">
-            {result.guest_surname} {result.guest_name}
+            {result.guest_surname || result.guest_name ? `${result.guest_surname || ""} ${result.guest_name || ""}`.trim() : "Invité"}
           </h2>
-          <p className="text-sm text-[#0A0A0A]/55 mb-6">{result.guest_nationality}</p>
+          <p className="text-sm text-[#0A0A0A]/55 mb-1">{result.guest_nationality || "—"}</p>
+          {(result.guest_phone || result.guest_email) && (
+            <p className="text-[0.72rem] text-[#0A0A0A]/55 mb-6 flex flex-wrap gap-x-3">
+              {result.guest_phone && <span>{result.guest_phone}</span>}
+              {result.guest_email && <span>· {result.guest_email}</span>}
+            </p>
+          )}
+          {!result.guest_phone && !result.guest_email && <div className="mb-6" />}
 
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm border-y border-[#0A0A0A]/10 py-5">
             <div>
               <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Offre</dt>
-              <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.offer_name}</dd>
+              <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.offer_name || "—"}</dd>
             </div>
             <div>
-              <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Date</dt>
-              <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.date}</dd>
+              <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">
+                {result.checkout_date ? "Arrivée" : "Date"}
+              </dt>
+              <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.date || "—"}</dd>
             </div>
+            {result.checkout_date && (
+              <>
+                <div>
+                  <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Départ</dt>
+                  <dd className="text-[#0A0A0A] font-medium mt-0.5">
+                    {result.checkout_date}
+                    {result.nights > 0 && (
+                      <span className="text-[0.7rem] text-[#0A0A0A]/55 ml-2">
+                        · {result.nights} nuit{result.nights > 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+                {result.room_tier_name && (
+                  <div>
+                    <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Chambre</dt>
+                    <dd className="text-[#0A0A0A] font-medium mt-0.5">
+                      {result.room_tier_name}
+                      {result.rooms > 1 && <span className="text-[0.7rem] text-[#0A0A0A]/55 ml-2">× {result.rooms}</span>}
+                    </dd>
+                  </div>
+                )}
+              </>
+            )}
             <div>
-              <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Bateau</dt>
-              <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.boat_time}</dd>
+              <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">
+                {result.checkout_date ? "Bateau aller" : "Bateau"}
+              </dt>
+              <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.boat_time || "—"}</dd>
             </div>
+            {result.return_boat_time && (
+              <div>
+                <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Bateau retour</dt>
+                <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.return_boat_time}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Convives</dt>
               <dd className="text-[#0A0A0A] font-medium mt-0.5">
@@ -274,13 +341,23 @@ export default function StaffScanner() {
             <div>
               <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Paiement</dt>
               <dd className="text-[#0A0A0A] font-medium mt-0.5">
-                {result.payment_method || "—"}
+                {PAYMENT_FR[result.payment_method] || result.payment_method || "—"}
                 {result.total_amount > 0 && ` · ${result.total_amount.toLocaleString("fr-FR")} FCFA`}
               </dd>
             </div>
+            {result.balance_due > 0 && (
+              <div className="sm:col-span-2 bg-amber-50 border border-amber-200 px-3 py-2 -mx-2">
+                <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-amber-700">
+                  Solde à régler à l'arrivée{result.deposit_pct ? ` · acompte ${result.deposit_pct}% versé` : ""}
+                </dt>
+                <dd className="text-amber-900 font-display-serif text-lg mt-0.5">
+                  {result.balance_due.toLocaleString("fr-FR")} FCFA
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Statut</dt>
-              <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.status}</dd>
+              <dd className="text-[#0A0A0A] font-medium mt-0.5">{STATUS_FR[result.status] || result.status || "—"}</dd>
             </div>
           </dl>
 
@@ -306,6 +383,16 @@ export default function StaffScanner() {
             >
               <CheckCircle2 size={18} /> Déjà arrivé
             </div>
+          )}
+
+          {result.wallet_token && (
+            <button
+              onClick={() => navigate(`/staff/activites?token=${encodeURIComponent(result.wallet_token)}`)}
+              className="mt-3 w-full bg-white hover:bg-[#FAFAF7] border border-[#B8922A]/40 text-[#B8922A] py-3 text-sm uppercase tracking-[0.22em] inline-flex items-center justify-center gap-3 transition-colors"
+              data-testid="scanner-open-wallet-btn"
+            >
+              <Wallet size={14} /> Ouvrir la carte Activités
+            </button>
           )}
 
           <button
