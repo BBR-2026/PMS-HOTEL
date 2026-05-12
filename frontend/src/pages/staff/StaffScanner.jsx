@@ -192,13 +192,22 @@ export default function StaffScanner() {
 
   const stopCamera = async () => {
     if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-        await scannerRef.current.clear();
-      } catch {
-        /* already stopped */
-      }
+      const instance = scannerRef.current;
       scannerRef.current = null;
+      // Wrap stop/clear in a timeout so a hung native getUserMedia release on
+      // Safari iOS can't block the UI for more than 800ms.
+      const timeout = new Promise((resolve) => setTimeout(resolve, 800));
+      try {
+        await Promise.race([
+          (async () => {
+            try { await instance.stop(); } catch { /* ignore */ }
+            try { await instance.clear(); } catch { /* ignore */ }
+          })(),
+          timeout,
+        ]);
+      } catch {
+        /* swallow */
+      }
     }
     setCameraOn(false);
   };
@@ -227,13 +236,14 @@ export default function StaffScanner() {
     }
   };
 
-  const reset = async () => {
-    // Stop camera FIRST so it releases its media stream before we unmount the scan region.
-    await stopCamera();
+  const reset = () => {
+    // Synchronous state reset so the UI re-renders immediately, even if the
+    // underlying MediaStream is slow to release (typical Safari iOS issue).
     processingRef.current = false;
     setTokenInput("");
     setResult(null);
-    // useEffect below will re-mount the scan region and restart the camera if in camera mode.
+    // Stop the camera in the background — the useEffect will then restart it.
+    stopCamera().catch(() => {});
   };
 
   // Auto-start camera when mode = camera and no result is shown
@@ -495,10 +505,10 @@ export default function StaffScanner() {
 
           <button
             onClick={reset}
-            className="mt-5 w-full text-xs uppercase tracking-[0.22em] text-[#0A0A0A]/55 hover:text-[#B8922A] py-2"
+            className="mt-5 w-full bg-[#FAFAF7] hover:bg-[#0A0A0A] hover:text-white text-[#0A0A0A] border border-[#0A0A0A]/15 hover:border-[#0A0A0A] py-3 text-[0.7rem] uppercase tracking-[0.22em] inline-flex items-center justify-center gap-3 transition-colors"
             data-testid="scanner-new-scan-btn"
           >
-            Scanner un autre QR
+            <ScanLine size={14} /> Scanner un autre QR
           </button>
         </div>
       )}
