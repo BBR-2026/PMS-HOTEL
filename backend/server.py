@@ -1939,14 +1939,60 @@ def _format_xof(amount: int) -> str:
     return f"{n:,}".replace(",", " ") + " FCFA"
 
 
+async def _resolve_qr_token(raw: str):
+    """Resolve a raw user-supplied token into the real qr_token.
+
+    A booking's `qr_codes[].qr_token` is a 32-hex-character lowercase string. However
+    the printed PNG ticket only shows a short reference (e.g. "5DF111909C", which is
+    `token[:10].upper()`). Receptionists tend to type that visible code into the manual
+    scanner. Without normalisation the lookup would 404 because of case + length mismatch.
+
+    Strategy:
+      1. Try exact match (current behaviour, fastest).
+      2. Else lowercase and try again.
+      3. Else treat the input as a prefix (>=8 chars) and search via regex.
+    Returns the booking dict + the matching qr_token, or (None, None).
+    """
+    if not raw:
+        return None, None
+    raw = raw.strip()
+    # 1. Exact
+    booking = await db.bookings.find_one({"qr_codes.qr_token": raw}, {"_id": 0})
+    if booking:
+        return booking, raw
+    # 2. Lowercase exact
+    low = raw.lower()
+    if low != raw:
+        booking = await db.bookings.find_one({"qr_codes.qr_token": low}, {"_id": 0})
+        if booking:
+            return booking, low
+    # 3. Prefix match (only if user typed >=8 hex chars, to avoid ambiguity)
+    import re as _re
+    if _re.fullmatch(r"[0-9a-f]{8,}", low):
+        pattern = _re.compile(f"^{_re.escape(low)}")
+        booking = await db.bookings.find_one({"qr_codes.qr_token": {"$regex": pattern}}, {"_id": 0})
+        if booking:
+            real = next(
+                (q.get("qr_token") for q in booking.get("qr_codes", []) if q.get("qr_token", "").startswith(low)),
+                None,
+            )
+            if real:
+                return booking, real
+    return None, None
+
+
 # ---------- QR Scanner (Module 4) ----------
 @api.get("/staff/scan/{qr_token}")
 async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
-    """Look up a booking by QR token. Returns the participant + booking summary + scan history."""
-    booking = await db.bookings.find_one({"qr_codes.qr_token": qr_token}, {"_id": 0})
+    """Look up a booking by QR token. Returns the participant + booking summary + scan history.
+
+    Accepts: full 32-hex token (camera scan), lowercase/uppercase variants, OR the 10-char
+    reference code (or any >=8-char prefix) printed on the styled PNG ticket.
+    """
+    booking, real_token = await _resolve_qr_token(qr_token)
     if not booking:
-        raise HTTPException(status_code=404, detail="QR code not recognised")
-    guest = next((q for q in booking.get("qr_codes", []) if q.get("qr_token") == qr_token), None)
+        raise HTTPException(status_code=404, detail="QR code non reconnu")
+    guest = next((q for q in booking.get("qr_codes", []) if q.get("qr_token") == real_token), None)
     scans = (guest or {}).get("scans", [])
     next_direction = "aller" if len(scans) == 0 else ("retour" if len(scans) == 1 else None)
     summary = {
@@ -1979,7 +2025,7 @@ async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
         "guest_phone": guest.get("guest_phone") if guest else "",
         "guest_email": guest.get("guest_email") if guest else "",
         "guest_label_fr": guest.get("label_fr") if guest else "",
-        "qr_token": qr_token,
+        "qr_token": real_token,
         "scans": scans,
         "scan_count": len(scans),
         "next_direction": next_direction,
@@ -1997,12 +2043,14 @@ async def checkin_qr(qr_token: str, staff=Depends(get_current_staff)):
     - Second scan → direction='retour' and booking status becomes 'completed'
     - Third scan → 400 'QR code déjà utilisé entièrement'
     Each scan stores: direction, scanned_at, staff_email.
+
+    Accepts the same flexible token formats as GET /staff/scan/{qr_token}.
     """
-    booking = await db.bookings.find_one({"qr_codes.qr_token": qr_token}, {"_id": 0})
+    booking, real_token = await _resolve_qr_token(qr_token)
     if not booking:
         raise HTTPException(status_code=404, detail="QR code non reconnu")
     qrs = booking.get("qr_codes", [])
-    idx = next((i for i, q in enumerate(qrs) if q.get("qr_token") == qr_token), -1)
+    idx = next((i for i, q in enumerate(qrs) if q.get("qr_token") == real_token), -1)
     if idx == -1:
         raise HTTPException(status_code=404, detail="QR code non reconnu")
     scans = qrs[idx].get("scans") or []

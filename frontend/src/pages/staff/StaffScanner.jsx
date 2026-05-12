@@ -326,14 +326,20 @@ export default function StaffScanner() {
       {!result && mode === "manual" && (
         <div className="bg-white border border-[#B8922A]/30 p-6 sm:p-10 text-center" data-testid="scanner-input-card">
           <ScanLine size={42} className="text-[#B8922A]/40 mx-auto mb-5" />
+          <p className="text-[0.72rem] text-[#0A0A0A]/55 mb-4">
+            Saisissez le code de référence visible sur le billet (ex. <span className="font-mono text-[#0A0A0A]">5DF111909C</span>) ou le token complet.
+          </p>
           <input
             value={tokenInput}
             onChange={(e) => setTokenInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && tokenInput && lookup(tokenInput)}
-            placeholder="Token QR ou contenu JSON…"
-            className="w-full border-b border-[#0A0A0A]/15 px-3 py-2.5 text-center text-base focus:border-[#B8922A] outline-none"
+            placeholder="Référence (10 caractères) ou token QR…"
+            className="w-full border-b border-[#0A0A0A]/15 px-3 py-2.5 text-center text-base font-mono tracking-wider focus:border-[#B8922A] outline-none"
             data-testid="scanner-token-input"
             autoFocus
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
           />
           <button
             onClick={() => tokenInput && lookup(tokenInput)}
