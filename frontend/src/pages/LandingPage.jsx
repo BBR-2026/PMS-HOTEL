@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../lib/api";
 import { useLang } from "../context/LanguageContext";
 import OfferCard from "../components/OfferCard";
+import SpecialEventCard from "../components/SpecialEventCard";
 
 const IMG_PASS_DAY = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4kr4z5g1_DAY%20PASS.jpeg";
 const IMG_SUNSET = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/3g3onmkg_THE%20SUNSET.jpeg";
@@ -21,9 +22,11 @@ const IMG_BY_ID = {
 export default function LandingPage() {
   const { t } = useLang();
   const [offers, setOffers] = useState([]);
+  const [featuredEvent, setFeaturedEvent] = useState(null);
 
   useEffect(() => {
     api.get("/offers").then((r) => setOffers(r.data)).catch(() => {});
+    api.get("/special-events/featured").then((r) => setFeaturedEvent(r.data?.event || null)).catch(() => {});
   }, []);
 
   const bulletsByOffer = {
@@ -50,13 +53,16 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr gap-6 lg:gap-8 items-stretch justify-items-center">
+            {featuredEvent && (
+              <SpecialEventCard event={featuredEvent} index={0} />
+            )}
             {offers.map((offer, i) => (
               <OfferCard
                 key={offer.id}
                 offer={offer}
                 image={IMG_BY_ID[offer.id]}
                 bullets={bulletsByOffer[offer.id]}
-                index={i}
+                index={featuredEvent ? i + 1 : i}
               />
             ))}
           </div>

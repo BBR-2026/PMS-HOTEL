@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 12 — Special Events module (CRUD + booking integration) + non-regression. 28/28 pytest tests PASS against https://reserve-bbr.preview.emergentagent.com/api. Verified: GET /api/special-events/featured (public, no auth) returns the seeded 'Saint-Valentin à Boulay' (id=a4ad1d2b…) with seats_per_date dict and no _id leak. GET /api/special-events/{id} returns 404 on unknown, 400 on draft/unpublished, 200 with upcoming-only event_dates + seats_per_date on published. Staff CRUD: receptionist gets 403 on POST + DELETE; manager creates draft (is_featured=false, status=draft) → PATCH updates updated_at → /feature flips is_featured=true and unsets ALL others atomically → /unfeature flips back → /duplicate clones with title suffix '(copie)' status=draft is_featured=false → DELETE blocked 400 when 2 active bookings reference the event (seeded event preserved) → admin can DELETE event with zero active bookings. Booking integration: offer_type='special_event' WITHOUT special_event_id → 400; with date hors event_dates → 400; with boat_time hors boat_times → 400; with draft event → 400; happy path → booking created with total=adults*price_adult+children*price_child; deposit on special_event refused 400 (not overnight); /pay payment_method=card produces qr_codes per guest (qr_code data:image/png;base64,…, ticket_image PNG, qr_token present) with offer.image_url passed as hero_url to make_ticket_image. Capacity-per-date enforced: cap=5 + 4 already booked → 2 new refused with 'availability' message. Non-regression: GET /api/offers returns exactly the 5 static offers (pass_day, sunset, brunch, le_kaai, hebergement) — special_event correctly excluded; classic pass_day (Mon), sunset (Sat), brunch (Sun), le_kaai (any), hebergement overnight 30%-deposit all create+pay end-to-end successfully; /api/staff/scan/{qr_token}/checkin still accepts skipper_name (persisted in scan entry). Seeded event re-featured after the test suite — frontend featured endpoint confirmed returning Saint-Valentin again.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration12_special_events.py",
+    "/app/test_reports/pytest/iter12_special_events.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 5187 lines — special_events is a self-contained module (~240 LOC at 1480-1716 + 33 LOC helper at 1010-1042 + 30 LOC of branching in create_booking/pay_booking) that belongs in /backend/routers/special_events.py. Extracting it would shrink server.py by ~300 LOC and isolate the feature.",
+    "_resolve_special_event_offer (server.py:1010) raises HTTPException 400 with detail='Special event is not currently published' for non-published events — but the public GET /special-events/{id} (server.py:1559) returns 'Cet événement n'est pas disponible à la réservation' (FR). Public-facing messages should be consistently localized; consider a single FR error message factory for the module.",
+    "_public_event injects a top-level 'today' field in the response — useful for the frontend to compute remaining time but it's also returned by the create endpoint via the staff list (which uses raw doc not _public_event). Inconsistency: staff GET /staff/special-events returns raw doc (with seeded fields like created_by_email), public GET returns curated _public_event projection. Documented but worth flagging.",
+    "staff_create_special_event (server.py:1616) inserts via `dict(doc)` then returns `doc` — the insert_one mutates the dict to add _id. Line 1628 `doc.pop('_id', None)` cleans it up, OK. Same care taken in duplicate (line 1695). Good.",
+    "_resolve_special_event_offer returns max_capacity=0 if capacity missing, which would let an unconfigured event fail at the capacity check with 'Not enough availability' rather than a clearer 'event not configured'. Minor UX.",
+    "Capacity check in create_booking iterates booked count in Python (loop over cursor). For events with many bookings, prefer a $group aggregation — same comment as iter11 stats.",
+    "Public regression confirmed: 5 classic offers + their booking flows (incl. hebergement deposit 30%) work end-to-end. Scanner check-in still honours skipper_name and persists it in the scan entry."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration12_special_events.py"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "n/a (skipped per request)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 · manager@boulay.ci / Manager@2026 · reception@boulay.ci / Reception@2026. Login endpoint POST /api/auth/staff/login → access_token.",
+  "seed_data_creation": "Tests created (and cleaned up where possible) several TEST_ prefixed events. Events with active TEST_ bookings remain archived (status='archived') because DELETE is blocked when bookings reference them — visible to staff but invisible to public landing. Test bookings for pass_day/sunset/brunch/le_kaai/hebergement on future dates were created via the public /api/bookings endpoint and paid (card or deposit). Seeded event 'Saint-Valentin à Boulay' (a4ad1d2b-eaed-476f-8fa5-7d508b165dc4) was temporarily unfeatured during the feature/unfeature test then re-featured — confirmed via /api/special-events/featured at end of run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Special events use db.special_events. Field shape: id, title, subtitle, description, image_url, event_dates[YYYY-MM-DD], boat_times, return_boat_times, price_adult, price_child, capacity, active_from, active_to, cta_label, status(draft|published|archived), is_featured, created_at, updated_at, created_by_email. Booking integration: offer_type='special_event' branches via _resolve_special_event_offer; allowed dates = event.event_dates (not weekday-based); allowed boat_times = event.boat_times; capacity check filters by special_event_id + date + status!=cancelled. /pay refuses deposit for special_event (not overnight). The /staff/checkin endpoint path is /api/staff/scan/{qr_token}/checkin (POST) with optional body {direction, boat_time, boat_id, boat_name, skipper_name}; QR field on bookings.qr_codes[*] is 'qr_token' (used to lookup), 'qr_code' (base64 PNG data URL), 'ticket_image' (base64 PNG). Seed event left archived after capacity/book/pay tests — cleanup left them in 'archived' status (no active bookings → admin can delete if wanted).",
+  "rca of the issue": "N/A — all special_events endpoints and the non-regression scope behave per spec. The two initial test failures were assertion mistakes on test side (wrong field names 'qr_image'/'qr_png' instead of 'qr_code', wrong path /api/staff/checkin instead of /api/staff/scan/{token}/checkin) and were corrected — no product changes required."
+}

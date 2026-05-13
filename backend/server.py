@@ -121,7 +121,7 @@ OFFERS = {
     },
 }
 
-OfferType = Literal["pass_day", "sunset", "brunch", "le_kaai", "hebergement"]
+OfferType = Literal["pass_day", "sunset", "brunch", "le_kaai", "hebergement", "special_event"]
 BookingStatus = Literal["pending", "confirmed", "arrived", "completed", "cancelled"]
 
 # Weekday boat times (every 2 hours) and weekend boat times (hourly)
@@ -186,6 +186,8 @@ class BookingCreate(BaseModel):
     return_boat_time: Optional[str] = None  # required for overnight stays (departure from resort on checkout day)
     participants: List[Participant]
     special_requests: Optional[str] = ""
+    # Required when offer_type == "special_event". Identifies which event the booking targets.
+    special_event_id: Optional[str] = None
 
 
 class PayBooking(BaseModel):
@@ -204,6 +206,43 @@ class EventPrivatization(BaseModel):
     event_date: str
     guest_count: int
     message: Optional[str] = ""
+
+
+class SpecialEventCreate(BaseModel):
+    """Bookable themed event (e.g. NYE, Valentine's, Easter Brunch).
+    Only one event can be `is_featured=True` at a time — see /staff/special-events/{id}/feature.
+    """
+    title: str = Field(min_length=1, max_length=120)
+    subtitle: Optional[str] = ""
+    description: Optional[str] = ""
+    image_url: Optional[str] = ""  # http URL or "data:image/...;base64,..."
+    event_dates: List[str] = Field(default_factory=list)  # YYYY-MM-DD
+    boat_times: List[str] = Field(default_factory=list)
+    return_boat_times: List[str] = Field(default_factory=list)
+    price_adult: int = Field(default=0, ge=0)
+    price_child: int = Field(default=0, ge=0)
+    capacity: int = Field(default=100, ge=1, le=2000)
+    active_from: Optional[str] = None  # YYYY-MM-DD (visibility window start)
+    active_to: Optional[str] = None  # YYYY-MM-DD
+    cta_label: Optional[str] = "Réserver ma place"
+    status: Literal["draft", "published", "archived"] = "draft"
+
+
+class SpecialEventUpdate(BaseModel):
+    title: Optional[str] = None
+    subtitle: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    event_dates: Optional[List[str]] = None
+    boat_times: Optional[List[str]] = None
+    return_boat_times: Optional[List[str]] = None
+    price_adult: Optional[int] = Field(default=None, ge=0)
+    price_child: Optional[int] = Field(default=None, ge=0)
+    capacity: Optional[int] = Field(default=None, ge=1, le=2000)
+    active_from: Optional[str] = None
+    active_to: Optional[str] = None
+    cta_label: Optional[str] = None
+    status: Optional[Literal["draft", "published", "archived"]] = None
 
 
 # ----- Helpers -----
@@ -314,16 +353,28 @@ def _paste_logo(canvas, top: int, max_h: int = 110, max_w_ratio: float = 1.0):
 _HERO_CACHE: dict = {}
 
 
-def _fetch_hero(offer_id: str):
-    url = OFFER_HERO_URLS.get(offer_id)
+def _fetch_hero(offer_id: str, hero_url: Optional[str] = None):
+    """Fetch + cache the hero image. If ``hero_url`` is provided, it overrides
+    the static OFFER_HERO_URLS lookup (used for special-event tickets with a
+    staff-uploaded image). Accepts http(s) URLs and base64 ``data:`` URIs.
+    """
+    url = hero_url or OFFER_HERO_URLS.get(offer_id)
     if not url:
         return None
     if url in _HERO_CACHE:
         return _HERO_CACHE[url].copy()
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = resp.read()
+        if url.startswith("data:"):
+            # Inline base64-encoded image — supports "data:image/...;base64,xxxx"
+            try:
+                head, b64 = url.split(",", 1)
+            except ValueError:
+                return None
+            data = base64.b64decode(b64)
+        else:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read()
         img = Image.open(io.BytesIO(data)).convert("RGB")
         # Trim the bottom white/cream "footer band" that brand marketing assets
         # commonly include below the chevron decoration. Without this, that band
@@ -382,6 +433,7 @@ def make_ticket_image(
     qr_payload: str,
     ref_code: str,
     lang: str = "fr",
+    hero_url: Optional[str] = None,
 ) -> str:
     """Render the full luxury ticket as a base64 PNG data URL.
 
@@ -420,7 +472,7 @@ def make_ticket_image(
 
     # ---- Hero image ----
     hero_x = 30
-    hero = _fetch_hero(offer_id)
+    hero = _fetch_hero(offer_id, hero_url=hero_url)
     if hero is not None:
         ratio_src = hero.width / hero.height
         ratio_dst = hero_w / hero_h
@@ -552,6 +604,7 @@ def make_cash_receipt_image(
     owner_name: str,
     ref_code: str,
     lang: str = "fr",
+    hero_url: Optional[str] = None,
 ) -> str:
     """Render the *temporary cash receipt* template as a base64 PNG data URL.
 
@@ -609,7 +662,7 @@ def make_cash_receipt_image(
 
     # --- Hero image ---
     hero_x = 60
-    hero = _fetch_hero(offer_id)
+    hero = _fetch_hero(offer_id, hero_url=hero_url)
     if hero is not None:
         ratio_src = hero.width / hero.height
         ratio_dst = hero_w / hero_h
@@ -954,11 +1007,50 @@ async def availability(offer_id: str, when: str):
 
 
 # ----- Bookings (guest flow, no auth) -----
+async def _resolve_special_event_offer(event_id: str) -> dict:
+    """Load the event from db.special_events and return an OFFERS-shaped dict.
+    Raises 400/404 if the event is missing, archived, or out of activation window.
+    """
+    if not event_id:
+        raise HTTPException(status_code=400, detail="special_event_id is required for special_event bookings")
+    ev = await db.special_events.find_one({"id": event_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Special event not found")
+    if ev.get("status") != "published":
+        raise HTTPException(status_code=400, detail="Special event is not currently published")
+    today = datetime.now(timezone.utc).date().isoformat()
+    if ev.get("active_from") and today < ev["active_from"]:
+        raise HTTPException(status_code=400, detail="Special event booking is not yet open")
+    if ev.get("active_to") and today > ev["active_to"]:
+        raise HTTPException(status_code=400, detail="Special event booking window is closed")
+    return {
+        "id": "special_event",
+        "event_id": ev["id"],
+        "name_fr": ev.get("title") or "Événement Spécial",
+        "name_en": ev.get("title") or "Special Event",
+        "schedule_fr": ev.get("subtitle") or "",
+        "schedule_en": ev.get("subtitle") or "",
+        "tagline_fr": ev.get("description") or "",
+        "tagline_en": ev.get("description") or "",
+        "price_adult": int(ev.get("price_adult", 0)),
+        "price_child": int(ev.get("price_child", 0)),
+        "max_capacity": int(ev.get("capacity", 0)),
+        "event_dates": list(ev.get("event_dates") or []),
+        "boat_times": list(ev.get("boat_times") or []),
+        "return_boat_times": list(ev.get("return_boat_times") or []),
+        "image_url": ev.get("image_url") or "",
+    }
+
+
 @api.post("/bookings")
 async def create_booking(body: BookingCreate):
-    if body.offer_type not in OFFERS:
-        raise HTTPException(status_code=400, detail="Invalid offer")
-    offer = OFFERS[body.offer_type]
+    is_special = body.offer_type == "special_event"
+    if is_special:
+        offer = await _resolve_special_event_offer(body.special_event_id or "")
+    else:
+        if body.offer_type not in OFFERS:
+            raise HTTPException(status_code=400, detail="Invalid offer")
+        offer = OFFERS[body.offer_type]
 
     # Validate boat_time against offer-specific allowed times (day-dependent for le_kaai)
     try:
@@ -968,22 +1060,37 @@ async def create_booking(body: BookingCreate):
     if booking_date < datetime.now(timezone.utc).date():
         raise HTTPException(status_code=400, detail="Date must be in the future")
 
-    allowed_times = _boat_times_for_date(body.offer_type, booking_date.weekday())
-    if body.boat_time not in allowed_times:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid boat time for {body.offer_type}. Allowed: {', '.join(allowed_times)}",
-        )
-
-    # Validate day-of-week matches the offer (Day Pass Mon-Fri, Sunset Sat, Brunch Sun)
-    allowed_weekdays = ALLOWED_WEEKDAYS_BY_OFFER.get(body.offer_type, [])
-    if booking_date.weekday() not in allowed_weekdays:
-        names = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
-        allowed_names = [names[d] for d in allowed_weekdays]
-        raise HTTPException(
-            status_code=400,
-            detail=f"Selected date is not available for {body.offer_type}. Allowed days: {', '.join(allowed_names)}",
-        )
+    if is_special:
+        allowed_times = offer["boat_times"]
+        if not allowed_times:
+            raise HTTPException(status_code=400, detail="This special event has no boat schedule configured")
+        if body.boat_time not in allowed_times:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid boat time for this event. Allowed: {', '.join(allowed_times)}",
+            )
+        event_dates = offer["event_dates"]
+        if event_dates and body.date not in event_dates:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Selected date is not part of this event. Allowed: {', '.join(event_dates)}",
+            )
+    else:
+        allowed_times = _boat_times_for_date(body.offer_type, booking_date.weekday())
+        if body.boat_time not in allowed_times:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid boat time for {body.offer_type}. Allowed: {', '.join(allowed_times)}",
+            )
+        # Validate day-of-week matches the offer (Day Pass Mon-Fri, Sunset Sat, Brunch Sun)
+        allowed_weekdays = ALLOWED_WEEKDAYS_BY_OFFER.get(body.offer_type, [])
+        if booking_date.weekday() not in allowed_weekdays:
+            names = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+            allowed_names = [names[d] for d in allowed_weekdays]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Selected date is not available for {body.offer_type}. Allowed days: {', '.join(allowed_names)}",
+            )
 
     total_guests = body.adults + body.children
     if total_guests <= 0:
@@ -1007,8 +1114,11 @@ async def create_booking(body: BookingCreate):
             raise HTTPException(status_code=400, detail="All participant fields are required")
 
     # capacity check
+    cap_filter = {"offer_type": body.offer_type, "date": body.date, "status": {"$ne": "cancelled"}}
+    if is_special:
+        cap_filter["special_event_id"] = offer["event_id"]
     cursor = db.bookings.find(
-        {"offer_type": body.offer_type, "date": body.date, "status": {"$ne": "cancelled"}},
+        cap_filter,
         {"_id": 0, "adults": 1, "children": 1},
     )
     booked = 0
@@ -1109,6 +1219,7 @@ async def create_booking(body: BookingCreate):
         "reference_token": reference_token,
         "offer_type": body.offer_type,
         "offer_name": offer["name_fr"],
+        "special_event_id": offer["event_id"] if is_special else None,
         "date": body.date,
         "checkout_date": checkout_iso,
         "nights": nights,
@@ -1147,7 +1258,10 @@ async def pay_booking(booking_id: str, body: PayBooking):
     if booking["status"] != "pending":
         raise HTTPException(status_code=400, detail="Booking already processed")
 
-    offer = OFFERS[booking["offer_type"]]
+    if booking["offer_type"] == "special_event":
+        offer = await _resolve_special_event_offer(booking.get("special_event_id") or "")
+    else:
+        offer = OFFERS[booking["offer_type"]]
     participants = booking.get("participants", [])
 
     # Compute paid amount (full vs deposit). Deposit is only valid for overnight offers.
@@ -1249,6 +1363,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
                 qr_payload=compact_qr,
                 ref_code=token_short,
                 lang="fr",
+                hero_url=offer.get("image_url") or None,
             )
         else:
             # Cash payments: cream "temporary receipt" with no QR shown
@@ -1260,6 +1375,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
                 owner_name=f"{p['name']} {p['surname']}",
                 ref_code=token_short,
                 lang="fr",
+                hero_url=offer.get("image_url") or None,
             )
         qr_codes.append(entry)
 
@@ -1359,6 +1475,245 @@ async def get_booking(booking_id: str, ref: str):
     if booking.get("reference_token") != ref:
         raise HTTPException(status_code=403, detail="Invalid reference token")
     return booking
+
+
+# =================================================================
+# SPECIAL EVENTS — bookable themed event with staff CRUD
+# =================================================================
+def _public_event(ev: dict) -> dict:
+    """Strip internal fields before returning an event to public consumers."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    return {
+        "id": ev["id"],
+        "title": ev.get("title", ""),
+        "subtitle": ev.get("subtitle", ""),
+        "description": ev.get("description", ""),
+        "image_url": ev.get("image_url", ""),
+        "event_dates": ev.get("event_dates") or [],
+        "boat_times": ev.get("boat_times") or [],
+        "return_boat_times": ev.get("return_boat_times") or [],
+        "price_adult": int(ev.get("price_adult", 0)),
+        "price_child": int(ev.get("price_child", 0)),
+        "capacity": int(ev.get("capacity", 0)),
+        "active_from": ev.get("active_from"),
+        "active_to": ev.get("active_to"),
+        "cta_label": ev.get("cta_label") or "Réserver ma place",
+        "is_featured": bool(ev.get("is_featured")),
+        "status": ev.get("status", "draft"),
+        "today": today,
+    }
+
+
+def _event_is_currently_active(ev: dict, today: str) -> bool:
+    if ev.get("status") != "published":
+        return False
+    if ev.get("active_from") and today < ev["active_from"]:
+        return False
+    if ev.get("active_to") and today > ev["active_to"]:
+        return False
+    return True
+
+
+@api.get("/special-events/featured")
+async def get_featured_special_event():
+    """Public — returns the single currently-featured, published, in-window event.
+    Used by the booking tunnel to inject the event card alongside the static offers.
+    Returns ``{"event": null}`` when no event is featured/eligible.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    ev = await db.special_events.find_one(
+        {"is_featured": True, "status": "published"},
+        {"_id": 0},
+    )
+    if not ev or not _event_is_currently_active(ev, today):
+        return {"event": None}
+    # Filter out past event_dates so the public UI only shows upcoming slots
+    upcoming_dates = [d for d in (ev.get("event_dates") or []) if d >= today]
+    out = _public_event(ev)
+    out["event_dates"] = upcoming_dates
+    # Compute remaining seats across all upcoming event dates (best-effort total)
+    booked_cursor = db.bookings.find(
+        {
+            "offer_type": "special_event",
+            "special_event_id": ev["id"],
+            "status": {"$ne": "cancelled"},
+        },
+        {"_id": 0, "adults": 1, "children": 1, "date": 1},
+    )
+    booked_per_date: dict = {}
+    async for b in booked_cursor:
+        d = b.get("date") or ""
+        booked_per_date[d] = booked_per_date.get(d, 0) + int(b.get("adults", 0)) + int(b.get("children", 0))
+    out["seats_per_date"] = {d: max(0, int(ev.get("capacity", 0)) - booked_per_date.get(d, 0)) for d in upcoming_dates}
+    return {"event": out}
+
+
+@api.get("/special-events/{event_id}")
+async def get_special_event(event_id: str):
+    """Public — fetch a single published event by ID (used by the booking tunnel)."""
+    ev = await db.special_events.find_one({"id": event_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Événement introuvable")
+    today = datetime.now(timezone.utc).date().isoformat()
+    if not _event_is_currently_active(ev, today):
+        raise HTTPException(status_code=400, detail="Cet événement n'est pas disponible à la réservation")
+    out = _public_event(ev)
+    out["event_dates"] = [d for d in (ev.get("event_dates") or []) if d >= today]
+    # Per-date remaining seats
+    booked_cursor = db.bookings.find(
+        {"offer_type": "special_event", "special_event_id": ev["id"], "status": {"$ne": "cancelled"}},
+        {"_id": 0, "adults": 1, "children": 1, "date": 1},
+    )
+    booked_per_date: dict = {}
+    async for b in booked_cursor:
+        d = b.get("date") or ""
+        booked_per_date[d] = booked_per_date.get(d, 0) + int(b.get("adults", 0)) + int(b.get("children", 0))
+    out["seats_per_date"] = {d: max(0, int(ev.get("capacity", 0)) - booked_per_date.get(d, 0)) for d in out["event_dates"]}
+    return {"event": out}
+
+
+@api.get("/staff/special-events")
+async def staff_list_special_events(staff=Depends(get_current_staff)):
+    """List all special events, including drafts and archived (for the back-office)."""
+    items = await db.special_events.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+    today = datetime.now(timezone.utc).date().isoformat()
+    # Hydrate with booked seat counts (sum across all dates)
+    by_id: dict = {it["id"]: it for it in items}
+    if by_id:
+        agg = db.bookings.aggregate([
+            {"$match": {
+                "offer_type": "special_event",
+                "special_event_id": {"$in": list(by_id.keys())},
+                "status": {"$ne": "cancelled"},
+            }},
+            {"$group": {
+                "_id": "$special_event_id",
+                "guests": {"$sum": {"$add": [{"$ifNull": ["$adults", 0]}, {"$ifNull": ["$children", 0]}]}},
+                "bookings": {"$sum": 1},
+            }},
+        ])
+        async for row in agg:
+            eid = row["_id"]
+            if eid in by_id:
+                by_id[eid]["booked_guests"] = int(row.get("guests", 0))
+                by_id[eid]["booked_bookings"] = int(row.get("bookings", 0))
+    for it in items:
+        it.setdefault("booked_guests", 0)
+        it.setdefault("booked_bookings", 0)
+        it["is_active"] = _event_is_currently_active(it, today)
+    return {"items": items}
+
+
+@api.get("/staff/special-events/{event_id}")
+async def staff_get_special_event(event_id: str, staff=Depends(get_current_staff)):
+    ev = await db.special_events.find_one({"id": event_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Special event not found")
+    return ev
+
+
+@api.post("/staff/special-events")
+async def staff_create_special_event(body: SpecialEventCreate, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    eid = str(uuid.uuid4())
+    doc = {
+        "id": eid,
+        **body.model_dump(),
+        "is_featured": False,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "created_by_email": staff.get("email"),
+    }
+    await db.special_events.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+
+@api.patch("/staff/special-events/{event_id}")
+async def staff_update_special_event(
+    event_id: str,
+    body: SpecialEventUpdate,
+    staff=Depends(get_current_staff),
+):
+    await _require_role(staff, ["manager", "admin"])
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    update["updated_at"] = now_iso()
+    res = await db.special_events.update_one({"id": event_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Special event not found")
+    ev = await db.special_events.find_one({"id": event_id}, {"_id": 0})
+    return ev
+
+
+@api.post("/staff/special-events/{event_id}/feature")
+async def staff_feature_special_event(event_id: str, staff=Depends(get_current_staff)):
+    """Mark the given event as the single featured one (unsets every other event)."""
+    await _require_role(staff, ["manager", "admin"])
+    ev = await db.special_events.find_one({"id": event_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Special event not found")
+    await db.special_events.update_many(
+        {"id": {"$ne": event_id}},
+        {"$set": {"is_featured": False, "updated_at": now_iso()}},
+    )
+    await db.special_events.update_one(
+        {"id": event_id},
+        {"$set": {"is_featured": True, "updated_at": now_iso()}},
+    )
+    return {"ok": True, "is_featured": True}
+
+
+@api.post("/staff/special-events/{event_id}/unfeature")
+async def staff_unfeature_special_event(event_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    res = await db.special_events.update_one(
+        {"id": event_id},
+        {"$set": {"is_featured": False, "updated_at": now_iso()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Special event not found")
+    return {"ok": True, "is_featured": False}
+
+
+@api.post("/staff/special-events/{event_id}/duplicate")
+async def staff_duplicate_special_event(event_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    ev = await db.special_events.find_one({"id": event_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Special event not found")
+    clone = dict(ev)
+    clone["id"] = str(uuid.uuid4())
+    clone["title"] = f"{clone.get('title', '')} (copie)".strip()
+    clone["is_featured"] = False
+    clone["status"] = "draft"
+    clone["created_at"] = now_iso()
+    clone["updated_at"] = now_iso()
+    clone["created_by_email"] = staff.get("email")
+    await db.special_events.insert_one(dict(clone))
+    clone.pop("_id", None)
+    return clone
+
+
+@api.delete("/staff/special-events/{event_id}")
+async def staff_delete_special_event(event_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    # Guard against deletion when bookings still reference the event
+    used = await db.bookings.count_documents({
+        "offer_type": "special_event",
+        "special_event_id": event_id,
+        "status": {"$ne": "cancelled"},
+    })
+    if used > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cet événement a {used} réservation(s) active(s). Archivez-le plutôt que de le supprimer.",
+        )
+    res = await db.special_events.delete_one({"id": event_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Special event not found")
+    return {"ok": True}
 
 
 # ----- Event privatization -----

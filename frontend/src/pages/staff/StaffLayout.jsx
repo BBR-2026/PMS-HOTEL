@@ -41,6 +41,7 @@ const NAV = [
   { to: "/staff/loisirs", icon: Sparkles, label: "Loisirs", roles: ["manager", "admin"] },
   { section: "Administration", roles: ["admin"] },
   { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: ["manager", "admin"] },
+  { to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: ["manager", "admin"] },
   { to: "/staff/config", icon: Settings, label: "Configuration", roles: ["admin"] },
 ];
 

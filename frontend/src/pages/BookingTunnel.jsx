@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar } from "../components/ui/calendar";
 import { Minus, Plus, Check, ArrowLeft, ArrowRight, Download, Mail, MessageCircle } from "lucide-react";
@@ -13,11 +13,20 @@ import NationalityAutocomplete from "../components/NationalityAutocomplete";
 import Ticket from "../components/Ticket";
 
 export default function BookingTunnel() {
-  const { offerId } = useParams();
+  const params = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { t, lang } = useLang();
 
+  // Two URL shapes are supported:
+  //  /booking/:offerId                  (regular offer)
+  //  /booking/special-event/:eventId    (themed event with custom config)
+  const isSpecialEvent = location.pathname.startsWith("/booking/special-event/");
+  const eventId = isSpecialEvent ? params.eventId : null;
+  const offerId = isSpecialEvent ? "special_event" : params.offerId;
+
   const [offer, setOffer] = useState(null);
+  const [specialEvent, setSpecialEvent] = useState(null);
   const [step, setStep] = useState(1);
   const [selectedDate, setSelectedDate] = useState(null);
   const [checkoutDate, setCheckoutDate] = useState(null);
@@ -37,14 +46,53 @@ export default function BookingTunnel() {
   const [paying, setPaying] = useState(null);
 
   useEffect(() => {
-    api.get(`/offers/${offerId}`).then((r) => setOffer(r.data)).catch(() => navigate("/"));
-  }, [offerId, navigate]);
+    if (isSpecialEvent) {
+      api.get(`/special-events/${eventId}`)
+        .then((r) => {
+          const ev = r.data?.event;
+          if (!ev) { navigate("/"); return; }
+          setSpecialEvent(ev);
+          // Build a synthetic "offer" so the rest of the tunnel logic keeps working
+          setOffer({
+            id: "special_event",
+            name_fr: ev.title,
+            name_en: ev.title,
+            schedule_fr: ev.subtitle || "",
+            schedule_en: ev.subtitle || "",
+            tagline_fr: ev.description || "",
+            tagline_en: ev.description || "",
+            price_adult: ev.price_adult,
+            price_child: ev.price_child,
+            max_capacity: ev.capacity,
+            is_overnight: false,
+            room_tiers: [],
+            // Event-specific schedule: same list for any day (no weekday/weekend split)
+            boat_times: ev.boat_times || [],
+            // We translate event_dates into a set of allowed ISO dates checked client-side
+            event_dates: ev.event_dates || [],
+            seats_per_date: ev.seats_per_date || {},
+            cta_label: ev.cta_label || "Réserver ma place",
+            image_url: ev.image_url || "",
+          });
+        })
+        .catch(() => navigate("/"));
+    } else {
+      api.get(`/offers/${offerId}`).then((r) => setOffer(r.data)).catch(() => navigate("/"));
+    }
+  }, [offerId, eventId, isSpecialEvent, navigate]);
 
   useEffect(() => {
     if (!selectedDate) return;
+    if (isSpecialEvent) {
+      // Availability is derived from the event's seats_per_date map
+      const iso = format(selectedDate, "yyyy-MM-dd");
+      const remaining = (offer?.seats_per_date && offer.seats_per_date[iso]) ?? offer?.max_capacity ?? 0;
+      setAvailability({ remaining, max_capacity: offer?.max_capacity ?? 0 });
+      return;
+    }
     const iso = format(selectedDate, "yyyy-MM-dd");
     api.get(`/availability/${offerId}/${iso}`).then((r) => setAvailability(r.data)).catch(() => {});
-  }, [selectedDate, offerId]);
+  }, [selectedDate, offerId, isSpecialEvent, offer]);
 
   // Keep participants array in sync with adults/children counts.
   // Preserves existing entries by kind (adults first, then children) and
@@ -175,6 +223,7 @@ export default function BookingTunnel() {
       const checkoutIso = isOvernight && checkoutDate ? format(checkoutDate, "yyyy-MM-dd") : null;
       const { data } = await api.post("/bookings", {
         offer_type: offerId,
+        special_event_id: isSpecialEvent ? eventId : null,
         date: iso,
         checkout_date: checkoutIso,
         room_tier: hasTiers ? roomTier : null,
@@ -333,6 +382,10 @@ export default function BookingTunnel() {
                       onSelect={setSelectedDate}
                       disabled={(d) => {
                         if (d < new Date(new Date().setHours(0, 0, 0, 0))) return true;
+                        if (isSpecialEvent) {
+                          const iso = format(d, "yyyy-MM-dd");
+                          return !(offer.event_dates || []).includes(iso);
+                        }
                         const pyWeekday = (d.getDay() + 6) % 7;
                         if (offer.allowed_weekdays && !offer.allowed_weekdays.includes(pyWeekday)) return true;
                         return false;

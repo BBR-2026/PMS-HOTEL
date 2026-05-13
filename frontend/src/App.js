@@ -26,6 +26,7 @@ import StaffNewBooking from "./pages/staff/StaffNewBooking";
 import StaffReceipts from "./pages/staff/StaffReceipts";
 import StaffCheckinsHistory from "./pages/staff/StaffCheckinsHistory";
 import StaffActivitiesConfig from "./pages/staff/StaffActivitiesConfig";
+import StaffSpecialEvents from "./pages/staff/StaffSpecialEvents";
 import RoleGuard from "./components/RoleGuard";
 
 const MANAGER_PLUS = ["manager", "admin"];
@@ -63,6 +64,7 @@ function App() {
             <Route element={<PublicLayout />}>
               <Route path="/" element={<LandingPage />} />
               <Route path="/booking/:offerId" element={<BookingTunnel />} />
+              <Route path="/booking/special-event/:eventId" element={<BookingTunnel />} />
               <Route path="/events" element={<EventPrivatization />} />
             </Route>
             <Route path="/staff/login" element={<StaffLogin />} />
@@ -77,6 +79,7 @@ function App() {
               <Route path="recus" element={<RoleGuard allowed={MANAGER_PLUS}><StaffReceipts /></RoleGuard>} />
               <Route path="embarquements-historique" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCheckinsHistory /></RoleGuard>} />
               <Route path="configuration/activites" element={<RoleGuard allowed={MANAGER_PLUS}><StaffActivitiesConfig /></RoleGuard>} />
+              <Route path="evenements-speciaux" element={<RoleGuard allowed={MANAGER_PLUS}><StaffSpecialEvents /></RoleGuard>} />
               <Route path="hebergement" element={<RoleGuard allowed={MANAGER_PLUS}><StaffHebergement /></RoleGuard>} />
               <Route path="clients" element={<RoleGuard allowed={MANAGER_PLUS}><StaffClients /></RoleGuard>} />
               <Route path="loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLoisirs /></RoleGuard>} />
