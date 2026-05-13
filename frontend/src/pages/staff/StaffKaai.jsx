@@ -22,13 +22,17 @@ function shiftDate(iso, days) {
 export default function StaffKaai() {
   const { user } = useStaffAuth();
   const isAdmin = user?.role === "admin";
+  const isManagerOrAdmin = user?.role === "admin" || user?.role === "manager";
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [tables, setTables] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [zones, setZones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ number: "", capacity: 4, zone: "Salle" });
   const [selectedBookingId, setSelectedBookingId] = useState(null);
+  const [zoneEdits, setZoneEdits] = useState({}); // {zone_id: capacityValue}
+  const [savingZone, setSavingZone] = useState(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -36,6 +40,7 @@ export default function StaffKaai() {
       const { data } = await api.get(`/staff/kaai/day?date=${date}`);
       setBookings(data.bookings || []);
       setTables(data.tables || []);
+      setZones(data.zones || []);
     } catch {
       toast.error("Erreur de chargement");
     } finally {
@@ -85,12 +90,39 @@ export default function StaffKaai() {
     }
   };
 
+  const saveZoneCapacity = async (zone) => {
+    const raw = zoneEdits[zone.id];
+    if (raw === undefined || raw === null || raw === "") return;
+    const nextCap = Math.max(0, Math.min(500, parseInt(raw, 10) || 0));
+    if (nextCap === zone.capacity) {
+      setZoneEdits((prev) => {
+        const { [zone.id]: _ignore, ...rest } = prev;
+        return rest;
+      });
+      return;
+    }
+    setSavingZone(zone.id);
+    try {
+      await api.patch(`/staff/kaai/zones/${zone.id}`, { capacity: nextCap });
+      toast.success(`Capacité « ${zone.name} » : ${nextCap} couverts`);
+      setZoneEdits((prev) => {
+        const { [zone.id]: _ignore, ...rest } = prev;
+        return rest;
+      });
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Mise à jour impossible");
+    } finally {
+      setSavingZone(null);
+    }
+  };
+
   const totalGuests = bookings.reduce((s, b) => s + (b.adults || 0) + (b.children || 0), 0);
   const assignedCount = bookings.filter((b) => b.table_id).length;
   const selectedBooking = bookings.find((b) => b.id === selectedBookingId);
 
-  // Group tables by zone
-  const zones = Array.from(new Set(tables.map((t) => t.zone || "Salle")));
+  // Distinct zone names used by tables (for grouping in the floor plan).
+  const tableZoneNames = Array.from(new Set(tables.map((t) => t.zone || "Salle")));
 
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-kaai">
@@ -146,6 +178,74 @@ export default function StaffKaai() {
         </div>
       </div>
 
+      {/* Zones / Salles — capacité paramétrable (manager+admin) */}
+      {zones.length > 0 && (
+        <div className="bg-white border border-[#B8922A]/25 p-4 sm:p-5 mb-8" data-testid="kaai-zones-section">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A]">Capacités des salles</div>
+              <p className="text-[0.72rem] text-[#0A0A0A]/55 mt-0.5">
+                Le système refuse l'assignation au-delà de la capacité de chaque salle.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {zones.map((z) => {
+              const editing = zoneEdits[z.id] !== undefined;
+              const displayCap = editing ? zoneEdits[z.id] : z.capacity;
+              const pct = z.saturation_pct || 0;
+              const barColor = pct >= 100 ? "bg-red-500" : pct >= 90 ? "bg-amber-500" : "bg-[#B8922A]";
+              return (
+                <div
+                  key={z.id}
+                  className="border border-[#0A0A0A]/10 p-3 sm:p-4 bg-[#FAFAF7]"
+                  data-testid={`kaai-zone-${z.name.replace(/\s+/g, "-").toLowerCase()}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-display-serif text-base text-[#0A0A0A]">{z.name}</div>
+                    <div className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">
+                      {z.used}/{z.capacity}
+                    </div>
+                  </div>
+                  <div className="h-1.5 w-full bg-[#0A0A0A]/8 rounded-full overflow-hidden mb-3">
+                    <div className={`h-full ${barColor} transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={500}
+                      value={displayCap}
+                      onChange={(e) => setZoneEdits((prev) => ({ ...prev, [z.id]: e.target.value }))}
+                      className="flex-1 border border-[#0A0A0A]/15 px-2.5 py-1.5 text-sm focus:border-[#B8922A] outline-none bg-white"
+                      data-testid={`kaai-zone-cap-input-${z.id}`}
+                      disabled={!isManagerOrAdmin}
+                    />
+                    <span className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">couverts</span>
+                    {editing && isManagerOrAdmin && (
+                      <button
+                        onClick={() => saveZoneCapacity(z)}
+                        disabled={savingZone === z.id}
+                        className="px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#a37e1f] transition-all disabled:opacity-40"
+                        data-testid={`kaai-zone-save-${z.id}`}
+                      >
+                        {savingZone === z.id ? "…" : "OK"}
+                      </button>
+                    )}
+                  </div>
+                  {z.available === 0 && (
+                    <div className="mt-2 text-[0.7rem] text-red-700">Salle complète</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {!isManagerOrAdmin && (
+            <p className="text-[0.7rem] text-[#0A0A0A]/55 mt-3">Capacités en lecture seule pour votre rôle.</p>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Bookings list */}
         <div className="bg-white border border-[#0A0A0A]/8 p-5">
@@ -186,7 +286,7 @@ export default function StaffKaai() {
           <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4">
             Plan de salle {selectedBooking ? "— cliquez une table pour assigner" : ""}
           </div>
-          {zones.map((zone) => (
+          {tableZoneNames.map((zone) => (
             <div key={zone} className="mb-5">
               <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 mb-2">{zone}</div>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
@@ -283,9 +383,9 @@ export default function StaffKaai() {
                   className="w-full mt-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
                   data-testid="new-table-zone"
                 >
-                  <option>Salle</option>
-                  <option>Terrasse</option>
-                  <option>Bord de mer</option>
+                  {zones.length > 0
+                    ? zones.map((z) => <option key={z.id} value={z.name}>{z.name}</option>)
+                    : <><option>Salle</option><option>Terrasse 1</option><option>Terrasse 2</option></>}
                 </select>
               </div>
             </div>

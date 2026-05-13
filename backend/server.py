@@ -3011,13 +3011,62 @@ class KaaiTableUpdate(BaseModel):
     status: Optional[Literal["active", "indisponible"]] = None
 
 
+class KaaiZone(BaseModel):
+    """Logical seating zone with a hard capacity cap used as an overbooking guard."""
+    name: str = Field(min_length=1, max_length=40)
+    capacity: int = Field(ge=0, le=500)
+    sort_order: int = 0
+
+
+class KaaiZoneUpdate(BaseModel):
+    capacity: Optional[int] = Field(default=None, ge=0, le=500)
+    sort_order: Optional[int] = None
+
+
+DEFAULT_KAAI_ZONES = [
+    {"name": "Terrasse 1", "capacity": 24, "sort_order": 1},
+    {"name": "Terrasse 2", "capacity": 24, "sort_order": 2},
+    {"name": "Salle", "capacity": 32, "sort_order": 3},
+]
+
+
+async def _seed_default_kaai_zones():
+    """Seed default Le Kaai zones if collection is empty AND migrate legacy table zones."""
+    if await db.kaai_zones.count_documents({}) == 0:
+        seeds = [{**z, "id": str(uuid.uuid4()), "created_at": now_iso()} for z in DEFAULT_KAAI_ZONES]
+        await db.kaai_zones.insert_many(seeds)
+        logging.info("Seeded %d Le Kaai zones", len(seeds))
+        # Migrate legacy zone labels on tables: split 'Terrasse' across Terrasse 1 / Terrasse 2.
+        legacy = await db.kaai_tables.find({"zone": "Terrasse"}, {"_id": 0, "id": 1, "number": 1}).sort("number", 1).to_list(length=500)
+        if legacy:
+            half = max(1, len(legacy) // 2)
+            ops = []
+            for i, t in enumerate(legacy):
+                new_zone = "Terrasse 1" if i < half else "Terrasse 2"
+                ops.append((t["id"], new_zone))
+            for tid, nz in ops:
+                await db.kaai_tables.update_one({"id": tid}, {"$set": {"zone": nz}})
+        # Migrate any other unknown zone to 'Salle' to keep capacities consistent.
+        known = {z["name"] for z in DEFAULT_KAAI_ZONES}
+        await db.kaai_tables.update_many(
+            {"zone": {"$nin": list(known)}},
+            {"$set": {"zone": "Salle"}},
+        )
+
+
 async def _seed_default_kaai_tables():
     """Seed default Le Kaai tables if none exist."""
     if await db.kaai_tables.count_documents({}) == 0:
-        zones = [("Terrasse", 6, 2), ("Terrasse", 6, 4), ("Salle", 8, 2), ("Salle", 8, 4), ("Salle", 4, 6), ("Bord de mer", 4, 2)]
+        layout = [
+            ("Terrasse 1", 6, 2),
+            ("Terrasse 2", 6, 4),
+            ("Salle", 8, 2),
+            ("Salle", 4, 4),
+            ("Salle", 4, 6),
+        ]
         seeds = []
         i = 1
-        for zone, count, cap in zones:
+        for zone, count, cap in layout:
             for _ in range(count):
                 seeds.append({"id": str(uuid.uuid4()), "number": f"T{i:02d}", "capacity": cap, "zone": zone, "status": "active"})
                 i += 1
@@ -3025,9 +3074,109 @@ async def _seed_default_kaai_tables():
         logging.info("Seeded %d Le Kaai tables", len(seeds))
 
 
+# ----- Zones CRUD -----
+@api.get("/staff/kaai/zones")
+async def list_kaai_zones(staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    await _seed_default_kaai_zones()
+    items = await db.kaai_zones.find({}, {"_id": 0}).sort("sort_order", 1).to_list(length=200)
+    return {"items": items}
+
+
+@api.post("/staff/kaai/zones")
+async def create_kaai_zone(body: KaaiZone, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    # Names are unique (case-insensitive).
+    import re as _re
+    existing = await db.kaai_zones.find_one({"name": {"$regex": f"^{_re.escape(body.name)}$", "$options": "i"}}, {"_id": 0, "id": 1})
+    if existing:
+        raise HTTPException(status_code=400, detail="Une zone porte déjà ce nom")
+    doc = {**body.model_dump(), "id": str(uuid.uuid4()), "created_at": now_iso()}
+    await db.kaai_zones.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.patch("/staff/kaai/zones/{zone_id}")
+async def update_kaai_zone(zone_id: str, body: KaaiZoneUpdate, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not update:
+        return {"ok": True}
+    res = await db.kaai_zones.update_one({"id": zone_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Zone introuvable")
+    return {"ok": True}
+
+
+@api.delete("/staff/kaai/zones/{zone_id}")
+async def delete_kaai_zone(zone_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    res = await db.kaai_zones.delete_one({"id": zone_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Zone introuvable")
+    return {"ok": True}
+
+
+# ----- Helpers: zone occupancy + guard -----
+async def _kaai_zone_occupancy(date: str):
+    """Return {zone_name: seats_used} on a given day, based on table assignments
+    (each assigned booking counts adults + children seats against its table's zone)."""
+    tables = await db.kaai_tables.find({}, {"_id": 0, "id": 1, "zone": 1}).to_list(length=1000)
+    table_zone = {t["id"]: t.get("zone", "Salle") for t in tables}
+    bookings = await db.bookings.find(
+        {"offer_type": "le_kaai", "date": date, "status": {"$ne": "cancelled"}, "table_id": {"$exists": True, "$ne": None}},
+        {"_id": 0, "table_id": 1, "adults": 1, "children": 1},
+    ).to_list(length=1000)
+    usage: dict = {}
+    for b in bookings:
+        z = table_zone.get(b.get("table_id"))
+        if not z:
+            continue
+        usage[z] = usage.get(z, 0) + int(b.get("adults") or 0) + int(b.get("children") or 0)
+    return usage
+
+
+async def _kaai_zone_guard(date: str, table_id: str, adults: int, children: int, exclude_booking_id: Optional[str] = None):
+    """Raise HTTP 400 if assigning this booking would push the table's zone above its capacity."""
+    table = await db.kaai_tables.find_one({"id": table_id}, {"_id": 0, "zone": 1})
+    if not table:
+        return  # caller handles 404
+    zone_name = table.get("zone") or "Salle"
+    zone = await db.kaai_zones.find_one({"name": zone_name}, {"_id": 0, "capacity": 1})
+    if not zone:
+        return  # no zone configured → no guard
+    capacity = int(zone.get("capacity") or 0)
+    if capacity <= 0:
+        return
+    # Current usage minus this booking if it already occupies a table in the same zone
+    usage = await _kaai_zone_occupancy(date)
+    current = usage.get(zone_name, 0)
+    if exclude_booking_id:
+        existing = await db.bookings.find_one(
+            {"id": exclude_booking_id},
+            {"_id": 0, "table_id": 1, "adults": 1, "children": 1},
+        )
+        if existing and existing.get("table_id"):
+            t2 = await db.kaai_tables.find_one({"id": existing["table_id"]}, {"_id": 0, "zone": 1})
+            if t2 and (t2.get("zone") == zone_name):
+                current -= int(existing.get("adults") or 0) + int(existing.get("children") or 0)
+                current = max(0, current)
+    new_total = current + int(adults or 0) + int(children or 0)
+    if new_total > capacity:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Capacité de la salle « {zone_name} » dépassée "
+                f"({new_total}/{capacity} couverts pour le {date})."
+            ),
+        )
+
+
 @api.get("/staff/kaai/tables")
 async def list_kaai_tables(staff=Depends(get_current_staff)):
     await _require_role(staff, ["manager", "admin"])
+    await _seed_default_kaai_zones()
     await _seed_default_kaai_tables()
     items = await db.kaai_tables.find({}, {"_id": 0}).sort("number", 1).to_list(length=500)
     return {"items": items}
@@ -3068,15 +3217,28 @@ async def delete_kaai_table(table_id: str, staff=Depends(get_current_staff)):
 
 @api.get("/staff/kaai/day")
 async def kaai_day(date: str, staff=Depends(get_current_staff)):
-    """Le Kaai bookings + table assignments for a specific day."""
+    """Le Kaai bookings + table assignments + zones with capacity/occupation for a day."""
     await _require_role(staff, ["manager", "admin"])
+    await _seed_default_kaai_zones()
     bookings = await db.bookings.find(
         {"offer_type": "le_kaai", "date": date, "status": {"$ne": "cancelled"}},
         {"_id": 0, "id": 1, "boat_time": 1, "adults": 1, "children": 1, "phone": 1, "email": 1,
          "participants": 1, "status": 1, "special_requests": 1, "table_id": 1, "paid_at": 1, "created_at": 1},
     ).sort("boat_time", 1).to_list(length=500)
     tables = await db.kaai_tables.find({}, {"_id": 0}).sort("number", 1).to_list(length=500)
-    return {"date": date, "bookings": bookings, "tables": tables}
+    zones_raw = await db.kaai_zones.find({}, {"_id": 0}).sort("sort_order", 1).to_list(length=200)
+    usage = await _kaai_zone_occupancy(date)
+    zones = []
+    for z in zones_raw:
+        used = int(usage.get(z["name"], 0))
+        cap = int(z.get("capacity") or 0)
+        zones.append({
+            **z,
+            "used": used,
+            "available": max(0, cap - used),
+            "saturation_pct": round((used / cap * 100), 1) if cap else 0,
+        })
+    return {"date": date, "bookings": bookings, "tables": tables, "zones": zones}
 
 
 @api.patch("/staff/kaai/bookings/{booking_id}/table")
@@ -3085,15 +3247,34 @@ async def assign_kaai_table(
     table_id: Optional[str] = Body(None, embed=True),
     staff=Depends(get_current_staff),
 ):
-    """Assign or unassign a table to a Le Kaai booking."""
+    """Assign or unassign a table to a Le Kaai booking, enforcing zone capacity."""
     await _require_role(staff, ["manager", "admin"])
-    booking = await db.bookings.find_one({"id": booking_id, "offer_type": "le_kaai"}, {"_id": 0, "offer_type": 1})
+    booking = await db.bookings.find_one(
+        {"id": booking_id, "offer_type": "le_kaai"},
+        {"_id": 0, "offer_type": 1, "date": 1, "adults": 1, "children": 1, "table_id": 1},
+    )
     if not booking:
         raise HTTPException(status_code=404, detail="Le Kaai booking not found")
     if table_id:
-        table = await db.kaai_tables.find_one({"id": table_id}, {"_id": 0})
+        table = await db.kaai_tables.find_one({"id": table_id}, {"_id": 0, "capacity": 1, "status": 1})
         if not table:
             raise HTTPException(status_code=404, detail="Table not found")
+        if table.get("status") == "indisponible":
+            raise HTTPException(status_code=400, detail="Cette table est indisponible.")
+        guests = int(booking.get("adults") or 0) + int(booking.get("children") or 0)
+        if guests > int(table.get("capacity") or 0):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Capacité de la table dépassée ({guests} convives > {table.get('capacity')}).",
+            )
+        # Zone capacity guard (excludes the current booking if it was already on this zone)
+        await _kaai_zone_guard(
+            date=booking["date"],
+            table_id=table_id,
+            adults=int(booking.get("adults") or 0),
+            children=int(booking.get("children") or 0),
+            exclude_booking_id=booking_id,
+        )
         await db.bookings.update_one({"id": booking_id}, {"$set": {"table_id": table_id}})
     else:
         await db.bookings.update_one({"id": booking_id}, {"$unset": {"table_id": ""}})
