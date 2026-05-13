@@ -2024,6 +2024,25 @@ async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
     guest = next((q for q in booking.get("qr_codes", []) if q.get("qr_token") == real_token), None)
     scans = (guest or {}).get("scans", [])
     next_direction = "aller" if len(scans) == 0 else ("retour" if len(scans) == 1 else None)
+
+    # Fetch wallet to surface participant-level activities + consumptions
+    wallet = None
+    participant_charges: List[dict] = []
+    participant_total = 0
+    wallet_total = 0
+    wallet_status = None
+    if booking.get("wallet_token"):
+        wallet = await db.wallets.find_one({"token": booking["wallet_token"]}, {"_id": 0})
+        if wallet:
+            wallet_status = wallet.get("status")
+            for tx in wallet.get("transactions", []) or []:
+                if tx.get("status") == "voided":
+                    continue
+                wallet_total += int(tx.get("amount", 0))
+                if (tx.get("participant_token") or "").lower() == real_token.lower():
+                    participant_charges.append(tx)
+                    participant_total += int(tx.get("amount", 0))
+    participant_charges.sort(key=lambda t: t.get("created_at", ""), reverse=True)
     summary = {
         "booking_id": booking["id"],
         "offer_type": booking.get("offer_type"),
@@ -2059,8 +2078,42 @@ async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
         "scan_count": len(scans),
         "next_direction": next_direction,
         "fully_used": next_direction is None,
+        # Wallet / participant traceability
+        "wallet_status": wallet_status,
+        "wallet_total_charged": wallet_total,
+        "participant_charges": participant_charges,
+        "participant_total_charged": participant_total,
     }
     return summary
+
+
+class WalletCharge(BaseModel):
+    activity_id: Optional[str] = None
+    label: Optional[str] = None
+    amount: int = Field(default=0, ge=0)
+    note: Optional[str] = ""
+    quantity: int = Field(default=1, ge=1, le=20)
+    # Optional participant traceability: when present, the charge is tagged with the
+    # ticket QR token of the participant who consumed it (Sky Nautique, Quad,
+    # boissons…). Allows per-guest tracing & filtering.
+    participant_token: Optional[str] = None
+
+
+@api.post("/staff/scan/{qr_token}/charge")
+async def charge_via_scan(qr_token: str, body: WalletCharge, staff=Depends(get_current_staff)):
+    """Charge an activity / consumption directly via the participant's ticket QR.
+
+    The staff scans the participant QR, taps an activity or types a free amount —
+    the charge is added to the booking's wallet AND tagged with the participant
+    token so we know who consumed what.
+    """
+    booking, real_token = await _resolve_qr_token(qr_token)
+    if not booking:
+        raise HTTPException(status_code=404, detail="QR code non reconnu")
+    if not booking.get("wallet_token"):
+        raise HTTPException(status_code=400, detail="Aucune carte de consommation associée à cette réservation.")
+    body.participant_token = real_token
+    return await charge_wallet(booking["wallet_token"], body, staff=staff)  # type: ignore
 
 
 @api.post("/staff/scan/{qr_token}/checkin")
@@ -2848,12 +2901,13 @@ class ActivityModel(BaseModel):
     active: bool = True
 
 
-class WalletCharge(BaseModel):
+class WalletCharge(BaseModel):  # noqa: F811 — declared earlier near scanner endpoints
     activity_id: Optional[str] = None
     label: Optional[str] = None
     amount: int = Field(default=0, ge=0)
     note: Optional[str] = ""
     quantity: int = Field(default=1, ge=1, le=20)
+    participant_token: Optional[str] = None
 
 
 @api.get("/activities")
@@ -2959,6 +3013,21 @@ async def charge_wallet(token: str, body: WalletCharge, staff=Depends(get_curren
     if unit_price <= 0:
         raise HTTPException(status_code=400, detail="amount must be > 0 (or provide a valid activity_id)")
     total = unit_price * body.quantity
+    # Resolve participant from booking.qr_codes for traceability
+    participant_name = None
+    if body.participant_token and wallet.get("booking_id"):
+        booking_for_p = await db.bookings.find_one(
+            {"id": wallet["booking_id"]},
+            {"_id": 0, "qr_codes": 1},
+        )
+        if booking_for_p:
+            p = next(
+                (q for q in (booking_for_p.get("qr_codes") or [])
+                 if (q.get("qr_token") or "").lower() == body.participant_token.lower()),
+                None,
+            )
+            if p:
+                participant_name = f"{p.get('guest_surname','').strip()} {p.get('guest_name','').strip()}".strip() or None
     tx = {
         "id": str(uuid.uuid4()),
         "activity_id": body.activity_id,
@@ -2971,6 +3040,8 @@ async def charge_wallet(token: str, body: WalletCharge, staff=Depends(get_curren
         "created_at": now_iso(),
         "created_by": staff.get("name"),
         "created_by_role": staff.get("role"),
+        "participant_token": body.participant_token,
+        "participant_name": participant_name,
     }
     await db.wallets.update_one(
         {"token": token},
@@ -2979,12 +3050,13 @@ async def charge_wallet(token: str, body: WalletCharge, staff=Depends(get_curren
             "$inc": {"total_charged": total},
         },
     )
-    # Fiscal receipt for this on-site activity charge
+    # Fiscal receipt for this on-site activity charge — tagged with the participant when known
     try:
+        receipt_customer = participant_name or wallet.get("customer_name", "")
         await _create_receipt(
             source="activity",
             source_id=token,
-            customer_name=wallet.get("customer_name", ""),
+            customer_name=receipt_customer,
             customer_email=wallet.get("customer_email", ""),
             customer_phone=wallet.get("customer_phone", ""),
             lines=[{
@@ -2996,7 +3068,12 @@ async def charge_wallet(token: str, body: WalletCharge, staff=Depends(get_curren
             payment_method="on_site",
             issued_by=staff.get("name") or "",
             issued_by_role=staff.get("role") or "",
-            metadata={"sub_id": tx["id"], "booking_id": wallet.get("booking_id")},
+            metadata={
+                "sub_id": tx["id"],
+                "booking_id": wallet.get("booking_id"),
+                "participant_token": body.participant_token,
+                "participant_name": participant_name,
+            },
         )
     except Exception as ex:
         logging.exception("Failed to create activity receipt: %s", ex)

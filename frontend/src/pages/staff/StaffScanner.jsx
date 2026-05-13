@@ -51,15 +51,21 @@ export default function StaffScanner() {
   const [loading, setLoading] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState(null);
+  const [activities, setActivities] = useState([]);
+  const [chargeBusy, setChargeBusy] = useState(false);
+  const [customLabel, setCustomLabel] = useState("");
+  const [customAmount, setCustomAmount] = useState("");
   const scannerRef = useRef(null);
-  // Block duplicate decodes: html5-qrcode fires the callback on every frame where
-  // a QR is recognised, so without this flag we'd trigger several /staff/scan
-  // requests in parallel (flickering UI + spurious errors).
   const processingRef = useRef(false);
-  // Block concurrent camera starts (React StrictMode runs effects twice in dev,
-  // and rapid mode switches can otherwise create two Html5Qrcode instances on the
-  // same DOM region → camera locks up).
   const startingRef = useRef(false);
+
+  // Load activities catalogue once (used for the in-scanner quick-charge buttons)
+  useEffect(() => {
+    api.get("/staff/activities").then((r) => {
+      const list = Array.isArray(r.data) ? r.data : (r.data?.items || []);
+      setActivities(list.filter((a) => a.active !== false));
+    }).catch(() => {});
+  }, []);
 
   // Stop scanner on unmount
   useEffect(() => {
@@ -210,6 +216,53 @@ export default function StaffScanner() {
       }
     }
     setCameraOn(false);
+  };
+
+  const refreshResult = async () => {
+    if (!result?.qr_token) return;
+    try {
+      const { data } = await api.get(`/staff/scan/${result.qr_token}`);
+      setResult(data);
+    } catch { /* ignore */ }
+  };
+
+  const chargeActivity = async (activity) => {
+    if (!result?.qr_token || chargeBusy) return;
+    setChargeBusy(true);
+    try {
+      const { data } = await api.post(`/staff/scan/${result.qr_token}/charge`, {
+        activity_id: activity.id,
+        quantity: 1,
+      });
+      toast.success(`${activity.name_fr} ajouté · ${data.total_charged.toLocaleString("fr-FR")} FCFA`);
+      await refreshResult();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Charge impossible");
+    } finally {
+      setChargeBusy(false);
+    }
+  };
+
+  const chargeCustom = async () => {
+    if (!result?.qr_token || chargeBusy) return;
+    const amount = parseInt(customAmount, 10);
+    const label = customLabel.trim();
+    if (!label || !amount || amount <= 0) {
+      toast.error("Renseignez un libellé et un montant > 0");
+      return;
+    }
+    setChargeBusy(true);
+    try {
+      await api.post(`/staff/scan/${result.qr_token}/charge`, { label, amount, quantity: 1 });
+      toast.success(`${label} ajouté · ${amount.toLocaleString("fr-FR")} FCFA`);
+      setCustomLabel("");
+      setCustomAmount("");
+      await refreshResult();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Charge impossible");
+    } finally {
+      setChargeBusy(false);
+    }
   };
 
   const doCheckin = async () => {
@@ -500,12 +553,100 @@ export default function StaffScanner() {
           )}
 
           {result.wallet_token && (
+            <div className="mt-6 border border-[#B8922A]/30 bg-[#FAF6E8]/40 p-4 sm:p-5" data-testid="scanner-charge-panel">
+              <div className="flex items-baseline justify-between mb-3 gap-2">
+                <div>
+                  <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A]">
+                    Activités & consommations
+                  </div>
+                  <p className="text-[0.72rem] text-[#0A0A0A]/55 mt-0.5">
+                    Imputées à ce participant — réglées à la sortie.
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Total</div>
+                  <div className="font-display-serif text-lg text-[#B8922A]" data-testid="participant-total">
+                    {(result.participant_total_charged || 0).toLocaleString("fr-FR")} FCFA
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick activity buttons (catalogue) */}
+              {activities.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4" data-testid="scanner-activity-grid">
+                  {activities.slice(0, 9).map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => chargeActivity(a)}
+                      disabled={chargeBusy}
+                      className="text-left px-3 py-2.5 bg-white border border-[#0A0A0A]/10 hover:border-[#B8922A] hover:bg-[#B8922A]/5 transition-all disabled:opacity-40"
+                      data-testid={`scanner-charge-${a.id}`}
+                    >
+                      <div className="text-[0.7rem] font-medium text-[#0A0A0A] truncate">{a.name_fr}</div>
+                      <div className="text-[0.65rem] text-[#B8922A]">{a.price.toLocaleString("fr-FR")} FCFA</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Custom amount */}
+              <div className="flex flex-col sm:flex-row gap-2" data-testid="scanner-custom-charge">
+                <input
+                  value={customLabel}
+                  onChange={(e) => setCustomLabel(e.target.value)}
+                  placeholder="Libellé (ex. Boisson, Cocktail…)"
+                  className="flex-1 border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none bg-white"
+                  data-testid="scanner-custom-label"
+                />
+                <input
+                  type="number"
+                  value={customAmount}
+                  onChange={(e) => setCustomAmount(e.target.value)}
+                  placeholder="Montant FCFA"
+                  className="w-full sm:w-36 border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none bg-white"
+                  data-testid="scanner-custom-amount"
+                />
+                <button
+                  onClick={chargeCustom}
+                  disabled={chargeBusy || !customLabel || !customAmount}
+                  className="px-4 py-2 text-[0.65rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#a37e1f] transition-all disabled:opacity-40"
+                  data-testid="scanner-custom-add"
+                >
+                  Ajouter
+                </button>
+              </div>
+
+              {/* Per-participant history */}
+              {result.participant_charges && result.participant_charges.length > 0 && (
+                <div className="mt-4 border-t border-[#B8922A]/15 pt-3" data-testid="scanner-participant-history">
+                  <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-2">
+                    Historique ({result.participant_charges.length})
+                  </div>
+                  <ul className="space-y-1.5">
+                    {result.participant_charges.map((c) => (
+                      <li key={c.id} className="flex items-center justify-between text-[0.78rem] text-[#0A0A0A]">
+                        <span className="truncate">
+                          {c.label}
+                          {c.quantity > 1 && <span className="text-[#0A0A0A]/55"> × {c.quantity}</span>}
+                        </span>
+                        <span className="text-[#0A0A0A] font-medium ml-3 flex-shrink-0">
+                          {c.amount.toLocaleString("fr-FR")} FCFA
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {result.wallet_token && (
             <button
               onClick={() => navigate(`/staff/activites?token=${encodeURIComponent(result.wallet_token)}`)}
               className="mt-3 w-full bg-white hover:bg-[#FAFAF7] border border-[#B8922A]/40 text-[#B8922A] py-3 text-sm uppercase tracking-[0.22em] inline-flex items-center justify-center gap-3 transition-colors"
               data-testid="scanner-open-wallet-btn"
             >
-              <Wallet size={14} /> Ouvrir la carte Activités
+              <Wallet size={14} /> Voir la carte complète
             </button>
           )}
 

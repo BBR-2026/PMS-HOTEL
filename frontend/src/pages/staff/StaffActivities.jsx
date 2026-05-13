@@ -253,6 +253,11 @@ export default function StaffActivities() {
                           </td>
                           <td className={`py-2.5 ${voided ? "line-through opacity-50" : "text-[#0A0A0A]"}`}>
                             {t.label}
+                            {t.participant_name && (
+                              <div className="text-[0.65rem] text-[#B8922A] mt-0.5">
+                                Pour {t.participant_name}
+                              </div>
+                            )}
                             {t.note && <div className="text-[0.65rem] text-[#0A0A0A]/50">{t.note}</div>}
                             {voided && <span className="ml-2 text-[0.6rem] uppercase tracking-[0.18em] text-red-600">Annulée</span>}
                           </td>
