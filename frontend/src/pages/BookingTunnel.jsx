@@ -1207,36 +1207,8 @@ function ConfirmationView({ booking, t, lang, navigate }) {
         </div>
       )}
 
-      {/* Wallet card — payment QR for on-resort activities */}
-      {booking.wallet_qr?.ticket_image && (
-        <div className="mt-12 mb-4" data-testid="wallet-card">
-          <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4 text-center">
-            {lang === "fr" ? "Carte Activités · Paiement sur place" : "Activities Card · On-resort payments"}
-          </div>
-          <div className="max-w-md mx-auto bg-[#FAF6E8] border border-[#B8922A]/30 p-5 flex flex-col items-center">
-            <img
-              src={booking.wallet_qr.ticket_image}
-              alt="Wallet QR"
-              className="w-full h-auto"
-              data-testid="wallet-card-image"
-            />
-            <a
-              href={booking.wallet_qr.ticket_image}
-              download={`bbr-carte-activites-${booking.id.slice(0,8)}.png`}
-              className="mt-4 inline-flex items-center gap-2 text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
-              data-testid="wallet-card-download"
-            >
-              <Download size={12} />
-              {t.booking.download}
-            </a>
-          </div>
-          <p className="text-[0.75rem] text-[#0A0A0A]/55 text-center mt-3 max-w-md mx-auto">
-            {lang === "fr"
-              ? "Présentez ce QR aux points d'activités (Jet Ski, Quad, Paddle, Spa, Excursions). Le solde est réglé au check-out."
-              : "Show this QR at activity points (Jet Ski, Quad, Paddle, Spa, Excursions). Balance is settled at check-out."}
-          </p>
-        </div>
-      )}
+      {/* Activities wallet QR intentionally hidden from the client view — staff
+          continue to access it via /staff/activites?token=… for on-site charges. */}
 
       {/* Share recap via Email or WhatsApp */}
       <div className="mt-12 max-w-xl mx-auto" data-testid="share-recap">
