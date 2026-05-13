@@ -179,7 +179,15 @@ export default function StaffCheckinsHistory() {
                   </td>
                   <td className="py-2.5 px-4">
                     <div className="font-medium text-[#0A0A0A]">{s.boat_time || "—"}</div>
+                    {s.boat_name && (
+                      <div className="text-[0.68rem] text-[#B8922A]">{s.boat_name}</div>
+                    )}
                     <div className="text-[0.68rem] text-[#0A0A0A]/55">{formatDateFR(s.boat_date)}</div>
+                    {s.overridden && (
+                      <span className="inline-block mt-0.5 text-[0.58rem] uppercase tracking-[0.18em] text-amber-700 border border-amber-300 bg-amber-50 px-1.5 py-0.5 rounded-sm" title={`Prévu : ${s.planned_boat_time || "—"}`}>
+                        Modifié
+                      </span>
+                    )}
                   </td>
                   <td className="py-2.5 px-4 text-[0.78rem] text-[#0A0A0A]/75">{s.offer_name || "—"}</td>
                   <td className="py-2.5 px-4 text-[0.78rem] text-[#0A0A0A]/75">

@@ -265,13 +265,51 @@ export default function StaffScanner() {
     }
   };
 
-  const doCheckin = async () => {
+  // Embarkation modal state
+  const [checkinModal, setCheckinModal] = useState(null); // null | { direction, plannedBoatTime }
+  const [boats, setBoats] = useState([]);
+  const [boatsForDay, setBoatsForDay] = useState([]);
+  const [overrideBoatTime, setOverrideBoatTime] = useState("");
+  const [overrideBoatId, setOverrideBoatId] = useState("");
+  const [checkinBusy, setCheckinBusy] = useState(false);
+
+  // Load boats catalogue once (used in the embarkation modal)
+  useEffect(() => {
+    api.get("/staff/bateaux").then((r) => {
+      const list = Array.isArray(r.data) ? r.data : (r.data?.items || []);
+      setBoats(list.filter((b) => b.status !== "indisponible"));
+    }).catch(() => {});
+  }, []);
+
+  const openCheckinModal = () => {
+    if (!result) return;
+    const direction = result.next_direction;
+    if (!direction) return;
+    const planned = direction === "aller"
+      ? result.boat_time
+      : (result.return_boat_time || result.boat_time);
+    setOverrideBoatTime(planned || "");
+    setOverrideBoatId("");
+    // Use the standard daily boat times unless we know better
+    const standardTimes = result.offer_type === "hebergement"
+      ? ["09H", "10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H"]
+      : ["8H", "10H", "12H", "14H", "16H", "18H", "20H"];
+    setBoatsForDay(standardTimes);
+    setCheckinModal({ direction, planned });
+  };
+
+  const submitCheckin = async () => {
     if (!result || !result.qr_token) return;
+    setCheckinBusy(true);
     try {
-      const { data } = await api.post(`/staff/scan/${result.qr_token}/checkin`);
+      const payload = {};
+      const planned = checkinModal?.planned || "";
+      if (overrideBoatTime && overrideBoatTime !== planned) payload.boat_time = overrideBoatTime;
+      if (overrideBoatId) payload.boat_id = overrideBoatId;
+      const { data } = await api.post(`/staff/scan/${result.qr_token}/checkin`, payload);
       const dirLabel = DIRECTION_FR[data.direction] || data.direction;
       toast.success(
-        `Embarquement ${dirLabel.toLowerCase()} enregistré${data.boat_label ? ` · Bateau ${data.boat_label}` : ""}`,
+        `Embarquement ${dirLabel.toLowerCase()} enregistré${data.boat_label ? ` · ${data.boat_label}` : ""}`,
       );
       const newScan = {
         direction: data.direction,
@@ -279,8 +317,11 @@ export default function StaffScanner() {
         staff_email: data.staff_email,
         staff_name: data.staff_name,
         boat_time: data.boat_time,
+        boat_id: data.boat_id,
+        boat_name: data.boat_name,
         boat_date: data.boat_date,
         boat_label: data.boat_label,
+        overridden: data.overridden,
       };
       setResult({
         ...result,
@@ -290,8 +331,11 @@ export default function StaffScanner() {
         fully_used: data.fully_used,
         status: data.booking_status,
       });
+      setCheckinModal(null);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erreur lors de l'embarquement");
+    } finally {
+      setCheckinBusy(false);
     }
   };
 
@@ -528,7 +572,12 @@ export default function StaffScanner() {
                       <span className="font-medium">{DIRECTION_FR[s.direction] || s.direction}</span>
                       {s.boat_label && (
                         <span className="text-[0.62rem] uppercase tracking-[0.18em] text-[#B8922A] border border-[#B8922A]/30 bg-[#B8922A]/5 px-1.5 py-0.5 rounded-sm">
-                          Bateau {s.boat_label}
+                          {s.boat_label}
+                        </span>
+                      )}
+                      {s.overridden && (
+                        <span className="text-[0.6rem] uppercase tracking-[0.18em] text-amber-700 border border-amber-300 bg-amber-50 px-1.5 py-0.5 rounded-sm" title={`Initialement prévu : ${s.planned_boat_time || "—"}`}>
+                          Modifié
                         </span>
                       )}
                     </span>
@@ -544,10 +593,10 @@ export default function StaffScanner() {
             </div>
           )}
 
-          {/* Embarkation CTA — single button whose label depends on next_direction */}
+          {/* Embarkation CTA — opens a modal to confirm the actual boat taken */}
           {result.next_direction ? (
             <button
-              onClick={doCheckin}
+              onClick={openCheckinModal}
               className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white py-4 text-sm uppercase tracking-[0.22em] inline-flex items-center justify-center gap-3 transition-colors"
               data-testid={`scanner-checkin-${result.next_direction}-btn`}
             >
@@ -673,6 +722,97 @@ export default function StaffScanner() {
           >
             <ScanLine size={14} /> Scanner un autre QR
           </button>
+        </div>
+      )}
+
+      {/* Embarkation modal — confirm the boat actually taken */}
+      {checkinModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => !checkinBusy && setCheckinModal(null)} data-testid="checkin-modal">
+          <div className="bg-white w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 sm:p-6 border-b border-[#0A0A0A]/8">
+              <div>
+                <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A]">
+                  Embarquement {DIRECTION_FR[checkinModal.direction]?.toLowerCase()}
+                </div>
+                <div className="font-display-serif text-lg text-[#0A0A0A] mt-0.5">
+                  {result.guest_surname} {result.guest_name}
+                </div>
+              </div>
+            </div>
+            <div className="p-5 sm:p-6 space-y-4">
+              <div className="bg-[#FAFAF7] border border-[#0A0A0A]/8 p-3 text-sm">
+                <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Bateau prévu</div>
+                <div className="font-medium text-[#0A0A0A] mt-0.5">{checkinModal.planned || "—"}</div>
+              </div>
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">
+                  Heure réelle du bateau
+                </label>
+                <div className="flex flex-wrap gap-1.5" data-testid="checkin-boat-time-grid">
+                  {boatsForDay.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setOverrideBoatTime(t)}
+                      className={`px-3 py-1.5 text-sm border transition-all ${
+                        overrideBoatTime === t
+                          ? "bg-[#B8922A] text-white border-[#B8922A]"
+                          : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A]"
+                      }`}
+                      data-testid={`checkin-boat-time-${t}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={overrideBoatTime}
+                  onChange={(e) => setOverrideBoatTime(e.target.value)}
+                  placeholder="ou saisir manuellement (ex. 11H30)"
+                  className="w-full mt-2 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white"
+                  data-testid="checkin-boat-time-input"
+                />
+              </div>
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">
+                  Nom du bateau (optionnel)
+                </label>
+                <select
+                  value={overrideBoatId}
+                  onChange={(e) => setOverrideBoatId(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white"
+                  data-testid="checkin-boat-select"
+                >
+                  <option value="">— Non précisé —</option>
+                  {boats.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name} {b.capacity ? `(${b.capacity} places)` : ""}</option>
+                  ))}
+                </select>
+              </div>
+              {overrideBoatTime && checkinModal.planned && overrideBoatTime !== checkinModal.planned && (
+                <div className="bg-amber-50 border border-amber-200 px-3 py-2 text-[0.72rem] text-amber-900">
+                  Ce client embarque sur un bateau différent ({overrideBoatTime}) du bateau prévu ({checkinModal.planned}).
+                </div>
+              )}
+            </div>
+            <div className="border-t border-[#0A0A0A]/8 p-4 sm:p-5 flex justify-end gap-2">
+              <button
+                onClick={() => setCheckinModal(null)}
+                disabled={checkinBusy}
+                className="px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] border border-[#0A0A0A]/15 text-[#0A0A0A]/65 hover:border-[#0A0A0A] hover:text-[#0A0A0A] transition-colors disabled:opacity-50"
+                data-testid="checkin-cancel"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={submitCheckin}
+                disabled={checkinBusy || !overrideBoatTime}
+                className="px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] bg-green-600 text-white hover:bg-green-700 transition-colors inline-flex items-center gap-2 disabled:opacity-40"
+                data-testid="checkin-confirm"
+              >
+                <CheckCircle2 size={13} /> {checkinBusy ? "…" : "Confirmer l'embarquement"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

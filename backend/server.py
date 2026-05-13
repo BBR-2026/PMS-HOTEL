@@ -2116,15 +2116,32 @@ async def charge_via_scan(qr_token: str, body: WalletCharge, staff=Depends(get_c
     return await charge_wallet(booking["wallet_token"], body, staff=staff)  # type: ignore
 
 
+class CheckinOverride(BaseModel):
+    """Optional override applied by the staff when the guest didn't take the boat
+    originally planned at booking time (missed it / swapped). When omitted, the
+    boat is auto-resolved from the booking's planned schedule."""
+    boat_time: Optional[str] = None
+    boat_id: Optional[str] = None
+    boat_name: Optional[str] = None
+    direction: Optional[Literal["aller", "retour"]] = None
+
+
 @api.post("/staff/scan/{qr_token}/checkin")
-async def checkin_qr(qr_token: str, staff=Depends(get_current_staff)):
+async def checkin_qr(
+    qr_token: str,
+    body: Optional[CheckinOverride] = None,
+    staff=Depends(get_current_staff),
+):
     """Register an embarkation scan (aller then retour). Max 2 scans per QR.
 
     Rules:
     - First scan → direction='aller' and booking status becomes 'arrived' if not already
     - Second scan → direction='retour' and booking status becomes 'completed'
     - Third scan → 400 'QR code déjà utilisé entièrement'
-    Each scan stores: direction, scanned_at, staff_email.
+    Each scan stores: direction, scanned_at, staff_email, staff_name, boat_*.
+
+    Optional body lets the staff override the boat actually taken (when the guest
+    missed the planned one and embarked on a later/earlier crossing).
 
     Accepts the same flexible token formats as GET /staff/scan/{qr_token}.
     """
@@ -2138,19 +2155,36 @@ async def checkin_qr(qr_token: str, staff=Depends(get_current_staff)):
     scans = qrs[idx].get("scans") or []
     if len(scans) >= 2:
         raise HTTPException(status_code=400, detail="QR code déjà scanné (aller + retour). Plus aucun embarquement possible.")
-    direction = "aller" if len(scans) == 0 else "retour"
-    # Auto-resolve the boat for traceability ("10H aller", "16H retour", etc.)
-    boat_time = booking.get("boat_time") if direction == "aller" else (booking.get("return_boat_time") or booking.get("boat_time"))
+    # Direction may be forced by the staff (rare: scan a 'retour' before 'aller' has been done).
+    forced_dir = (body.direction if body else None) if body else None
+    direction = forced_dir or ("aller" if len(scans) == 0 else "retour")
+    # Default boat from the booking; can be overridden by the staff (missed boat, etc.)
+    planned_boat = booking.get("boat_time") if direction == "aller" else (booking.get("return_boat_time") or booking.get("boat_time"))
     boat_date = booking.get("date") if direction == "aller" else (booking.get("checkout_date") or booking.get("date"))
-    boat_label = f"{boat_time} {direction}" if boat_time else direction
+    boat_time = (body.boat_time if body else None) or planned_boat
+    boat_id = (body.boat_id if body else None)
+    boat_name = (body.boat_name if body else None)
+    if boat_id and not boat_name:
+        bateau = await db.bateaux.find_one({"id": boat_id}, {"_id": 0, "name": 1})
+        if bateau:
+            boat_name = bateau.get("name")
+    boat_label_bits = [b for b in [boat_time, direction] if b]
+    boat_label = " ".join(boat_label_bits) or direction
+    if boat_name:
+        boat_label = f"{boat_label} · {boat_name}"
+    overridden = bool(body and (body.boat_time or body.boat_id) and (body.boat_time or "") != (planned_boat or ""))
     entry = {
         "direction": direction,
         "scanned_at": now_iso(),
         "staff_email": staff.get("email"),
         "staff_name": staff.get("name") or "",
         "boat_time": boat_time,
+        "boat_id": boat_id,
+        "boat_name": boat_name,
         "boat_date": boat_date,
         "boat_label": boat_label,
+        "planned_boat_time": planned_boat,
+        "overridden": overridden,
     }
     scans = scans + [entry]
     # Aggregate booking-level status across all QR codes:
@@ -2180,8 +2214,12 @@ async def checkin_qr(qr_token: str, staff=Depends(get_current_staff)):
         "staff_email": entry["staff_email"],
         "staff_name": entry["staff_name"],
         "boat_time": entry["boat_time"],
+        "boat_id": entry["boat_id"],
+        "boat_name": entry["boat_name"],
         "boat_date": entry["boat_date"],
         "boat_label": entry["boat_label"],
+        "planned_boat_time": entry["planned_boat_time"],
+        "overridden": entry["overridden"],
         "scan_count": len(scans),
         "next_direction": "retour" if len(scans) == 1 else None,
         "fully_used": len(scans) >= 2,
@@ -2229,8 +2267,12 @@ async def checkins_history(
             "staff_email": "$qr_codes.scans.staff_email",
             "staff_name": "$qr_codes.scans.staff_name",
             "boat_time": "$qr_codes.scans.boat_time",
+            "boat_id": "$qr_codes.scans.boat_id",
+            "boat_name": "$qr_codes.scans.boat_name",
             "boat_date": "$qr_codes.scans.boat_date",
             "boat_label": "$qr_codes.scans.boat_label",
+            "planned_boat_time": "$qr_codes.scans.planned_boat_time",
+            "overridden": "$qr_codes.scans.overridden",
         }},
     ]
     secondary_match: dict = {}
