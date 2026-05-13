@@ -271,6 +271,8 @@ export default function StaffScanner() {
   const [boatsForDay, setBoatsForDay] = useState([]);
   const [overrideBoatTime, setOverrideBoatTime] = useState("");
   const [overrideBoatId, setOverrideBoatId] = useState("");
+  const [skipperName, setSkipperName] = useState("");
+  const [recentSkippers, setRecentSkippers] = useState([]);
   const [checkinBusy, setCheckinBusy] = useState(false);
 
   // Load boats catalogue once (used in the embarkation modal)
@@ -278,6 +280,11 @@ export default function StaffScanner() {
     api.get("/staff/bateaux").then((r) => {
       const list = Array.isArray(r.data) ? r.data : (r.data?.items || []);
       setBoats(list.filter((b) => b.status !== "indisponible"));
+    }).catch(() => {});
+    // Load recent skipper names (shared, last-used first)
+    api.get("/staff/skippers").then((r) => {
+      const list = Array.isArray(r.data?.items) ? r.data.items : [];
+      setRecentSkippers(list.map((s) => s.name).filter(Boolean));
     }).catch(() => {});
   }, []);
 
@@ -290,6 +297,7 @@ export default function StaffScanner() {
       : (result.return_boat_time || result.boat_time);
     setOverrideBoatTime(planned || "");
     setOverrideBoatId("");
+    setSkipperName("");
     // Use the standard daily boat times unless we know better
     const standardTimes = result.offer_type === "hebergement"
       ? ["09H", "10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H"]
@@ -306,10 +314,12 @@ export default function StaffScanner() {
       const planned = checkinModal?.planned || "";
       if (overrideBoatTime && overrideBoatTime !== planned) payload.boat_time = overrideBoatTime;
       if (overrideBoatId) payload.boat_id = overrideBoatId;
+      const skipper = skipperName.trim();
+      if (skipper) payload.skipper_name = skipper;
       const { data } = await api.post(`/staff/scan/${result.qr_token}/checkin`, payload);
       const dirLabel = DIRECTION_FR[data.direction] || data.direction;
       toast.success(
-        `Embarquement ${dirLabel.toLowerCase()} enregistré${data.boat_label ? ` · ${data.boat_label}` : ""}`,
+        `Embarquement ${dirLabel.toLowerCase()} enregistré${data.boat_label ? ` · ${data.boat_label}` : ""}${data.skipper_name ? ` · Skipper ${data.skipper_name}` : ""}`,
       );
       const newScan = {
         direction: data.direction,
@@ -322,6 +332,7 @@ export default function StaffScanner() {
         boat_date: data.boat_date,
         boat_label: data.boat_label,
         overridden: data.overridden,
+        skipper_name: data.skipper_name,
       };
       setResult({
         ...result,
@@ -331,6 +342,10 @@ export default function StaffScanner() {
         fully_used: data.fully_used,
         status: data.booking_status,
       });
+      // Promote the skipper to the top of the recent list (de-dup, max 30)
+      if (skipper) {
+        setRecentSkippers((prev) => [skipper, ...prev.filter((n) => n.toLowerCase() !== skipper.toLowerCase())].slice(0, 30));
+      }
       setCheckinModal(null);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erreur lors de l'embarquement");
@@ -586,6 +601,9 @@ export default function StaffScanner() {
                       {(s.staff_name || s.staff_email) && (
                         <span className="ml-2">· par {s.staff_name || s.staff_email}</span>
                       )}
+                      {s.skipper_name && (
+                        <span className="ml-2">· Skipper {s.skipper_name}</span>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -787,6 +805,44 @@ export default function StaffScanner() {
                     <option key={b.id} value={b.id}>{b.name} {b.capacity ? `(${b.capacity} places)` : ""}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">
+                  Nom du skipper
+                </label>
+                <input
+                  list="recent-skippers"
+                  value={skipperName}
+                  onChange={(e) => setSkipperName(e.target.value)}
+                  placeholder="Skipper en charge du bateau"
+                  className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white"
+                  data-testid="checkin-skipper-input"
+                  autoComplete="off"
+                />
+                <datalist id="recent-skippers">
+                  {recentSkippers.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
+                {recentSkippers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2" data-testid="checkin-skipper-chips">
+                    {recentSkippers.slice(0, 6).map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setSkipperName(n)}
+                        className={`px-2.5 py-1 text-[0.68rem] border transition-all ${
+                          skipperName === n
+                            ? "bg-[#B8922A] text-white border-[#B8922A]"
+                            : "bg-white text-[#0A0A0A]/75 border-[#0A0A0A]/15 hover:border-[#B8922A]"
+                        }`}
+                        data-testid={`checkin-skipper-chip-${n}`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               {overrideBoatTime && checkinModal.planned && overrideBoatTime !== checkinModal.planned && (
                 <div className="bg-amber-50 border border-amber-200 px-3 py-2 text-[0.72rem] text-amber-900">

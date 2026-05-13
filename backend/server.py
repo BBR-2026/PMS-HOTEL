@@ -2123,6 +2123,7 @@ class CheckinOverride(BaseModel):
     boat_time: Optional[str] = None
     boat_id: Optional[str] = None
     boat_name: Optional[str] = None
+    skipper_name: Optional[str] = None
     direction: Optional[Literal["aller", "retour"]] = None
 
 
@@ -2164,6 +2165,7 @@ async def checkin_qr(
     boat_time = (body.boat_time if body else None) or planned_boat
     boat_id = (body.boat_id if body else None)
     boat_name = (body.boat_name if body else None)
+    skipper_name = ((body.skipper_name if body else None) or "").strip() or None
     if boat_id and not boat_name:
         bateau = await db.bateaux.find_one({"id": boat_id}, {"_id": 0, "name": 1})
         if bateau:
@@ -2185,6 +2187,7 @@ async def checkin_qr(
         "boat_label": boat_label,
         "planned_boat_time": planned_boat,
         "overridden": overridden,
+        "skipper_name": skipper_name,
     }
     scans = scans + [entry]
     # Aggregate booking-level status across all QR codes:
@@ -2220,6 +2223,7 @@ async def checkin_qr(
         "boat_label": entry["boat_label"],
         "planned_boat_time": entry["planned_boat_time"],
         "overridden": entry["overridden"],
+        "skipper_name": entry["skipper_name"],
         "scan_count": len(scans),
         "next_direction": "retour" if len(scans) == 1 else None,
         "fully_used": len(scans) >= 2,
@@ -2273,6 +2277,7 @@ async def checkins_history(
             "boat_label": "$qr_codes.scans.boat_label",
             "planned_boat_time": "$qr_codes.scans.planned_boat_time",
             "overridden": "$qr_codes.scans.overridden",
+            "skipper_name": "$qr_codes.scans.skipper_name",
         }},
     ]
     secondary_match: dict = {}
@@ -2297,6 +2302,7 @@ async def checkins_history(
             {"guest_surname": rgx},
             {"staff_name": rgx},
             {"staff_email": rgx},
+            {"skipper_name": rgx},
         ]
     if secondary_match:
         pipeline.append({"$match": secondary_match})
@@ -2338,6 +2344,30 @@ async def checkins_history(
         "pages": (total + page_size - 1) // page_size,
         "summary": summary,
     }
+
+
+@api.get("/staff/skippers")
+async def list_recent_skippers(staff=Depends(get_current_staff)):
+    """Return the distinct list of skipper names that have already been entered
+    on a previous scan. Used by the scanner modal to autocomplete the field.
+    Sorted by most-recently used first. Max 30 entries.
+    """
+    pipeline = [
+        {"$match": {"qr_codes.scans.skipper_name": {"$nin": [None, ""]}}},
+        {"$unwind": "$qr_codes"},
+        {"$unwind": "$qr_codes.scans"},
+        {"$match": {"qr_codes.scans.skipper_name": {"$nin": [None, ""]}}},
+        {"$group": {
+            "_id": "$qr_codes.scans.skipper_name",
+            "last_used": {"$max": "$qr_codes.scans.scanned_at"},
+            "count": {"$sum": 1},
+        }},
+        {"$sort": {"last_used": -1}},
+        {"$limit": 30},
+        {"$project": {"_id": 0, "name": "$_id", "last_used": 1, "count": 1}},
+    ]
+    items = [r async for r in db.bookings.aggregate(pipeline)]
+    return {"items": items}
 
 
 @api.post("/staff/bookings/{booking_id}/arrived")

@@ -97,7 +97,7 @@ export default function StaffCheckinsHistory() {
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { setSearch(searchInput); setPage(1); } }}
-                placeholder="Nom du client ou du staff…"
+                placeholder="Nom du client, du staff ou du skipper…"
                 className="w-full pl-9 pr-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white"
                 data-testid="checkins-search"
               />
@@ -146,7 +146,7 @@ export default function StaffCheckinsHistory() {
 
       {/* Table */}
       <div className="bg-white border border-[#0A0A0A]/8 overflow-x-auto" data-testid="checkins-table">
-        <table className="w-full text-sm min-w-[860px]">
+        <table className="w-full text-sm min-w-[960px]">
           <thead>
             <tr className="text-left text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
               <th className="py-3 px-4">Date / Heure</th>
@@ -155,13 +155,14 @@ export default function StaffCheckinsHistory() {
               <th className="py-3 px-4">Bateau</th>
               <th className="py-3 px-4">Offre</th>
               <th className="py-3 px-4">Staff</th>
+              <th className="py-3 px-4">Skipper</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="py-10 text-center text-[#0A0A0A]/50">Chargement…</td></tr>
+              <tr><td colSpan={7} className="py-10 text-center text-[#0A0A0A]/50">Chargement…</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={6} className="py-10 text-center text-[#0A0A0A]/50">Aucun embarquement pour ces filtres.</td></tr>
+              <tr><td colSpan={7} className="py-10 text-center text-[#0A0A0A]/50">Aucun embarquement pour ces filtres.</td></tr>
             ) : (
               items.map((s, i) => (
                 <tr key={`${s.booking_id}-${s.qr_token}-${i}`} className="border-b border-[#0A0A0A]/5 hover:bg-[#FAFAF7]/50" data-testid={`checkin-row-${i}`}>
@@ -193,6 +194,9 @@ export default function StaffCheckinsHistory() {
                   <td className="py-2.5 px-4 text-[0.78rem] text-[#0A0A0A]/75">
                     <div>{s.staff_name || s.staff_email?.split("@")[0] || "—"}</div>
                     {s.staff_email && <div className="text-[0.62rem] text-[#0A0A0A]/45">{s.staff_email}</div>}
+                  </td>
+                  <td className="py-2.5 px-4 text-[0.78rem] text-[#0A0A0A]/75" data-testid={`checkin-skipper-${i}`}>
+                    {s.skipper_name || <span className="text-[#0A0A0A]/35">—</span>}
                   </td>
                 </tr>
               ))
