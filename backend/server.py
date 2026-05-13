@@ -3049,7 +3049,7 @@ async def list_activities_staff(staff=Depends(get_current_staff)):
 
 @api.post("/staff/activities")
 async def create_activity(body: ActivityModel, staff=Depends(get_current_staff)):
-    await _require_role(staff, ["admin"])
+    await _require_role(staff, ["manager", "admin"])
     if await db.activities.find_one({"id": body.id}):
         raise HTTPException(status_code=400, detail="Activity id already exists")
     doc = body.model_dump()
@@ -3059,7 +3059,7 @@ async def create_activity(body: ActivityModel, staff=Depends(get_current_staff))
 
 @api.patch("/staff/activities/{activity_id}")
 async def update_activity(activity_id: str, body: ActivityModel, staff=Depends(get_current_staff)):
-    await _require_role(staff, ["admin"])
+    await _require_role(staff, ["manager", "admin"])
     payload = body.model_dump(exclude={"id"})
     res = await db.activities.update_one({"id": activity_id}, {"$set": payload})
     if res.matched_count == 0:
@@ -3069,7 +3069,7 @@ async def update_activity(activity_id: str, body: ActivityModel, staff=Depends(g
 
 @api.delete("/staff/activities/{activity_id}")
 async def delete_activity(activity_id: str, staff=Depends(get_current_staff)):
-    await _require_role(staff, ["admin"])
+    await _require_role(staff, ["manager", "admin"])
     res = await db.activities.delete_one({"id": activity_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Activity not found")
