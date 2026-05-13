@@ -1319,6 +1319,35 @@ async def pay_booking(booking_id: str, body: PayBooking):
     booking["paid_amount"] = int(paid_amount)
     booking["balance_due"] = int(balance_due)
     booking["deposit_pct"] = deposit_pct
+    # Fiscal receipt for the booking payment (only if money was actually charged)
+    if int(paid_amount) > 0:
+        try:
+            primary = next((p for p in participants if p.get("kind") == "adult"), None) or (participants[0] if participants else {})
+            label = (
+                f"Acompte {deposit_pct}% — {offer['name_fr']} ({booking['date']})"
+                if body.payment_method == "deposit" and deposit_pct
+                else f"{offer['name_fr']} — {booking['date']}"
+            )
+            line = {
+                "description": label,
+                "quantity": 1,
+                "unit_price": int(paid_amount),
+                "total": int(paid_amount),
+            }
+            await _create_receipt(
+                source="booking",
+                source_id=booking_id,
+                customer_name=f"{primary.get('surname','').strip()} {primary.get('name','').strip()}".strip() or "—",
+                customer_email=primary.get("email") or booking.get("email", ""),
+                customer_phone=primary.get("phone") or booking.get("phone", ""),
+                lines=[line],
+                payment_method=body.payment_method,
+                issued_by="public",
+                issued_by_role="public",
+                metadata={"offer_type": booking["offer_type"], "deposit_pct": deposit_pct},
+            )
+        except Exception as ex:
+            logging.exception("Failed to create booking receipt: %s", ex)
     return booking
 
 
@@ -2950,6 +2979,27 @@ async def charge_wallet(token: str, body: WalletCharge, staff=Depends(get_curren
             "$inc": {"total_charged": total},
         },
     )
+    # Fiscal receipt for this on-site activity charge
+    try:
+        await _create_receipt(
+            source="activity",
+            source_id=token,
+            customer_name=wallet.get("customer_name", ""),
+            customer_email=wallet.get("customer_email", ""),
+            customer_phone=wallet.get("customer_phone", ""),
+            lines=[{
+                "description": activity_label,
+                "quantity": int(body.quantity),
+                "unit_price": int(unit_price),
+                "total": int(total),
+            }],
+            payment_method="on_site",
+            issued_by=staff.get("name") or "",
+            issued_by_role=staff.get("role") or "",
+            metadata={"sub_id": tx["id"], "booking_id": wallet.get("booking_id")},
+        )
+    except Exception as ex:
+        logging.exception("Failed to create activity receipt: %s", ex)
     fresh = await db.wallets.find_one({"token": token}, {"_id": 0})
     return await _wallet_summary(fresh)
 
@@ -3791,6 +3841,307 @@ async def staff_create_booking(body: StaffBookingCreate, staff=Depends(get_curre
 
 
 # =================================================================
+# MODULE RECEIPTS — Fiscal receipts (activities + bookings/events)
+# =================================================================
+# A receipt is created automatically whenever real money changes hands:
+#   - Wallet activity charge        → source="activity"
+#   - Booking paid (public/staff)   → source="booking"
+#   - Event privatization paid      → source="event"
+# Each receipt carries an HMAC signature derived from the immutable fields so
+# the staff app can verify authenticity later (digital seal).
+
+RECEIPT_SECRET = os.environ.get("RECEIPT_SECRET", JWT_SECRET)
+
+
+async def _next_receipt_number() -> str:
+    """Generate sequential daily receipt number BBR-YYYYMMDD-XXXXX (atomic counter)."""
+    day = datetime.now(timezone.utc).date().isoformat().replace("-", "")
+    counter = await db.counters.find_one_and_update(
+        {"id": f"receipt-{day}"},
+        {"$inc": {"value": 1}},
+        upsert=True,
+        return_document=True,
+    )
+    seq = (counter or {}).get("value") or 1
+    return f"BBR-{day}-{seq:05d}"
+
+
+def _sign_receipt(receipt: dict) -> str:
+    """Compact HMAC-SHA256 signature over receipt id + total + source_id + issued_at."""
+    import hmac as _hmac
+    import hashlib as _hashlib
+    msg = f"{receipt['id']}|{receipt['total']}|{receipt.get('source_id') or ''}|{receipt['issued_at']}".encode()
+    digest = _hmac.new(RECEIPT_SECRET.encode(), msg, _hashlib.sha256).hexdigest()
+    return digest[:16].upper()
+
+
+async def _create_receipt(
+    *,
+    source: Literal["activity", "booking", "event"],
+    source_id: str,
+    customer_name: str,
+    customer_email: str = "",
+    customer_phone: str = "",
+    lines: List[dict],
+    payment_method: str,
+    currency: str = "XOF",
+    issued_by: str = "system",
+    issued_by_role: str = "system",
+    metadata: Optional[dict] = None,
+):
+    """Persist a fiscal receipt. Idempotent on (source, source_id, sub_id)."""
+    sub_id = (metadata or {}).get("sub_id")
+    # Idempotency: don't create twice for the same wallet charge / booking payment
+    if sub_id:
+        existing = await db.receipts.find_one({"source": source, "source_id": source_id, "metadata.sub_id": sub_id}, {"_id": 0})
+        if existing:
+            return existing
+    elif source == "booking":
+        existing = await db.receipts.find_one({"source": source, "source_id": source_id}, {"_id": 0})
+        if existing:
+            return existing
+    subtotal = sum(int(ln.get("total", 0)) for ln in lines)
+    rid = str(uuid.uuid4())
+    issued_at = now_iso()
+    receipt = {
+        "id": rid,
+        "receipt_number": await _next_receipt_number(),
+        "source": source,
+        "source_id": source_id,
+        "customer_name": customer_name or "—",
+        "customer_email": customer_email or "",
+        "customer_phone": customer_phone or "",
+        "lines": [
+            {
+                "description": str(ln.get("description", "")),
+                "quantity": int(ln.get("quantity", 1)),
+                "unit_price": int(ln.get("unit_price", 0)),
+                "total": int(ln.get("total", 0)),
+            }
+            for ln in lines
+        ],
+        "subtotal": subtotal,
+        "total": subtotal,
+        "currency": currency,
+        "payment_method": payment_method,
+        "issued_at": issued_at,
+        "issued_by": issued_by,
+        "issued_by_role": issued_by_role,
+        "metadata": metadata or {},
+        "voided": False,
+    }
+    receipt["signature"] = _sign_receipt(receipt)
+    await db.receipts.insert_one(dict(receipt))
+    receipt.pop("_id", None)
+    return receipt
+
+
+@api.get("/staff/receipts")
+async def list_receipts(
+    source: Optional[Literal["activity", "booking", "event"]] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    q: Optional[str] = None,
+    payment_method: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 30,
+    staff=Depends(get_current_staff),
+):
+    """List receipts. Manager+admin only."""
+    await _require_role(staff, ["manager", "admin"])
+    filter_q: dict = {"voided": {"$ne": True}}
+    if source:
+        filter_q["source"] = source
+    if payment_method:
+        filter_q["payment_method"] = payment_method
+    if date_from or date_to:
+        rng: dict = {}
+        if date_from:
+            rng["$gte"] = date_from
+        if date_to:
+            rng["$lte"] = date_to + "T23:59:59Z"
+        filter_q["issued_at"] = rng
+    if q:
+        import re as _re
+        rgx = _re.compile(_re.escape(q), _re.IGNORECASE)
+        filter_q["$or"] = [
+            {"receipt_number": rgx},
+            {"customer_name": rgx},
+            {"customer_email": rgx},
+            {"customer_phone": rgx},
+        ]
+    page = max(1, page)
+    page_size = max(1, min(100, page_size))
+    total = await db.receipts.count_documents(filter_q)
+    cursor = (
+        db.receipts.find(filter_q, {"_id": 0})
+        .sort("issued_at", -1)
+        .skip((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = await cursor.to_list(length=page_size)
+    # Aggregate totals per source for the current filter (informational footer)
+    pipeline = [
+        {"$match": filter_q},
+        {"$group": {"_id": "$source", "count": {"$sum": 1}, "total": {"$sum": "$total"}}},
+    ]
+    by_source = {}
+    async for row in db.receipts.aggregate(pipeline):
+        by_source[row["_id"]] = {"count": row["count"], "total": int(row["total"])}
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size,
+        "summary_by_source": by_source,
+    }
+
+
+@api.get("/staff/receipts/{receipt_id}.pdf")
+async def export_receipt_pdf(receipt_id: str, staff=Depends(get_current_staff)):
+    """Stylized fiscal receipt PDF (BBR header, line items, subtotal, total, signature)."""
+    await _require_role(staff, ["manager", "admin"])
+    receipt = await db.receipts.find_one({"id": receipt_id}, {"_id": 0})
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Reçu introuvable")
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from fastapi.responses import StreamingResponse
+
+    styles = _pdf_styles()
+    GOLD, DARK, LIGHT, MUTED = styles["GOLD"], styles["DARK"], styles["LIGHT"], styles["MUTED"]
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
+    elements = []
+    elements.append(Paragraph("Boulay Beach Resort", styles["h1"]))
+    elements.append(Paragraph("Reçu de paiement", styles["sub"]))
+
+    # Receipt meta block
+    src_fr = {"activity": "Activité sur place", "booking": "Réservation", "event": "Privatisation / Événement"}.get(receipt["source"], receipt["source"])
+    meta_rows = [
+        ["N° de reçu", receipt["receipt_number"]],
+        ["Date d'émission", receipt["issued_at"].replace("T", " à ").split(".")[0] + " UTC"],
+        ["Type", src_fr],
+        ["Client", receipt.get("customer_name") or "—"],
+    ]
+    if receipt.get("customer_email"):
+        meta_rows.append(["Email", receipt["customer_email"]])
+    if receipt.get("customer_phone"):
+        meta_rows.append(["Téléphone", receipt["customer_phone"]])
+    meta_rows.append(["Émis par", f"{receipt.get('issued_by','')} ({receipt.get('issued_by_role','')})"])
+    meta_tbl = Table(meta_rows, colWidths=[4.5 * cm, 12 * cm])
+    meta_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR", (0, 0), (0, -1), MUTED),
+        ("TEXTCOLOR", (1, 0), (1, -1), DARK),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.2, colors.HexColor("#EEE")),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(meta_tbl)
+    elements.append(Spacer(1, 0.4 * cm))
+
+    # Line items
+    lines_rows = [["Description", "Qté", "P.U.", "Total"]]
+    for ln in receipt["lines"]:
+        lines_rows.append([
+            ln["description"],
+            str(ln.get("quantity", 1)),
+            _format_xof(ln.get("unit_price", 0)),
+            _format_xof(ln.get("total", 0)),
+        ])
+    lines_tbl = Table(lines_rows, colWidths=[9 * cm, 1.8 * cm, 3 * cm, 3 * cm], repeatRows=1)
+    lines_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+        ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+        ("FONTSIZE", (0, 1), (-1, -1), 9.5),
+        ("TEXTCOLOR", (0, 1), (-1, -1), DARK),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.2, colors.HexColor("#EEE")),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(lines_tbl)
+    elements.append(Spacer(1, 0.3 * cm))
+
+    # Totals
+    totals_rows = [
+        ["Sous-total", _format_xof(receipt["subtotal"])],
+        ["Total payé", _format_xof(receipt["total"])],
+        ["Mode de paiement", PAYMENT_METHOD_FR_LABEL.get(receipt["payment_method"], receipt["payment_method"])],
+    ]
+    totals_tbl = Table(totals_rows, colWidths=[13 * cm, 3.8 * cm])
+    totals_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica"),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTSIZE", (0, 1), (-1, 1), 13),
+        ("TEXTCOLOR", (0, 0), (0, -1), MUTED),
+        ("TEXTCOLOR", (1, 0), (1, -1), DARK),
+        ("TEXTCOLOR", (0, 1), (-1, 1), GOLD),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("LINEABOVE", (0, 1), (-1, 1), 0.5, GOLD),
+        ("LINEBELOW", (0, 1), (-1, 1), 0.5, GOLD),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(totals_tbl)
+    elements.append(Spacer(1, 0.8 * cm))
+
+    # Digital seal
+    seal = receipt.get("signature") or ""
+    elements.append(Paragraph(
+        f"<b>Signature numérique</b>&nbsp;·&nbsp; <font face='Courier'>{seal}</font>",
+        styles["small"],
+    ))
+    elements.append(Paragraph(
+        "Ce reçu fait foi du paiement. La signature numérique HMAC-SHA256 garantit son authenticité.",
+        styles["small"],
+    ))
+    elements.append(Spacer(1, 0.5 * cm))
+    elements.append(Paragraph(
+        "Boulay Beach Resort · Abidjan, Côte d'Ivoire · contact@boulaybeach.ci",
+        styles["small"],
+    ))
+
+    doc.build(elements, onFirstPage=_pdf_footer_factory(styles), onLaterPages=_pdf_footer_factory(styles))
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{receipt["receipt_number"]}.pdf"'},
+    )
+
+
+PAYMENT_METHOD_FR_LABEL = {
+    "card": "Carte bancaire",
+    "fineo": "Carte bancaire",
+    "mobile_money": "Mobile Money",
+    "cash": "Espèces",
+    "deposit": "Acompte (carte)",
+    "on_site": "Sur place",
+    "transfer": "Virement",
+}
+
+
+@api.get("/staff/receipts/{receipt_id}")
+async def get_receipt(receipt_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["manager", "admin"])
+    receipt = await db.receipts.find_one({"id": receipt_id}, {"_id": 0})
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Reçu introuvable")
+    return receipt
+
+
+# =================================================================
 # MODULE LOISIRS — Event privatization requests
 # =================================================================
 
@@ -3827,6 +4178,55 @@ async def update_event_request(
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Event request not found")
     return {"ok": True}
+
+
+class EventPayment(BaseModel):
+    amount: int = Field(ge=1, le=100_000_000)
+    payment_method: Literal["card", "mobile_money", "cash", "transfer"] = "cash"
+    description: Optional[str] = None
+
+
+@api.post("/staff/loisirs/events/{event_id}/payment")
+async def register_event_payment(event_id: str, body: EventPayment, staff=Depends(get_current_staff)):
+    """Register a payment for a privatization request and emit a fiscal receipt."""
+    await _require_role(staff, ["manager", "admin"])
+    event = await db.event_requests.find_one({"id": event_id}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
+    description = body.description or f"Privatisation — {event.get('event_type','Événement')} du {event.get('event_date','')}"
+    receipt = await _create_receipt(
+        source="event",
+        source_id=event_id,
+        customer_name=f"{event.get('surname','')} {event.get('name','')}".strip() or "—",
+        customer_email=event.get("email", ""),
+        customer_phone=event.get("phone", ""),
+        lines=[{"description": description, "quantity": 1, "unit_price": int(body.amount), "total": int(body.amount)}],
+        payment_method=body.payment_method,
+        issued_by=staff.get("name") or "",
+        issued_by_role=staff.get("role") or "",
+        metadata={
+            "event_type": event.get("event_type"),
+            "event_date": event.get("event_date"),
+            "guest_count": event.get("guest_count"),
+            "sub_id": str(uuid.uuid4()),  # allow multiple payments per event (e.g. acompte then solde)
+        },
+    )
+    # Append payment to event for audit/history
+    await db.event_requests.update_one(
+        {"id": event_id},
+        {
+            "$push": {"payments": {
+                "id": receipt["id"],
+                "receipt_number": receipt["receipt_number"],
+                "amount": int(body.amount),
+                "payment_method": body.payment_method,
+                "paid_at": receipt["issued_at"],
+                "paid_by": staff.get("email") or "",
+            }},
+            "$inc": {"total_paid": int(body.amount)},
+        },
+    )
+    return {"ok": True, "receipt": receipt}
 
 
 # =================================================================
