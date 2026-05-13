@@ -270,11 +270,17 @@ export default function StaffScanner() {
     try {
       const { data } = await api.post(`/staff/scan/${result.qr_token}/checkin`);
       const dirLabel = DIRECTION_FR[data.direction] || data.direction;
-      toast.success(`Embarquement ${dirLabel.toLowerCase()} enregistré`);
+      toast.success(
+        `Embarquement ${dirLabel.toLowerCase()} enregistré${data.boat_label ? ` · Bateau ${data.boat_label}` : ""}`,
+      );
       const newScan = {
         direction: data.direction,
         scanned_at: data.scanned_at,
         staff_email: data.staff_email,
+        staff_name: data.staff_name,
+        boat_time: data.boat_time,
+        boat_date: data.boat_date,
+        boat_label: data.boat_label,
       };
       setResult({
         ...result,
@@ -514,16 +520,23 @@ export default function StaffScanner() {
                 {result.scans.map((s, i) => (
                   <li
                     key={i}
-                    className="flex items-center justify-between text-sm text-[#0A0A0A]"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-sm text-[#0A0A0A] gap-1"
                     data-testid={`scan-history-${i}`}
                   >
                     <span className="inline-flex items-center gap-2">
                       <CheckCircle2 size={13} className="text-green-600" />
                       <span className="font-medium">{DIRECTION_FR[s.direction] || s.direction}</span>
+                      {s.boat_label && (
+                        <span className="text-[0.62rem] uppercase tracking-[0.18em] text-[#B8922A] border border-[#B8922A]/30 bg-[#B8922A]/5 px-1.5 py-0.5 rounded-sm">
+                          Bateau {s.boat_label}
+                        </span>
+                      )}
                     </span>
-                    <span className="text-[0.72rem] text-[#0A0A0A]/55">
+                    <span className="text-[0.72rem] text-[#0A0A0A]/55 sm:text-right">
                       {formatDateTimeFR(s.scanned_at)}
-                      {s.staff_email && <span className="ml-2">· {s.staff_email}</span>}
+                      {(s.staff_name || s.staff_email) && (
+                        <span className="ml-2">· par {s.staff_name || s.staff_email}</span>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -624,12 +637,15 @@ export default function StaffScanner() {
                   </div>
                   <ul className="space-y-1.5">
                     {result.participant_charges.map((c) => (
-                      <li key={c.id} className="flex items-center justify-between text-[0.78rem] text-[#0A0A0A]">
+                      <li key={c.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-[0.78rem] text-[#0A0A0A] gap-0.5">
                         <span className="truncate">
                           {c.label}
                           {c.quantity > 1 && <span className="text-[#0A0A0A]/55"> × {c.quantity}</span>}
+                          {c.created_by && (
+                            <span className="text-[0.65rem] text-[#0A0A0A]/55 ml-2">· par {c.created_by}</span>
+                          )}
                         </span>
-                        <span className="text-[#0A0A0A] font-medium ml-3 flex-shrink-0">
+                        <span className="text-[#0A0A0A] font-medium sm:ml-3 flex-shrink-0">
                           {c.amount.toLocaleString("fr-FR")} FCFA
                         </span>
                       </li>

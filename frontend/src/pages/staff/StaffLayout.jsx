@@ -33,6 +33,7 @@ const NAV = [
   { to: "/staff/recus", icon: ReceiptText, label: "Reçus de paiement", roles: ["manager", "admin"] },
   { section: "Opérations", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: ["receptionist", "manager", "admin"] },
+  { to: "/staff/embarquements-historique", icon: Anchor, label: "Historique embarquements", roles: ["manager", "admin"] },
   { to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/activites", icon: Waves, label: "Activités sur place", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/hebergement", icon: BedDouble, label: "Hébergement", roles: ["manager", "admin"] },
