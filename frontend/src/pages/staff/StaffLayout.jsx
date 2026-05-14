@@ -18,6 +18,9 @@ import {
   X,
   History,
   Waves,
+  Building2,
+  Briefcase,
+  CalendarHeart,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -26,6 +29,12 @@ const can = (user, allowed) => allowed.includes(user?.role);
 const NAV = [
   { to: "/staff", end: true, icon: LayoutDashboard, label: "Tableau de bord", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/scanner", icon: QrCode, label: "Scanner QR", roles: ["receptionist", "manager", "admin"] },
+  { section: "Pôle", roles: ["manager", "admin"] },
+  { to: "/staff/pole/beach_club", icon: Waves, label: "Beach Club", roles: ["manager", "admin"] },
+  { to: "/staff/pole/hebergement", icon: BedDouble, label: "Hébergement", roles: ["manager", "admin"] },
+  { to: "/staff/pole/corporate", icon: Briefcase, label: "Corporate", roles: ["manager", "admin"] },
+  { to: "/staff/pole/activites_events", icon: CalendarHeart, label: "Activités & Événements", roles: ["manager", "admin"] },
+  { to: "/staff/pole/le_kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: ["manager", "admin"] },
   { section: "Réservations", roles: ["manager", "admin"] },
   { to: "/staff/reservations", icon: Ticket, label: "Toutes les réservations", roles: ["manager", "admin"] },
   { to: "/staff/clients", icon: Users, label: "Clients", roles: ["manager", "admin"] },
@@ -35,9 +44,7 @@ const NAV = [
   { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/embarquements-historique", icon: Anchor, label: "Historique embarquements", roles: ["manager", "admin"] },
   { to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: ["receptionist", "manager", "admin"] },
-  { to: "/staff/activites", icon: Waves, label: "Activités sur place", roles: ["receptionist", "manager", "admin"] },
-  { to: "/staff/hebergement", icon: BedDouble, label: "Hébergement", roles: ["manager", "admin"] },
-  { to: "/staff/kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: ["manager", "admin"] },
+  { to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/loisirs", icon: Sparkles, label: "Loisirs", roles: ["manager", "admin"] },
   { section: "Administration", roles: ["admin"] },
   { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: ["manager", "admin"] },

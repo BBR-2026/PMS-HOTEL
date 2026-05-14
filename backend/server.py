@@ -1174,6 +1174,111 @@ async def get_pole(pole_id: str):
     return {**p, "sub_offers": sub_offers}
 
 
+@api.get("/staff/poles/{pole_id}/overview")
+async def staff_pole_overview(pole_id: str, staff=Depends(get_current_staff)):
+    """Return everything needed to render the pôle-focused staff page:
+    pôle metadata, sub-offer breakdown, KPIs (today / 30d), recent bookings."""
+    await _require_role(staff, ["manager", "admin"])
+    if pole_id not in POLES:
+        raise HTTPException(status_code=404, detail="Pôle non trouvé")
+    pole = POLES[pole_id]
+    offer_ids = list(pole.get("offers", []))
+    # 'events_maison' is the synthetic sub-offer mapped to special_event bookings
+    mongo_offer_filter = []
+    has_events_maison = "events_maison" in offer_ids
+    static_offers = [o for o in offer_ids if o != "events_maison"]
+    if static_offers:
+        mongo_offer_filter.append({"offer_type": {"$in": static_offers}})
+    if has_events_maison:
+        mongo_offer_filter.append({"offer_type": "special_event"})
+    base_or = mongo_offer_filter + [{"pole": pole_id}]
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    from datetime import timedelta as _td
+    cutoff_30d = (datetime.now(timezone.utc).date() - _td(days=30)).isoformat()
+
+    # Sub-offer breakdown (last 30d)
+    sub_offer_stats = {oid: {"id": oid, "count": 0, "revenue": 0, "guests": 0} for oid in offer_ids}
+    cursor_30d = db.bookings.find(
+        {"$or": base_or, "date": {"$gte": cutoff_30d}, "status": {"$ne": "cancelled"}},
+        {"_id": 0, "offer_type": 1, "total_amount": 1, "adults": 1, "children": 1},
+    )
+    today_count = 0
+    today_revenue = 0
+    today_guests = 0
+    total_30d_count = 0
+    total_30d_revenue = 0
+    async for b in cursor_30d:
+        oid = b.get("offer_type") or ""
+        bucket = "events_maison" if oid == "special_event" else oid
+        if bucket in sub_offer_stats:
+            sub_offer_stats[bucket]["count"] += 1
+            sub_offer_stats[bucket]["revenue"] += int(b.get("total_amount", 0) or 0)
+            sub_offer_stats[bucket]["guests"] += int(b.get("adults", 0)) + int(b.get("children", 0))
+        total_30d_count += 1
+        total_30d_revenue += int(b.get("total_amount", 0) or 0)
+
+    cursor_today = db.bookings.find(
+        {"$or": base_or, "date": today, "status": {"$ne": "cancelled"}},
+        {"_id": 0, "adults": 1, "children": 1, "total_amount": 1, "status": 1},
+    )
+    async for b in cursor_today:
+        today_count += 1
+        today_guests += int(b.get("adults", 0)) + int(b.get("children", 0))
+        if b.get("status") in ("confirmed", "arrived", "completed"):
+            today_revenue += int(b.get("total_amount", 0) or 0)
+
+    # Recent bookings (last 20, most recent first by created_at)
+    recent_cursor = db.bookings.find(
+        {"$or": base_or, "status": {"$ne": "cancelled"}},
+        {
+            "_id": 0, "id": 1, "offer_type": 1, "offer_name": 1, "date": 1,
+            "adults": 1, "children": 1, "boat_time": 1, "total_amount": 1,
+            "status": 1, "phone": 1, "participants": 1, "created_at": 1, "paid_at": 1,
+        },
+    ).sort("created_at", -1).limit(20)
+    recent = await recent_cursor.to_list(length=20)
+
+    # Hydrate sub_offers with metadata + stats
+    sub_offers_out = []
+    for oid in offer_ids:
+        if oid == "events_maison":
+            sub_offers_out.append({
+                "id": "events_maison",
+                "name_fr": "Events Maison",
+                "name_en": "In-house Events",
+                "is_synthetic": True,
+                "stats": sub_offer_stats[oid],
+            })
+        elif oid in OFFERS:
+            o = dict(OFFERS[oid])
+            sub_offers_out.append({
+                "id": oid,
+                "name_fr": o.get("name_fr"),
+                "name_en": o.get("name_en"),
+                "schedule_fr": o.get("schedule_fr"),
+                "price_adult": o.get("price_adult"),
+                "price_child": o.get("price_child"),
+                "max_capacity": o.get("max_capacity"),
+                "stats": sub_offer_stats[oid],
+            })
+    return {
+        "pole": {
+            "id": pole_id,
+            "name_fr": pole["name_fr"],
+            "name_en": pole["name_en"],
+            "tagline_fr": pole.get("tagline_fr"),
+            "sort_order": pole.get("sort_order"),
+        },
+        "kpis": {
+            "today": {"count": today_count, "guests": today_guests, "revenue": today_revenue},
+            "last_30d": {"count": total_30d_count, "revenue": total_30d_revenue},
+        },
+        "sub_offers": sub_offers_out,
+        "recent_bookings": recent,
+    }
+
+
 # ----- Availability -----
 @api.get("/availability/{offer_id}/{when}")
 async def availability(offer_id: str, when: str):

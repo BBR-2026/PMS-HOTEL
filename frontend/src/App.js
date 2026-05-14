@@ -27,6 +27,7 @@ import StaffReceipts from "./pages/staff/StaffReceipts";
 import StaffCheckinsHistory from "./pages/staff/StaffCheckinsHistory";
 import StaffActivitiesConfig from "./pages/staff/StaffActivitiesConfig";
 import StaffSpecialEvents from "./pages/staff/StaffSpecialEvents";
+import StaffPolePage from "./pages/staff/StaffPolePage";
 import PolePage from "./pages/PolePage";
 import RoleGuard from "./components/RoleGuard";
 
@@ -82,6 +83,7 @@ function App() {
               <Route path="embarquements-historique" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCheckinsHistory /></RoleGuard>} />
               <Route path="configuration/activites" element={<RoleGuard allowed={MANAGER_PLUS}><StaffActivitiesConfig /></RoleGuard>} />
               <Route path="evenements-speciaux" element={<RoleGuard allowed={MANAGER_PLUS}><StaffSpecialEvents /></RoleGuard>} />
+              <Route path="pole/:poleId" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPolePage /></RoleGuard>} />
               <Route path="hebergement" element={<RoleGuard allowed={MANAGER_PLUS}><StaffHebergement /></RoleGuard>} />
               <Route path="clients" element={<RoleGuard allowed={MANAGER_PLUS}><StaffClients /></RoleGuard>} />
               <Route path="loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLoisirs /></RoleGuard>} />
