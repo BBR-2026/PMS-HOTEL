@@ -4,6 +4,7 @@ import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 import { CalendarDays, Wallet, Users, Anchor, AlertTriangle, Clock } from "lucide-react";
+import { toast } from "sonner";
 
 const STATUS_COLORS = {
   pending: "bg-[#FAFAF7] text-[#0A0A0A]/55 border-[#0A0A0A]/15",
@@ -44,14 +45,43 @@ export default function StaffDashboard() {
   const isManager = user && (user.role === "manager" || user.role === "admin");
 
   useEffect(() => {
+    let cancelled = false;
     api.get("/staff/dashboard")
-      .then((r) => setData(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then((r) => { if (!cancelled) setData(r.data); })
+      .catch((e) => {
+        if (cancelled) return;
+        const status = e.response?.status;
+        if (status === 401 || status === 403) {
+          // Interceptor already redirects to /staff/login on 401
+          return;
+        }
+        toast.error(
+          status
+            ? `Erreur ${status} en chargeant le tableau de bord`
+            : "Connexion au serveur impossible — vérifiez votre réseau",
+        );
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   if (loading) return <div className="p-10 text-[#0A0A0A]/50">Chargement…</div>;
-  if (!data) return <div className="p-10 text-red-600">Impossible de charger le tableau de bord.</div>;
+  if (!data) return (
+    <div className="p-10 max-w-xl" data-testid="dashboard-error">
+      <div className="text-red-600 mb-3">Impossible de charger le tableau de bord.</div>
+      <div className="text-sm text-[#0A0A0A]/55 mb-4">
+        Si l'erreur persiste, votre session a peut-être expiré. Reconnectez-vous, ou rechargez la page.
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => window.location.reload()} className="px-4 py-2 text-[0.7rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#a37e1f]">
+          Recharger
+        </button>
+        <button onClick={() => { localStorage.removeItem("bbr_staff_session"); window.location.href = "/staff/login"; }} className="px-4 py-2 text-[0.7rem] uppercase tracking-[0.22em] border border-[#0A0A0A]/15 text-[#0A0A0A]/65 hover:border-[#0A0A0A]">
+          Se reconnecter
+        </button>
+      </div>
+    </div>
+  );
 
   const { kpis, bookings_today, alerts, pole_breakdown } = data;
   const totalRevenue30d = (pole_breakdown || []).reduce((s, p) => s + (p.last_30d?.revenue || 0), 0) || 1;

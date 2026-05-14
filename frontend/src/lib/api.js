@@ -30,7 +30,16 @@ api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err.response?.status === 401) {
-      // token invalid - the AuthContext will handle clearing on next render
+      // Token expired / invalid → clear the staff session and bounce to login
+      try {
+        localStorage.removeItem(STAFF_SESSION_KEY);
+      } catch {}
+      // Only redirect if we're on a /staff/* page (avoid loops on the public site)
+      if (typeof window !== "undefined" && window.location.pathname.startsWith("/staff")) {
+        if (!window.location.pathname.endsWith("/login")) {
+          window.location.replace("/staff/login?expired=1");
+        }
+      }
     }
     return Promise.reject(err);
   }

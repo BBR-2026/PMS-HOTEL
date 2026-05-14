@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
+import { useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 import { toast } from "sonner";
 
 export default function StaffLogin() {
   const { user, login } = useStaffAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const expired = searchParams.get("expired") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to="/staff" replace />;
+  if (user && !expired) return <Navigate to="/staff" replace />;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -40,6 +42,12 @@ export default function StaffLogin() {
             Back-office Staff
           </div>
         </div>
+
+        {expired && (
+          <div className="mb-6 p-3 bg-[#B8922A]/10 border border-[#B8922A]/30 text-[0.78rem] text-[#0A0A0A]/80" data-testid="session-expired-banner">
+            Votre session a expiré. Merci de vous reconnecter.
+          </div>
+        )}
 
         <form onSubmit={submit} className="space-y-6">
           <div>
