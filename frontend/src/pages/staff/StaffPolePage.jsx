@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import api from "../../lib/api";
+import api, { API, getStaffToken } from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { toast } from "sonner";
 import {
   CalendarDays, Wallet, Users, ArrowRight, ChevronRight, Briefcase, BedDouble,
-  UtensilsCrossed, Waves, CalendarHeart, TrendingUp, Clock,
+  UtensilsCrossed, Waves, CalendarHeart, TrendingUp, Clock, Download,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar,
@@ -68,6 +68,35 @@ function fmtDateShort(iso) {
   if (!iso) return "";
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}` : iso;
+}
+
+async function exportPdf(poleId, setDownloading) {
+  setDownloading(true);
+  try {
+    const token = getStaffToken();
+    const res = await fetch(`${API}/staff/poles/${poleId}/report.pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      toast.error(res.status === 403 ? "Accès refusé" : "Export PDF impossible");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    a.download = `bbr-pole-${poleId}-${today}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Rapport PDF téléchargé");
+  } catch {
+    toast.error("Erreur lors du téléchargement");
+  } finally {
+    setDownloading(false);
+  }
 }
 
 function MetricTile({ label, value, sub, tone = "neutral" }) {
@@ -313,6 +342,7 @@ export default function StaffPolePage() {
   const { poleId } = useParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -352,14 +382,24 @@ export default function StaffPolePage() {
             <p className="text-sm text-[#0A0A0A]/55 mt-1.5 max-w-2xl">{pole.tagline_fr}</p>
           )}
         </div>
-        <Link
-          to={`/staff/reservations?pole=${pole.id}`}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] text-white hover:opacity-90 transition-all self-start sm:self-auto"
-          style={{ backgroundColor: accent }}
-          data-testid={`pole-reservations-link-${pole.id}`}
-        >
-          Toutes les réservations <ArrowRight size={13} />
-        </Link>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => exportPdf(pole.id, setDownloading)}
+            disabled={downloading}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] border border-[#0A0A0A]/15 text-[#0A0A0A]/75 hover:border-[#B8922A] hover:text-[#B8922A] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            data-testid={`pole-export-pdf-${pole.id}`}
+          >
+            <Download size={13} /> {downloading ? "…" : "Export PDF"}
+          </button>
+          <Link
+            to={`/staff/reservations?pole=${pole.id}`}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] text-white hover:opacity-90 transition-all"
+            style={{ backgroundColor: accent }}
+            data-testid={`pole-reservations-link-${pole.id}`}
+          >
+            Toutes les réservations <ArrowRight size={13} />
+          </Link>
+        </div>
       </div>
 
       {/* KPIs */}

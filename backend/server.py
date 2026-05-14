@@ -2739,6 +2739,274 @@ async def traversees_history_pdf(
     )
 
 
+@api.get("/staff/poles/{pole_id}/report.pdf")
+async def staff_pole_report_pdf(pole_id: str, staff=Depends(get_current_staff)):
+    """Generate a print-ready monthly PDF report for the given pôle.
+    Contains: header + KPIs + sub-offers + analytics breakdowns.
+    """
+    await _require_role(staff, ["manager", "admin"])
+    overview = await staff_pole_overview(pole_id, staff=staff)  # reuse full computation
+    pole = overview["pole"]
+    kpis = overview["kpis"]
+    sub_offers = overview["sub_offers"]
+    analytics = overview["analytics"] or {}
+    recent = overview["recent_bookings"] or []
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from fastapi.responses import StreamingResponse
+    import io
+
+    styles = _pdf_styles()
+    GOLD = styles["GOLD"]
+    DARK = styles["DARK"]
+    LIGHT = styles["LIGHT"]
+    MUTED = styles["MUTED"]
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        topMargin=2 * cm, bottomMargin=2 * cm, leftMargin=2 * cm, rightMargin=2 * cm,
+        title=f"Rapport pôle {pole['name_fr']}",
+    )
+    el = []
+    now_dt = datetime.now(timezone.utc)
+    now_human = now_dt.strftime("%d/%m/%Y %H:%M UTC")
+
+    # ===== Header =====
+    el.append(Paragraph("BOULAY BEACH RESORT", styles["sub"]))
+    el.append(Paragraph(f"Rapport mensuel — Pôle {pole['name_fr']}", styles["h1"]))
+    el.append(Paragraph(f"Période glissante : 30 derniers jours · Généré le {now_human}", styles["small"]))
+    el.append(Spacer(1, 16))
+
+    # ===== KPIs grid =====
+    el.append(Paragraph("Vue d'ensemble", styles["h2"]))
+    kpi_rows = [
+        ["Réservations 30j", str(kpis["last_30d"].get("count", 0))],
+        ["CA 30j", _format_xof(kpis["last_30d"].get("revenue", 0))],
+        ["Réservations aujourd'hui", str(kpis["today"].get("count", 0))],
+        ["Convives attendus aujourd'hui", str(kpis["today"].get("guests", 0))],
+        ["Revenus encaissés aujourd'hui", _format_xof(kpis["today"].get("revenue", 0))],
+        ["Panier moyen 30j", _format_xof(analytics.get("avg_basket", 0))],
+        ["Délai moyen de réservation", f"{analytics.get('avg_lead_time_days', 0)} jours"],
+        ["Taux de paiement", f"{analytics.get('paid_rate', 0)} %"],
+        ["Taux d'annulation", f"{analytics.get('cancellation_rate', 0)} %"],
+        [
+            "Convives 30j",
+            f"{(analytics.get('guests_breakdown', {}).get('adults', 0))} adultes · "
+            f"{(analytics.get('guests_breakdown', {}).get('children', 0))} enfants",
+        ],
+    ]
+    t = Table(kpi_rows, colWidths=[8 * cm, 8 * cm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+        ("TEXTCOLOR", (0, 0), (0, -1), MUTED),
+        ("TEXTCOLOR", (1, 0), (1, -1), DARK),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#E5E5E2")),
+    ]))
+    el.append(t)
+    el.append(Spacer(1, 14))
+
+    # ===== Sub-offers =====
+    if sub_offers:
+        el.append(Paragraph("Sous-offres", styles["h2"]))
+        rows = [["Sous-offre", "Réservations", "CA (30j)", "Convives", "Occupation"]]
+        for s in sub_offers:
+            stats = s.get("stats") or {}
+            occ = s.get("occupancy_pct")
+            occ_str = "—" if occ is None else f"{occ} %"
+            rows.append([
+                s.get("name_fr", ""),
+                str(stats.get("count", 0)),
+                _format_xof(stats.get("revenue", 0)),
+                str(stats.get("guests", 0)),
+                occ_str,
+            ])
+        t = Table(rows, colWidths=[6 * cm, 2.5 * cm, 3.8 * cm, 2 * cm, 2.5 * cm], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), GOLD),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#E5E5E2")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+        ]))
+        el.append(t)
+        el.append(Spacer(1, 14))
+
+    # ===== Status pipeline =====
+    by_status = analytics.get("by_status") or []
+    if any(s.get("count", 0) for s in by_status):
+        el.append(Paragraph("Pipeline des statuts", styles["h2"]))
+        STATUS_FR = {
+            "pending": "En attente", "confirmed": "Confirmée", "arrived": "Arrivée",
+            "completed": "Terminée", "cancelled": "Annulée",
+        }
+        rows = [["Statut", "Nombre"]]
+        for s in by_status:
+            rows.append([STATUS_FR.get(s["status"], s["status"]), str(s.get("count", 0))])
+        t = Table(rows, colWidths=[10 * cm, 4 * cm], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), GOLD),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#E5E5E2")),
+        ]))
+        el.append(t)
+        el.append(Spacer(1, 14))
+
+    # ===== Payment methods =====
+    pmethods = analytics.get("by_payment_method") or []
+    if pmethods:
+        el.append(Paragraph("Répartition par méthode de paiement", styles["h2"]))
+        METHOD_FR = {"cash": "Espèces", "card": "Carte", "mobile_money": "Mobile Money", "fineo": "FINEO", "deposit": "Acompte", "unknown": "Non défini"}
+        rows = [["Méthode", "Nombre", "Montant total"]]
+        for p in sorted(pmethods, key=lambda x: x.get("total", 0), reverse=True):
+            rows.append([
+                METHOD_FR.get(p.get("method"), p.get("method")),
+                str(p.get("count", 0)),
+                _format_xof(p.get("total", 0)),
+            ])
+        t = Table(rows, colWidths=[7 * cm, 4 * cm, 5 * cm], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), GOLD),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+        ]))
+        el.append(t)
+        el.append(Spacer(1, 14))
+
+    # ===== Weekday =====
+    weekday = analytics.get("by_weekday") or []
+    if any(w.get("count", 0) for w in weekday):
+        el.append(Paragraph("Répartition par jour de la semaine", styles["h2"]))
+        rows = [["Jour", "Réservations", "CA"]]
+        for w in weekday:
+            rows.append([w["day"], str(w.get("count", 0)), _format_xof(w.get("revenue", 0))])
+        t = Table(rows, colWidths=[5 * cm, 4 * cm, 7 * cm], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), GOLD),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+        ]))
+        el.append(t)
+        el.append(Spacer(1, 14))
+
+    # ===== Boat times =====
+    btimes = analytics.get("by_boat_time") or []
+    if btimes:
+        el.append(Paragraph("Horaires de traversée les plus demandés", styles["h2"]))
+        rows = [["Horaire", "Réservations"]]
+        for b in btimes:
+            rows.append([b.get("boat_time", "—"), str(b.get("count", 0))])
+        t = Table(rows, colWidths=[10 * cm, 4 * cm], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), GOLD),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+        ]))
+        el.append(t)
+        el.append(Spacer(1, 14))
+
+    # ===== Top clients =====
+    top_clients = analytics.get("top_clients") or []
+    if top_clients:
+        el.append(Paragraph("Top 5 clients (par CA)", styles["h2"]))
+        rows = [["#", "Nom", "Téléphone", "Réservations", "CA"]]
+        for i, c in enumerate(top_clients, start=1):
+            rows.append([str(i), c.get("name", "—"), c.get("phone", "—"), str(c.get("count", 0)), _format_xof(c.get("total", 0))])
+        t = Table(rows, colWidths=[0.8 * cm, 6 * cm, 4 * cm, 2.5 * cm, 3.5 * cm], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), GOLD),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+        ]))
+        el.append(t)
+        el.append(Spacer(1, 14))
+
+    # ===== Recent bookings (last 10) =====
+    if recent:
+        el.append(PageBreak())
+        el.append(Paragraph("Réservations récentes", styles["h2"]))
+        rows = [["Date", "Heure", "Offre", "Convives", "Montant", "Statut"]]
+        STATUS_FR = {
+            "pending": "En attente", "confirmed": "Confirmée", "arrived": "Arrivée",
+            "completed": "Terminée", "cancelled": "Annulée",
+        }
+        for b in recent[:15]:
+            adults = int(b.get("adults", 0) or 0)
+            children = int(b.get("children", 0) or 0)
+            convives = f"{adults}A" + (f" +{children}E" if children else "")
+            date_iso = b.get("date") or ""
+            m = date_iso.split("-") if date_iso else []
+            date_fr = f"{m[2]}/{m[1]}/{m[0]}" if len(m) == 3 else "—"
+            rows.append([
+                date_fr,
+                b.get("boat_time") or "—",
+                b.get("offer_name", "")[:32],
+                convives,
+                _format_xof(b.get("total_amount", 0)),
+                STATUS_FR.get(b.get("status"), b.get("status", "")),
+            ])
+        t = Table(rows, colWidths=[2.2 * cm, 1.6 * cm, 5.5 * cm, 2 * cm, 3 * cm, 2.7 * cm], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), GOLD),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("ALIGN", (4, 1), (4, -1), "RIGHT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+        ]))
+        el.append(t)
+
+    footer = _pdf_footer_factory(styles)
+    doc.build(el, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    fname = f"bbr-pole-{pole_id}-{now_dt.strftime('%Y%m%d')}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 # ---------- Shared PDF helpers ----------
 def _pdf_styles():
     """Return common reportlab styles used by all BBr PDF reports."""
