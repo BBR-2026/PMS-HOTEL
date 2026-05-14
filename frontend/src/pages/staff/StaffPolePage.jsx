@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   CalendarDays, Wallet, Users, ArrowRight, ChevronRight, Briefcase, BedDouble,
   UtensilsCrossed, Waves, CalendarHeart, TrendingUp, Clock, Download,
+  ShoppingBag, Sparkles, Ban,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar,
@@ -338,6 +339,145 @@ function PoleAnalytics({ analytics, sub_offers, accent }) {
   );
 }
 
+function WalletStats({ wallet, accent }) {
+  const k = wallet.kpis || {};
+  const byCategory = wallet.by_category || [];
+  const topItems = wallet.top_items || [];
+  const dailyTrend = (wallet.daily_trend || []).map((d) => ({ ...d, label: fmtDateShort(d.date) }));
+  const totalCat = byCategory.reduce((s, c) => s + (c.revenue || 0), 0) || 1;
+
+  if (!k.active_count && !k.voided_count) {
+    return (
+      <div className="mb-8 space-y-6" data-testid="pole-wallet-stats-empty">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display-serif text-xl md:text-2xl text-[#0A0A0A] inline-flex items-center gap-2.5">
+            <ShoppingBag size={20} style={{ color: accent }} /> Consommation sur place
+          </h2>
+          <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45">30 derniers jours</span>
+        </div>
+        <div className="bg-white border border-[#0A0A0A]/8 p-8 text-center text-sm text-[#0A0A0A]/55">
+          Aucune charge enregistrée sur les wallets clients.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-8 space-y-6" data-testid="pole-wallet-stats">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display-serif text-xl md:text-2xl text-[#0A0A0A] inline-flex items-center gap-2.5">
+          <ShoppingBag size={20} style={{ color: accent }} /> Consommation sur place
+        </h2>
+        <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45">30 derniers jours · Wallets</span>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="wallet-stats-kpis">
+        <MetricTile label="Charges actives" value={k.active_count || 0} sub={`Panier moyen ${formatXOF(k.avg_charge || 0)}`} />
+        <MetricTile label="CA encaissé" value={formatXOF(k.total_revenue || 0)} sub="Transactions confirmées" tone="good" />
+        <MetricTile
+          label="Annulées"
+          value={k.voided_count || 0}
+          sub={k.voided_amount ? `${formatXOF(k.voided_amount)} annulés` : "—"}
+          tone={k.voided_count > 0 ? "warn" : "neutral"}
+        />
+        <MetricTile
+          label="Mix catégories"
+          value={byCategory.length}
+          sub={byCategory[0] ? `Top: ${byCategory[0].category}` : "—"}
+        />
+      </div>
+
+      <div className="bg-white border border-[#0A0A0A]/8 p-5 md:p-6" data-testid="wallet-stats-daily">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display-serif text-base text-[#0A0A0A]">Tendance quotidienne (consommation)</h3>
+          <Link to="/staff/consommation" className="text-[0.65rem] uppercase tracking-[0.22em] text-[#B8922A] hover:underline" data-testid="wallet-stats-deep-link">
+            Détail complet <ChevronRight size={11} className="inline -mt-0.5" />
+          </Link>
+        </div>
+        {dailyTrend.length === 0 ? (
+          <p className="text-sm text-[#0A0A0A]/45 py-8 text-center">Aucune donnée sur la période.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={dailyTrend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gradWallet" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={accent} stopOpacity={0.35} />
+                  <stop offset="95%" stopColor={accent} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E2" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#94948D" />
+              <YAxis tick={{ fontSize: 10 }} stroke="#94948D" tickFormatter={(v) => v >= 1000 ? `${Math.round(v / 1000)}k` : v} width={40} />
+              <Tooltip formatter={(v, name) => [name === "revenue" ? formatXOF(v) : v, name === "revenue" ? "CA" : "Charges"]} contentStyle={{ fontSize: 11 }} />
+              <Area type="monotone" dataKey="revenue" stroke={accent} strokeWidth={2} fill="url(#gradWallet)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="bg-white border border-[#0A0A0A]/8 p-5 md:p-6" data-testid="wallet-stats-by-category">
+          <h3 className="font-display-serif text-base text-[#0A0A0A] mb-4 inline-flex items-center gap-2">
+            <Sparkles size={14} style={{ color: accent }} /> Répartition par catégorie
+          </h3>
+          {byCategory.length === 0 ? (
+            <p className="text-sm text-[#0A0A0A]/45 py-8 text-center">—</p>
+          ) : (
+            <div className="space-y-2.5">
+              {byCategory.map((c) => {
+                const pct = Math.round((c.revenue / totalCat) * 100);
+                return (
+                  <div key={c.category}>
+                    <div className="flex items-baseline justify-between text-[0.78rem] mb-1">
+                      <span className="text-[#0A0A0A]/75">{c.category} <span className="text-[#0A0A0A]/40">({c.count})</span></span>
+                      <span className="text-[#0A0A0A] tabular-nums">{formatXOF(c.revenue)}</span>
+                    </div>
+                    <div className="h-1.5 bg-[#FAFAF7]">
+                      <div className="h-full" style={{ width: `${pct}%`, backgroundColor: accent }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white border border-[#0A0A0A]/8 p-5 md:p-6" data-testid="wallet-stats-top-items">
+          <h3 className="font-display-serif text-base text-[#0A0A0A] mb-4">Top consommations</h3>
+          {topItems.length === 0 ? (
+            <p className="text-sm text-[#0A0A0A]/45 py-8 text-center">—</p>
+          ) : (
+            <ol className="space-y-2.5">
+              {topItems.map((it, i) => (
+                <li key={it.activity_id} className="flex items-center gap-3 text-[0.78rem]">
+                  <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[0.62rem] font-medium text-white tabular-nums" style={{ backgroundColor: i === 0 ? accent : "#94A3B8" }}>{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[#0A0A0A] truncate">{it.label}</div>
+                    <div className="text-[0.65rem] text-[#0A0A0A]/45 truncate">
+                      {it.category} · {it.subcategory} · {it.quantity || it.count} u.
+                    </div>
+                  </div>
+                  <span className="text-[#0A0A0A] tabular-nums whitespace-nowrap">{formatXOF(it.revenue)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </div>
+
+      {k.voided_count > 0 && (
+        <div className="bg-amber-50/60 border border-amber-200 p-4 inline-flex items-start gap-2.5 text-[0.78rem] text-amber-900" data-testid="wallet-stats-voided-notice">
+          <Ban size={14} className="mt-0.5 flex-shrink-0" />
+          <span>
+            <strong className="font-medium">{k.voided_count}</strong> charge{k.voided_count > 1 ? "s" : ""} annulée{k.voided_count > 1 ? "s" : ""}
+            {k.voided_amount > 0 ? ` (${formatXOF(k.voided_amount)})` : ""} sur la période. Pensez à analyser les motifs avec l'équipe terrain.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StaffPolePage() {
   const { poleId } = useParams();
   const [data, setData] = useState(null);
@@ -520,6 +660,11 @@ export default function StaffPolePage() {
 
       {/* ==================== ANALYTICS ==================== */}
       <PoleAnalytics analytics={data.analytics} sub_offers={sub_offers} accent={accent} />
+
+      {/* ==================== CONSOMMATION SUR PLACE (wallet) ==================== */}
+      {pole.id === "activites_events" && data.wallet_stats && (
+        <WalletStats wallet={data.wallet_stats} accent={accent} />
+      )}
 
       {/* Recent bookings */}
       <div className="bg-white border border-[#0A0A0A]/8 p-5 md:p-6">

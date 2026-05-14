@@ -1576,6 +1576,78 @@ async def staff_pole_overview(pole_id: str, staff=Depends(get_current_staff)):
         else:
             s["occupancy_pct"] = None
 
+    # ============== WALLET / CONSOMMATION SUR PLACE (activites_events only) ==============
+    wallet_stats = None
+    if pole_id == "activites_events":
+        # Aggregate all wallet transactions in the last 30 days (active only,
+        # voided ones counted apart for transparency).
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=30)
+        cutoff_iso = cutoff_dt.isoformat()
+
+        cat_map = {}
+        async for a in db.activities.find({}, {"_id": 0, "id": 1, "category": 1, "subcategory": 1}):
+            cat_map[a["id"]] = {
+                "category": a.get("category") or "Autre",
+                "subcategory": a.get("subcategory") or "—",
+            }
+
+        pipeline = [
+            {"$match": {"transactions": {"$exists": True, "$ne": []}}},
+            {"$unwind": "$transactions"},
+            {"$match": {"transactions.created_at": {"$gte": cutoff_iso}}},
+            {"$replaceRoot": {"newRoot": "$transactions"}},
+        ]
+        txs = [t async for t in db.wallets.aggregate(pipeline)]
+        active_txs = [t for t in txs if t.get("status") != "voided"]
+        voided_txs = [t for t in txs if t.get("status") == "voided"]
+
+        w_total_revenue = sum(int(t.get("amount", 0) or 0) for t in active_txs)
+        w_voided_amount = sum(int(t.get("amount", 0) or 0) for t in voided_txs)
+
+        w_by_category: dict = {}
+        w_by_item: dict = {}
+        w_daily: dict = {}
+        for t in active_txs:
+            aid = t.get("activity_id") or "custom"
+            meta = cat_map.get(aid, {"category": "Offres spéciales", "subcategory": "—"})
+            cat = meta["category"]
+            amount = int(t.get("amount", 0) or 0)
+            qty = int(t.get("quantity", 0) or 0)
+            label = t.get("label") or aid
+
+            w_by_category.setdefault(cat, {"category": cat, "count": 0, "revenue": 0, "quantity": 0})
+            w_by_category[cat]["count"] += 1
+            w_by_category[cat]["revenue"] += amount
+            w_by_category[cat]["quantity"] += qty
+
+            w_by_item.setdefault(aid, {
+                "activity_id": aid, "label": label,
+                "category": cat, "subcategory": meta["subcategory"],
+                "count": 0, "revenue": 0, "quantity": 0,
+            })
+            w_by_item[aid]["count"] += 1
+            w_by_item[aid]["revenue"] += amount
+            w_by_item[aid]["quantity"] += qty
+
+            date_str = (t.get("created_at") or "")[:10]
+            if date_str:
+                w_daily.setdefault(date_str, {"date": date_str, "revenue": 0, "count": 0})
+                w_daily[date_str]["revenue"] += amount
+                w_daily[date_str]["count"] += 1
+
+        wallet_stats = {
+            "kpis": {
+                "active_count": len(active_txs),
+                "total_revenue": w_total_revenue,
+                "voided_count": len(voided_txs),
+                "voided_amount": w_voided_amount,
+                "avg_charge": int(w_total_revenue / len(active_txs)) if active_txs else 0,
+            },
+            "by_category": sorted(w_by_category.values(), key=lambda x: x["revenue"], reverse=True),
+            "top_items": sorted(w_by_item.values(), key=lambda x: x["revenue"], reverse=True)[:8],
+            "daily_trend": sorted(w_daily.values(), key=lambda x: x["date"]),
+        }
+
     return {
         "pole": {
             "id": pole_id,
@@ -1591,6 +1663,7 @@ async def staff_pole_overview(pole_id: str, staff=Depends(get_current_staff)):
         "sub_offers": sub_offers_out,
         "recent_bookings": recent,
         "analytics": analytics,
+        "wallet_stats": wallet_stats,
     }
 
 
