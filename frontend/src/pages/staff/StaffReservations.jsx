@@ -57,6 +57,14 @@ const POLE_COLOR = {
   le_kaai: "text-purple-700 border-purple-300 bg-purple-50",
 };
 
+const PAYMENT_METHOD_FR = {
+  cash: "Espèces",
+  card: "Carte bancaire",
+  mobile_money: "Mobile Money",
+  fineo: "FINEO",
+  deposit: "Acompte",
+};
+
 const POLE_TABS = [
   { id: "all", label: "Toutes", filter: null },
   { id: "beach_club", label: "Beach Club", filter: "beach_club" },
@@ -247,21 +255,6 @@ function BookingDrawer({ id, onClose, onUpdated }) {
       setBusy(false);
     }
   };
-  const markPaid = async (method) => {
-    setBusy(true);
-    try {
-      await api.patch(`/staff/bookings/${id}/payment`, { payment_method: method, paid: true });
-      toast.success(`Marqué comme payé (${method})`);
-      const { data } = await api.get(`/staff/bookings/${id}`);
-      setB(data);
-      onUpdated?.();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Erreur");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (!id) return null;
   return (
     <div className="fixed inset-0 z-40" data-testid="booking-drawer">
@@ -369,15 +362,39 @@ function BookingDrawer({ id, onClose, onUpdated }) {
                 )}
               </div>
               {!b.paid_at && b.total_amount > 0 && (
-                <div>
-                  <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-2">Marquer comme payé</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {["cash", "card", "mobile_money"].map((m) => (
-                      <button key={m} onClick={() => markPaid(m)} disabled={busy} className="px-3 py-2 border border-[#B8922A]/40 hover:bg-[#B8922A]/10 text-xs uppercase tracking-[0.16em]" data-testid={`mark-paid-${m}`}>
-                        {m === "cash" ? "Espèces" : m === "card" ? "Carte" : "Mobile"}
-                      </button>
-                    ))}
+                <div className="border border-red-200 bg-red-50/60 p-3 text-[0.78rem] text-red-800" data-testid="payment-readonly-unpaid">
+                  <div className="text-[0.6rem] uppercase tracking-[0.22em] mb-1">Paiement</div>
+                  <div className="flex items-center justify-between">
+                    <span>Impayé — à encaisser</span>
+                    <Link to="/staff/paiements" className="text-[0.62rem] uppercase tracking-[0.22em] underline hover:no-underline" data-testid="payment-go-to-payments">
+                      Gérer dans Paiements
+                    </Link>
                   </div>
+                </div>
+              )}
+              {b.paid_at && (
+                <div className="border border-green-200 bg-green-50/60 p-3 text-[0.78rem] text-green-900" data-testid="payment-readonly-paid">
+                  <div className="text-[0.6rem] uppercase tracking-[0.22em] mb-1">Paiement encaissé</div>
+                  <dl className="space-y-1">
+                    <div className="flex justify-between">
+                      <dt>Méthode</dt>
+                      <dd className="font-medium">{PAYMENT_METHOD_FR[b.payment_method] || b.payment_method || "—"}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt>Montant payé</dt>
+                      <dd className="font-medium tabular-nums">{formatXOF(b.paid_amount || b.total_amount || 0)}</dd>
+                    </div>
+                    {b.balance_due > 0 && (
+                      <div className="flex justify-between">
+                        <dt>Solde restant</dt>
+                        <dd className="font-medium tabular-nums text-[#B8922A]">{formatXOF(b.balance_due)}</dd>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <dt>Encaissé le</dt>
+                      <dd className="font-medium tabular-nums">{new Date(b.paid_at).toLocaleString("fr-FR")}</dd>
+                    </div>
+                  </dl>
                 </div>
               )}
             </div>
