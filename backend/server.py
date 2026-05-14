@@ -912,11 +912,22 @@ DEFAULT_ACTIVITIES = [
     {"id": "menu_kaai", "name_fr": "Menu Le Kaai", "name_en": "Le Kaai Menu", "category": "Menus", "subcategory": "Kaai", "price": 35000, "active": True},
     {"id": "menu_beach_club", "name_fr": "Menu Beach Club", "name_en": "Beach Club Menu", "category": "Menus", "subcategory": "Beach Club", "price": 28000, "active": True},
     {"id": "menu_lounge", "name_fr": "Menu Lounge", "name_en": "Lounge Menu", "category": "Menus", "subcategory": "Lounge", "price": 22000, "active": True},
-    # Espace privatif
-    {"id": "espace_plage", "name_fr": "Plage privatisée", "name_en": "Private Beach", "category": "Espace privatif", "subcategory": "Plage", "price": 250000, "active": True},
-    {"id": "espace_terrasse_1", "name_fr": "Terrasse 1 privatisée", "name_en": "Private Terrace 1", "category": "Espace privatif", "subcategory": "Terrasse 1", "price": 180000, "active": True},
-    {"id": "espace_terrasse_2", "name_fr": "Terrasse 2 privatisée", "name_en": "Private Terrace 2", "category": "Espace privatif", "subcategory": "Terrasse 2", "price": 150000, "active": True},
-    {"id": "espace_terrasse_3", "name_fr": "Terrasse 3 privatisée", "name_en": "Private Terrace 3", "category": "Espace privatif", "subcategory": "Terrasse 3", "price": 120000, "active": True},
+    # Espace privatif — Plage
+    {"id": "espace_plage_balinais_6", "name_fr": "Salon balinais (6 places)", "name_en": "Balinese Lounge (6 seats)", "category": "Espace privatif", "subcategory": "Plage", "price": 50000, "active": True},
+    {"id": "espace_plage_transat", "name_fr": "Transat (1 place)", "name_en": "Sun Lounger (1 seat)", "category": "Espace privatif", "subcategory": "Plage", "price": 10000, "active": True},
+    # Espace privatif — Terrasse N°3
+    {"id": "espace_t3_balinais_5", "name_fr": "Salon balinais (5 places)", "name_en": "Balinese Lounge (5 seats)", "category": "Espace privatif", "subcategory": "Terrasse 3", "price": 50000, "active": True},
+    {"id": "espace_t3_transat", "name_fr": "Transat (1 place)", "name_en": "Sun Lounger (1 seat)", "category": "Espace privatif", "subcategory": "Terrasse 3", "price": 10000, "active": True},
+    # Espace privatif — Terrasse N°2
+    {"id": "espace_t2_balinais_5", "name_fr": "Salon balinais (5 places)", "name_en": "Balinese Lounge (5 seats)", "category": "Espace privatif", "subcategory": "Terrasse 2", "price": 50000, "active": True},
+    {"id": "espace_t2_transat", "name_fr": "Transat (1 place)", "name_en": "Sun Lounger (1 seat)", "category": "Espace privatif", "subcategory": "Terrasse 2", "price": 10000, "active": True},
+    # Espace privatif — Terrasse N°1
+    {"id": "espace_t1_balinais_6", "name_fr": "Salon balinais (6 places)", "name_en": "Balinese Lounge (6 seats)", "category": "Espace privatif", "subcategory": "Terrasse 1", "price": 50000, "active": True},
+    {"id": "espace_t1_transat", "name_fr": "Transat (1 place)", "name_en": "Sun Lounger (1 seat)", "category": "Espace privatif", "subcategory": "Terrasse 1", "price": 10000, "active": True},
+    {"id": "espace_t1_cosy_2", "name_fr": "Salon cosy (2 places)", "name_en": "Cosy Lounge (2 seats)", "category": "Espace privatif", "subcategory": "Terrasse 1", "price": 25000, "active": True},
+    {"id": "espace_t1_jacuzzi", "name_fr": "Jacuzzi piscine", "name_en": "Pool Jacuzzi", "category": "Espace privatif", "subcategory": "Terrasse 1", "price": 100000, "active": True},
+    {"id": "espace_t1_salon_sec_15", "name_fr": "Salon sec (15 places)", "name_en": "Dry Lounge (15 seats)", "category": "Espace privatif", "subcategory": "Terrasse 1", "price": 150000, "active": True},
+    {"id": "espace_t1_salon_sec_10", "name_fr": "Salon sec (10 places)", "name_en": "Dry Lounge (10 seats)", "category": "Espace privatif", "subcategory": "Terrasse 1", "price": 100000, "active": True},
 ]
 
 
@@ -946,6 +957,13 @@ async def _seed_default_activities():
                 },
                 {"$set": {"category": a["category"], "subcategory": a["subcategory"]}},
             )
+    # Retire the v1 generic Espace privatif entries now superseded by per-item zones.
+    # They stay in DB (historical wallet charges keep referencing them) but disappear from the picker.
+    LEGACY_PRIVATIF_IDS = ["espace_plage", "espace_terrasse_1", "espace_terrasse_2", "espace_terrasse_3"]
+    await db.activities.update_many(
+        {"id": {"$in": LEGACY_PRIVATIF_IDS}, "active": True},
+        {"$set": {"active": False}},
+    )
 
 
 # ---------- Wallet QR card (sandstone cream styling — distinct from gold ticket) ----------
