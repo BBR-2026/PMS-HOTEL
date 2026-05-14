@@ -1239,6 +1239,129 @@ async def staff_pole_overview(pole_id: str, staff=Depends(get_current_staff)):
     ).sort("created_at", -1).limit(20)
     recent = await recent_cursor.to_list(length=20)
 
+    # ============== ANALYTICS (30 days) ==============
+    # Pull all bookings of the pôle over the last 30d, including cancelled (to compute the rate)
+    all_30d = await db.bookings.find(
+        {"$or": base_or, "date": {"$gte": cutoff_30d}},
+        {
+            "_id": 0, "id": 1, "offer_type": 1, "date": 1, "status": 1,
+            "adults": 1, "children": 1, "boat_time": 1, "total_amount": 1,
+            "payment_method": 1, "paid_at": 1, "created_at": 1,
+            "phone": 1, "email": 1, "participants": 1,
+        },
+    ).to_list(length=5000)
+
+    weekday_labels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+    daily_revenue: dict = {}
+    by_status: dict = {"pending": 0, "confirmed": 0, "arrived": 0, "completed": 0, "cancelled": 0}
+    by_payment_method: dict = {}
+    by_weekday: dict = {lbl: {"count": 0, "revenue": 0} for lbl in weekday_labels}
+    by_boat_time: dict = {}
+    by_client: dict = {}
+    total_adults = 0
+    total_children = 0
+    lead_times: list = []
+    revenue_paid = 0
+    bookings_paid = 0
+
+    for b in all_30d:
+        st = b.get("status") or "pending"
+        if st in by_status:
+            by_status[st] += 1
+
+        if st == "cancelled":
+            continue  # All other analytics exclude cancelled bookings
+
+        date_str = b.get("date") or ""
+        amount = int(b.get("total_amount", 0) or 0)
+        daily_revenue.setdefault(date_str, {"date": date_str, "revenue": 0, "count": 0})
+        daily_revenue[date_str]["revenue"] += amount
+        daily_revenue[date_str]["count"] += 1
+
+        if b.get("paid_at"):
+            revenue_paid += amount
+            bookings_paid += 1
+
+        method = b.get("payment_method") or "unknown"
+        by_payment_method.setdefault(method, {"count": 0, "total": 0})
+        by_payment_method[method]["count"] += 1
+        by_payment_method[method]["total"] += amount
+
+        try:
+            wd = datetime.strptime(date_str, "%Y-%m-%d").weekday()
+            wl = weekday_labels[wd]
+            by_weekday[wl]["count"] += 1
+            by_weekday[wl]["revenue"] += amount
+        except (ValueError, IndexError):
+            pass
+
+        bt = b.get("boat_time") or "—"
+        by_boat_time.setdefault(bt, 0)
+        by_boat_time[bt] += 1
+
+        adults = int(b.get("adults", 0) or 0)
+        children = int(b.get("children", 0) or 0)
+        total_adults += adults
+        total_children += children
+
+        created = b.get("created_at")
+        if created and date_str:
+            try:
+                # created_at is iso, date is yyyy-mm-dd
+                cdt = datetime.fromisoformat(created.replace("Z", "+00:00")).date()
+                bdt = datetime.strptime(date_str, "%Y-%m-%d").date()
+                lead = (bdt - cdt).days
+                if lead >= 0:
+                    lead_times.append(lead)
+            except (ValueError, AttributeError):
+                pass
+
+        # Top clients: aggregate by phone (more stable than email for this pôle)
+        phone = b.get("phone") or ""
+        if phone:
+            primary = (b.get("participants") or [{}])[0]
+            by_client.setdefault(phone, {
+                "phone": phone,
+                "name": f"{primary.get('surname', '')} {primary.get('name', '')}".strip() or phone,
+                "email": b.get("email") or "",
+                "count": 0,
+                "total": 0,
+            })
+            by_client[phone]["count"] += 1
+            by_client[phone]["total"] += amount
+
+    daily_trend = sorted(daily_revenue.values(), key=lambda x: x["date"])
+    payment_method_list = [{"method": k, **v} for k, v in by_payment_method.items()]
+    weekday_list = [{"day": lbl, **by_weekday[lbl]} for lbl in weekday_labels]
+    boat_time_list = sorted(
+        [{"boat_time": k, "count": v} for k, v in by_boat_time.items()],
+        key=lambda x: x["count"], reverse=True,
+    )[:8]
+    top_clients = sorted(by_client.values(), key=lambda c: c["total"], reverse=True)[:5]
+
+    active_30d = total_30d_count  # not cancelled
+    cancelled_30d = by_status.get("cancelled", 0)
+    total_with_cancelled = active_30d + cancelled_30d
+    cancellation_rate = round((cancelled_30d / total_with_cancelled) * 100, 1) if total_with_cancelled else 0
+    avg_basket = round(total_30d_revenue / active_30d) if active_30d else 0
+    avg_lead_time = round(sum(lead_times) / len(lead_times), 1) if lead_times else 0
+    paid_rate = round((bookings_paid / active_30d) * 100, 1) if active_30d else 0
+
+    analytics = {
+        "daily_trend": daily_trend,
+        "by_status": [{"status": k, "count": v} for k, v in by_status.items()],
+        "by_payment_method": payment_method_list,
+        "by_weekday": weekday_list,
+        "by_boat_time": boat_time_list,
+        "top_clients": top_clients,
+        "avg_basket": avg_basket,
+        "avg_lead_time_days": avg_lead_time,
+        "cancellation_rate": cancellation_rate,
+        "paid_rate": paid_rate,
+        "guests_breakdown": {"adults": total_adults, "children": total_children},
+        "revenue_paid_30d": revenue_paid,
+    }
+
     # Hydrate sub_offers with metadata + stats
     sub_offers_out = []
     for oid in offer_ids:
@@ -1262,6 +1385,14 @@ async def staff_pole_overview(pole_id: str, staff=Depends(get_current_staff)):
                 "max_capacity": o.get("max_capacity"),
                 "stats": sub_offer_stats[oid],
             })
+    # Occupancy per sub-offer: count / (capacity * 30 days), capped at 100%
+    for s in sub_offers_out:
+        capacity = s.get("max_capacity") or 0
+        if capacity > 0:
+            s["occupancy_pct"] = round(min(100, ((s["stats"]["count"] / (capacity * 30)) * 100)), 1)
+        else:
+            s["occupancy_pct"] = None
+
     return {
         "pole": {
             "id": pole_id,
@@ -1276,6 +1407,7 @@ async def staff_pole_overview(pole_id: str, staff=Depends(get_current_staff)):
         },
         "sub_offers": sub_offers_out,
         "recent_bookings": recent,
+        "analytics": analytics,
     }
 
 
