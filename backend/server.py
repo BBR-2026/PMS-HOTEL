@@ -898,21 +898,54 @@ def make_cash_receipt_image(
 
 # ---------- Activities catalog (jet ski, quad, ...) ----------
 DEFAULT_ACTIVITIES = [
-    {"id": "jetski", "name_fr": "Jet Ski (30 min)", "name_en": "Jet Ski (30 min)", "category": "Nautique", "price": 45000, "active": True},
-    {"id": "jetski_60", "name_fr": "Jet Ski (60 min)", "name_en": "Jet Ski (60 min)", "category": "Nautique", "price": 80000, "active": True},
-    {"id": "quad", "name_fr": "Quad (1h)", "name_en": "Quad (1h)", "category": "Terrestre", "price": 35000, "active": True},
-    {"id": "paddle", "name_fr": "Stand-up Paddle (1h)", "name_en": "Stand-up Paddle (1h)", "category": "Nautique", "price": 10000, "active": True},
-    {"id": "kayak", "name_fr": "Kayak (1h)", "name_en": "Kayak (1h)", "category": "Nautique", "price": 10000, "active": True},
-    {"id": "ski_nautique", "name_fr": "Ski nautique (15 min)", "name_en": "Water Ski (15 min)", "category": "Nautique", "price": 25000, "active": True},
-    {"id": "massage", "name_fr": "Massage Signature (60 min)", "name_en": "Signature Massage (60 min)", "category": "Bien-être", "price": 45000, "active": True},
-    {"id": "spa_day", "name_fr": "Forfait Spa Journée", "name_en": "Spa Day Pass", "category": "Bien-être", "price": 60000, "active": True},
-    {"id": "boat_tour", "name_fr": "Excursion bateau (2h)", "name_en": "Boat Tour (2h)", "category": "Nautique", "price": 90000, "active": True},
+    # Activités et loisirs — Sport & terrain
+    {"id": "jetski", "name_fr": "Jet Ski (30 min)", "name_en": "Jet Ski (30 min)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 45000, "active": True},
+    {"id": "jetski_60", "name_fr": "Jet Ski (60 min)", "name_en": "Jet Ski (60 min)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 80000, "active": True},
+    {"id": "quad", "name_fr": "Quad (1h)", "name_en": "Quad (1h)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 35000, "active": True},
+    {"id": "paddle", "name_fr": "Stand-up Paddle (1h)", "name_en": "Stand-up Paddle (1h)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 10000, "active": True},
+    {"id": "kayak", "name_fr": "Kayak (1h)", "name_en": "Kayak (1h)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 10000, "active": True},
+    {"id": "ski_nautique", "name_fr": "Ski nautique (15 min)", "name_en": "Water Ski (15 min)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 25000, "active": True},
+    {"id": "boat_tour", "name_fr": "Excursion bateau (2h)", "name_en": "Boat Tour (2h)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 90000, "active": True},
+    {"id": "massage", "name_fr": "Massage Signature (60 min)", "name_en": "Signature Massage (60 min)", "category": "Activités & Loisirs", "subcategory": "Bien-être", "price": 45000, "active": True},
+    {"id": "spa_day", "name_fr": "Forfait Spa Journée", "name_en": "Spa Day Pass", "category": "Activités & Loisirs", "subcategory": "Bien-être", "price": 60000, "active": True},
+    # Menus
+    {"id": "menu_kaai", "name_fr": "Menu Le Kaai", "name_en": "Le Kaai Menu", "category": "Menus", "subcategory": "Kaai", "price": 35000, "active": True},
+    {"id": "menu_beach_club", "name_fr": "Menu Beach Club", "name_en": "Beach Club Menu", "category": "Menus", "subcategory": "Beach Club", "price": 28000, "active": True},
+    {"id": "menu_lounge", "name_fr": "Menu Lounge", "name_en": "Lounge Menu", "category": "Menus", "subcategory": "Lounge", "price": 22000, "active": True},
+    # Espace privatif
+    {"id": "espace_plage", "name_fr": "Plage privatisée", "name_en": "Private Beach", "category": "Espace privatif", "subcategory": "Plage", "price": 250000, "active": True},
+    {"id": "espace_terrasse_1", "name_fr": "Terrasse 1 privatisée", "name_en": "Private Terrace 1", "category": "Espace privatif", "subcategory": "Terrasse 1", "price": 180000, "active": True},
+    {"id": "espace_terrasse_2", "name_fr": "Terrasse 2 privatisée", "name_en": "Private Terrace 2", "category": "Espace privatif", "subcategory": "Terrasse 2", "price": 150000, "active": True},
+    {"id": "espace_terrasse_3", "name_fr": "Terrasse 3 privatisée", "name_en": "Private Terrace 3", "category": "Espace privatif", "subcategory": "Terrasse 3", "price": 120000, "active": True},
 ]
 
 
 async def _seed_default_activities():
+    """Seed the activities collection on first run. On subsequent runs, idempotently
+    add any new built-in activity that didn't exist yet (so adding new defaults
+    propagates without wiping admin-customised prices)."""
     if await db.activities.count_documents({}) == 0:
         await db.activities.insert_many([dict(a) for a in DEFAULT_ACTIVITIES])
+        return
+    # Idempotent top-up: insert defaults whose id is missing
+    existing_ids = {d["id"] async for d in db.activities.find({}, {"_id": 0, "id": 1})}
+    to_add = [dict(a) for a in DEFAULT_ACTIVITIES if a["id"] not in existing_ids]
+    if to_add:
+        await db.activities.insert_many(to_add)
+    # Backfill category/subcategory for the original defaults — keeps user-defined prices.
+    for a in DEFAULT_ACTIVITIES:
+        if a["id"] in existing_ids:
+            await db.activities.update_one(
+                {
+                    "id": a["id"],
+                    "$or": [
+                        {"category": {"$in": ["Nautique", "Terrestre", "Bien-être", "Activité"]}},
+                        {"subcategory": {"$exists": False}},
+                        {"subcategory": ""},
+                    ],
+                },
+                {"$set": {"category": a["category"], "subcategory": a["subcategory"]}},
+            )
 
 
 # ---------- Wallet QR card (sandstone cream styling — distinct from gold ticket) ----------
@@ -4254,6 +4287,7 @@ class ActivityModel(BaseModel):
     name_fr: str
     name_en: Optional[str] = None
     category: Optional[str] = "Activité"
+    subcategory: Optional[str] = ""
     price: int = Field(ge=0)
     active: bool = True
 

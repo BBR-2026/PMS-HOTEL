@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { Sparkles, Search, Plus, X, Trash2, Lock, CreditCard, Check, AlertCircle } from "lucide-react";
+import { Search, Plus, X, Trash2, Lock, CreditCard, Check, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 
@@ -26,14 +27,33 @@ export default function StaffActivities() {
   }, []);
 
   const grouped = useMemo(() => {
+    // Two-level grouping: category > subcategory. Each leaf is an array of activities.
     const out = {};
     (activities || []).filter((a) => a.active).forEach((a) => {
-      const c = a.category || "Autre";
-      out[c] = out[c] || [];
-      out[c].push(a);
+      const cat = a.category || "Autre";
+      const sub = a.subcategory || "—";
+      out[cat] = out[cat] || {};
+      out[cat][sub] = out[cat][sub] || [];
+      out[cat][sub].push(a);
     });
     return out;
   }, [activities]);
+
+  // Fixed display order — pinned categories first, then the rest alphabetically
+  const CATEGORY_ORDER = ["Menus", "Espace privatif", "Activités & Loisirs", "Offres spéciales", "Autre"];
+  const orderedCategories = useMemo(() => {
+    const keys = Object.keys(grouped);
+    const pinned = CATEGORY_ORDER.filter((k) => keys.includes(k));
+    const rest = keys.filter((k) => !CATEGORY_ORDER.includes(k)).sort();
+    return [...pinned, ...rest];
+  }, [grouped]);
+
+  const CATEGORY_META = {
+    "Menus": { icon: "🍽️", accent: "#B8922A", desc: "Carte du jour selon le point de service" },
+    "Espace privatif": { icon: "🏖️", accent: "#3B82F6", desc: "Privatisation de zones le temps de la prestation" },
+    "Activités & Loisirs": { icon: "🚤", accent: "#16A34A", desc: "Sport, terrain, bien-être" },
+    "Offres spéciales": { icon: "✨", accent: "#A855F7", desc: "Personnalisable selon l'offre" },
+  };
 
   const lookup = async (token) => {
     const t = (token || tokenInput || "").trim();
@@ -117,9 +137,9 @@ export default function StaffActivities() {
 
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-activities">
-      <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">Activités sur place</h1>
+      <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A] mb-2">Consommation sur place</h1>
       <p className="text-sm text-[#0A0A0A]/55 mb-6">
-        Scannez la carte Activités du client pour ajouter Jet Ski, Quad, Paddle, Spa…
+        Scannez la carte du client pour facturer un menu, une privatisation d'espace, une activité loisirs ou une offre sur mesure.
       </p>
 
       {/* Lookup */}
@@ -200,27 +220,74 @@ export default function StaffActivities() {
                   <Plus size={11} /> Montant libre
                 </button>
               </div>
-              {Object.entries(grouped).map(([cat, items]) => (
-                <div key={cat} className="mb-5 last:mb-0">
-                  <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 mb-2 flex items-center gap-1.5">
-                    <Sparkles size={11} className="text-[#B8922A]" /> {cat}
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {items.map((a) => (
-                      <button
-                        key={a.id}
-                        onClick={() => charge({ activity_id: a.id, quantity: 1 })}
-                        disabled={busy}
-                        className="text-left border border-[#0A0A0A]/10 p-3 hover:border-[#B8922A] hover:bg-[#B8922A]/5 transition-colors disabled:opacity-50"
-                        data-testid={`activity-${a.id}`}
-                      >
-                        <div className="text-sm text-[#0A0A0A] leading-tight">{a.name_fr}</div>
-                        <div className="text-xs font-medium text-[#B8922A] mt-1">{formatXOF(a.price)}</div>
-                      </button>
+              {orderedCategories.map((cat) => {
+                const meta = CATEGORY_META[cat] || { icon: "•", accent: "#B8922A", desc: "" };
+                const subgroups = grouped[cat] || {};
+                const subs = Object.keys(subgroups).sort();
+                return (
+                  <div key={cat} className="mb-6 last:mb-0" data-testid={`activity-cat-${cat}`}>
+                    <div className="border-b border-[#0A0A0A]/8 pb-2 mb-3">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl leading-none">{meta.icon}</span>
+                        <h3 className="font-display-serif text-lg text-[#0A0A0A]" style={{ color: meta.accent }}>{cat}</h3>
+                      </div>
+                      {meta.desc && <div className="text-[0.65rem] text-[#0A0A0A]/50 mt-0.5">{meta.desc}</div>}
+                    </div>
+                    {subs.map((sub) => (
+                      <div key={sub} className="mb-3 last:mb-0">
+                        {sub !== "—" && (
+                          <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 mb-2 inline-flex items-center gap-1.5">
+                            <span className="inline-block w-1 h-1 rounded-full" style={{ backgroundColor: meta.accent }} />
+                            {sub}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                          {subgroups[sub].map((a) => (
+                            <button
+                              key={a.id}
+                              onClick={() => charge({ activity_id: a.id, quantity: 1 })}
+                              disabled={busy}
+                              className="text-left border border-[#0A0A0A]/10 p-3 hover:border-[#B8922A] hover:bg-[#B8922A]/5 transition-colors disabled:opacity-50"
+                              data-testid={`activity-${a.id}`}
+                            >
+                              <div className="text-sm text-[#0A0A0A] leading-tight">{a.name_fr}</div>
+                              <div className="text-xs font-medium text-[#B8922A] mt-1">{formatXOF(a.price)}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
+                );
+              })}
+
+              {/* Offres spéciales — customizable canvas */}
+              <div className="mt-2 border border-dashed border-[#A855F7]/40 bg-[#A855F7]/5 p-4" data-testid="special-offers-canvas">
+                <div className="flex items-baseline justify-between mb-2">
+                  <div>
+                    <div className="font-display-serif text-base text-[#A855F7] inline-flex items-center gap-2">
+                      ✨ Offres spéciales
+                    </div>
+                    <div className="text-[0.65rem] text-[#0A0A0A]/55 mt-0.5">
+                      Composez une prestation sur mesure — libellé, montant et notes 100% personnalisables.
+                    </div>
+                  </div>
+                  <Link
+                    to="/staff/configuration/activites"
+                    className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45 hover:text-[#A855F7]"
+                  >
+                    Catalogue →
+                  </Link>
                 </div>
-              ))}
+                <button
+                  onClick={() => setShowCustom(true)}
+                  disabled={busy}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#A855F7] text-white text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9333EA] disabled:opacity-50"
+                  data-testid="open-special-offer-canvas"
+                >
+                  <Plus size={13} /> Créer une offre spéciale
+                </button>
+              </div>
             </div>
           )}
 

@@ -11,11 +11,21 @@ const EMPTY = {
   description_en: "",
   price: 0,
   duration_min: null,
-  category: "Activité",
+  category: "Activités & Loisirs",
+  subcategory: "",
   active: true,
 };
 
-const CATEGORIES = ["Activité", "Bien-être", "Excursion", "Restauration", "Autre"];
+const CATEGORIES = ["Menus", "Espace privatif", "Activités & Loisirs", "Offres spéciales", "Autre"];
+
+// Suggested sub-categories per top category. Free-form input still allowed.
+const SUBCATEGORIES = {
+  "Menus": ["Kaai", "Beach Club", "Lounge"],
+  "Espace privatif": ["Plage", "Terrasse 1", "Terrasse 2", "Terrasse 3"],
+  "Activités & Loisirs": ["Sport et terrain", "Bien-être", "Excursion"],
+  "Offres spéciales": [],
+  "Autre": [],
+};
 
 const fmtXOF = (n) => `${new Intl.NumberFormat("fr-FR").format(Math.round(n || 0))} FCFA`;
 
@@ -60,7 +70,8 @@ export default function StaffActivitiesConfig() {
       description_en: a.description_en || "",
       price: a.price || 0,
       duration_min: a.duration_min || null,
-      category: a.category || "Activité",
+      category: a.category || "Activités & Loisirs",
+      subcategory: a.subcategory || "",
       active: a.active !== false,
     });
   };
@@ -158,7 +169,10 @@ export default function StaffActivitiesConfig() {
                     <div className="font-medium text-[#0A0A0A]">{a.name_fr}</div>
                     {a.description_fr && <div className="text-[0.68rem] text-[#0A0A0A]/55 line-clamp-1">{a.description_fr}</div>}
                   </td>
-                  <td className="py-3 px-4 text-[0.78rem] text-[#0A0A0A]/75">{a.category || "—"}</td>
+                  <td className="py-3 px-4 text-[0.78rem] text-[#0A0A0A]/75">
+                    <div>{a.category || "—"}</div>
+                    {a.subcategory && <div className="text-[0.62rem] text-[#0A0A0A]/45 mt-0.5">{a.subcategory}</div>}
+                  </td>
                   <td className="py-3 px-4 text-right font-medium text-[#0A0A0A]">{fmtXOF(a.price)}</td>
                   <td className="py-3 px-4 text-right text-[0.78rem] text-[#0A0A0A]/75">{a.duration_min ? `${a.duration_min} min` : "—"}</td>
                   <td className="py-3 px-4">
@@ -240,12 +254,25 @@ export default function StaffActivitiesConfig() {
                 <Field label="Catégorie">
                   <select
                     value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    onChange={(e) => setForm({ ...form, category: e.target.value, subcategory: "" })}
                     className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none bg-white"
                     data-testid="activity-input-category"
                   >
                     {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
+                </Field>
+                <Field label="Sous-catégorie">
+                  <input
+                    list={`subcat-${form.category}`}
+                    value={form.subcategory}
+                    onChange={(e) => setForm({ ...form, subcategory: e.target.value })}
+                    placeholder={(SUBCATEGORIES[form.category] || [])[0] || "optionnel"}
+                    className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none bg-white"
+                    data-testid="activity-input-subcategory"
+                  />
+                  <datalist id={`subcat-${form.category}`}>
+                    {(SUBCATEGORIES[form.category] || []).map((s) => <option key={s} value={s} />)}
+                  </datalist>
                 </Field>
                 <Field label="Prix (FCFA) *">
                   <input
