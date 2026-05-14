@@ -898,14 +898,23 @@ def make_cash_receipt_image(
 
 # ---------- Activities catalog (jet ski, quad, ...) ----------
 DEFAULT_ACTIVITIES = [
-    # Activités et loisirs — Sport & terrain
-    {"id": "jetski", "name_fr": "Jet Ski (30 min)", "name_en": "Jet Ski (30 min)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 45000, "active": True},
-    {"id": "jetski_60", "name_fr": "Jet Ski (60 min)", "name_en": "Jet Ski (60 min)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 80000, "active": True},
-    {"id": "quad", "name_fr": "Quad (1h)", "name_en": "Quad (1h)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 35000, "active": True},
-    {"id": "paddle", "name_fr": "Stand-up Paddle (1h)", "name_en": "Stand-up Paddle (1h)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 10000, "active": True},
-    {"id": "kayak", "name_fr": "Kayak (1h)", "name_en": "Kayak (1h)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 10000, "active": True},
-    {"id": "ski_nautique", "name_fr": "Ski nautique (15 min)", "name_en": "Water Ski (15 min)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 25000, "active": True},
-    {"id": "boat_tour", "name_fr": "Excursion bateau (2h)", "name_en": "Boat Tour (2h)", "category": "Activités & Loisirs", "subcategory": "Sport et terrain", "price": 90000, "active": True},
+    # Activités & Loisirs — Sport & Terrains
+    {"id": "multisport", "name_fr": "Terrain multisport (1h)", "name_en": "Multisport Field (1h)", "category": "Activités & Loisirs", "subcategory": "Sport & Terrains", "price": 50000, "active": True},
+    {"id": "padel", "name_fr": "Terrain de padel (1h)", "name_en": "Padel Court (1h)", "category": "Activités & Loisirs", "subcategory": "Sport & Terrains", "price": 20000, "active": True},
+    {"id": "beach_volley", "name_fr": "Beach Volley (30 min)", "name_en": "Beach Volley (30 min)", "category": "Activités & Loisirs", "subcategory": "Sport & Terrains", "price": 10000, "active": True},
+    {"id": "tir_arc", "name_fr": "Tir à l'arc (30 min)", "name_en": "Archery (30 min)", "category": "Activités & Loisirs", "subcategory": "Sport & Terrains", "price": 10000, "active": True},
+    # Activités & Loisirs — Activités Nautiques
+    {"id": "jetski", "name_fr": "Jet Ski (10 min)", "name_en": "Jet Ski (10 min)", "category": "Activités & Loisirs", "subcategory": "Activités Nautiques", "price": 15000, "active": True},
+    {"id": "pedalo", "name_fr": "Pédalo (20 min)", "name_en": "Pedal Boat (20 min)", "category": "Activités & Loisirs", "subcategory": "Activités Nautiques", "price": 5000, "active": True},
+    {"id": "kayak", "name_fr": "Canoë-Kayak (20 min)", "name_en": "Canoe-Kayak (20 min)", "category": "Activités & Loisirs", "subcategory": "Activités Nautiques", "price": 5000, "active": True},
+    {"id": "paddle", "name_fr": "Paddle (20 min)", "name_en": "Paddle (20 min)", "category": "Activités & Loisirs", "subcategory": "Activités Nautiques", "price": 5000, "active": True},
+    # Activités & Loisirs — Randonnées & Mobilité
+    {"id": "quad", "name_fr": "Quad (30 min)", "name_en": "Quad (30 min)", "category": "Activités & Loisirs", "subcategory": "Randonnées & Mobilité", "price": 30000, "active": True},
+    {"id": "buggy", "name_fr": "Buggy (30 min)", "name_en": "Buggy (30 min)", "category": "Activités & Loisirs", "subcategory": "Randonnées & Mobilité", "price": 50000, "active": True},
+    {"id": "golfette", "name_fr": "Randonnée en golfette (30 min)", "name_en": "Golf Cart Tour (30 min)", "category": "Activités & Loisirs", "subcategory": "Randonnées & Mobilité", "price": 50000, "active": True},
+    {"id": "rando_pied", "name_fr": "Randonnée à pied (1h)", "name_en": "Hiking (1h)", "category": "Activités & Loisirs", "subcategory": "Randonnées & Mobilité", "price": 10000, "active": True},
+    {"id": "vtt", "name_fr": "VTT (1h)", "name_en": "Mountain Bike (1h)", "category": "Activités & Loisirs", "subcategory": "Randonnées & Mobilité", "price": 5000, "active": True},
+    # Activités & Loisirs — Bien-être
     {"id": "massage", "name_fr": "Massage Signature (60 min)", "name_en": "Signature Massage (60 min)", "category": "Activités & Loisirs", "subcategory": "Bien-être", "price": 45000, "active": True},
     {"id": "spa_day", "name_fr": "Forfait Spa Journée", "name_en": "Spa Day Pass", "category": "Activités & Loisirs", "subcategory": "Bien-être", "price": 60000, "active": True},
     # Menus
@@ -964,6 +973,40 @@ async def _seed_default_activities():
         {"id": {"$in": LEGACY_PRIVATIF_IDS}, "active": True},
         {"$set": {"active": False}},
     )
+
+    # ====== Versioned catalog upgrade: v2 — refreshed Activités & Loisirs taxonomy ======
+    # Force-aligns ids with their new names/prices/subcategories ONCE. Subsequent boots
+    # are no-ops because the flag flips. Admin price edits made AFTER the upgrade are preserved.
+    flag = await db.app_state.find_one({"key": "activities_catalog_v2"})
+    if not flag:
+        REFRESH_IDS = {
+            "multisport", "padel", "beach_volley", "tir_arc",
+            "jetski", "pedalo", "kayak", "paddle",
+            "quad", "buggy", "golfette", "rando_pied", "vtt",
+            "massage", "spa_day",
+        }
+        for a in DEFAULT_ACTIVITIES:
+            if a["id"] in REFRESH_IDS:
+                await db.activities.update_one(
+                    {"id": a["id"]},
+                    {"$set": {
+                        "name_fr": a["name_fr"],
+                        "name_en": a["name_en"],
+                        "category": a["category"],
+                        "subcategory": a["subcategory"],
+                        "price": a["price"],
+                        "active": True,
+                    }},
+                    upsert=True,
+                )
+        # Retire activities no longer in the v2 catalog (preserves historical charges)
+        DEPRECATED_IDS = ["jetski_60", "ski_nautique", "boat_tour"]
+        await db.activities.update_many(
+            {"id": {"$in": DEPRECATED_IDS}, "active": True},
+            {"$set": {"active": False}},
+        )
+        await db.app_state.insert_one({"key": "activities_catalog_v2", "applied_at": now_iso()})
+        logging.info("Activities catalog v2 migration applied")
 
 
 # ---------- Wallet QR card (sandstone cream styling — distinct from gold ticket) ----------
