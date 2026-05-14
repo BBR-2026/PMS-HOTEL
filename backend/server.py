@@ -1268,6 +1268,95 @@ async def get_pole(pole_id: str):
     return {**p, "sub_offers": sub_offers}
 
 
+@api.get("/staff/consumption/analytics")
+async def staff_consumption_analytics(period: str = "30d", staff=Depends(get_current_staff)):
+    """Wallet-level consumption analytics (charges added on-site via /staff/activites).
+    Aggregates ACTIVE (non-voided) wallet transactions over the period.
+    Returns:
+      - kpis: total_charges, total_revenue, active_count, voided_count, voided_amount
+      - by_category / by_subcategory : count + revenue per group
+      - top_items : top 8 most billed activities
+      - daily_trend : revenue per day
+    """
+    await _require_role(staff, ["manager", "admin"])
+
+    days_map = {"today": 0, "7d": 7, "30d": 30, "90d": 90}
+    days = days_map.get(period, 30)
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff_iso = cutoff_dt.isoformat()
+
+    # Pull the activities catalog once for category/subcategory lookup
+    cat_map = {}
+    async for a in db.activities.find({}, {"_id": 0, "id": 1, "category": 1, "subcategory": 1}):
+        cat_map[a["id"]] = {"category": a.get("category") or "Autre", "subcategory": a.get("subcategory") or "—"}
+
+    # Flatten all transactions across wallets where any tx falls in the window
+    pipeline = [
+        {"$match": {"transactions": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$transactions"},
+        {"$match": {"transactions.created_at": {"$gte": cutoff_iso}}},
+        {"$replaceRoot": {"newRoot": "$transactions"}},
+    ]
+    txs = [t async for t in db.wallets.aggregate(pipeline)]
+
+    active = [t for t in txs if t.get("status") != "voided"]
+    voided = [t for t in txs if t.get("status") == "voided"]
+
+    total_revenue = sum(int(t.get("amount", 0) or 0) for t in active)
+    voided_amount = sum(int(t.get("amount", 0) or 0) for t in voided)
+
+    by_category: dict = {}
+    by_subcategory: dict = {}
+    by_item: dict = {}
+    daily: dict = {}
+
+    for t in active:
+        aid = t.get("activity_id") or "custom"
+        meta = cat_map.get(aid, {"category": "Offres spéciales", "subcategory": "—"})
+        cat = meta["category"]
+        sub = meta["subcategory"]
+        amount = int(t.get("amount", 0) or 0)
+        qty = int(t.get("quantity", 0) or 0)
+        label = t.get("label") or aid
+
+        by_category.setdefault(cat, {"category": cat, "count": 0, "revenue": 0, "quantity": 0})
+        by_category[cat]["count"] += 1
+        by_category[cat]["revenue"] += amount
+        by_category[cat]["quantity"] += qty
+
+        key = f"{cat}||{sub}"
+        by_subcategory.setdefault(key, {"category": cat, "subcategory": sub, "count": 0, "revenue": 0, "quantity": 0})
+        by_subcategory[key]["count"] += 1
+        by_subcategory[key]["revenue"] += amount
+        by_subcategory[key]["quantity"] += qty
+
+        by_item.setdefault(aid, {"activity_id": aid, "label": label, "category": cat, "subcategory": sub, "count": 0, "revenue": 0, "quantity": 0})
+        by_item[aid]["count"] += 1
+        by_item[aid]["revenue"] += amount
+        by_item[aid]["quantity"] += qty
+
+        date_str = (t.get("created_at") or "")[:10]
+        if date_str:
+            daily.setdefault(date_str, {"date": date_str, "revenue": 0, "count": 0})
+            daily[date_str]["revenue"] += amount
+            daily[date_str]["count"] += 1
+
+    return {
+        "period": period,
+        "kpis": {
+            "active_count": len(active),
+            "total_revenue": total_revenue,
+            "voided_count": len(voided),
+            "voided_amount": voided_amount,
+            "avg_charge": int(total_revenue / len(active)) if active else 0,
+        },
+        "by_category": sorted(by_category.values(), key=lambda x: x["revenue"], reverse=True),
+        "by_subcategory": sorted(by_subcategory.values(), key=lambda x: x["revenue"], reverse=True),
+        "top_items": sorted(by_item.values(), key=lambda x: x["revenue"], reverse=True)[:8],
+        "daily_trend": sorted(daily.values(), key=lambda x: x["date"]),
+    }
+
+
 @api.get("/staff/poles/{pole_id}/overview")
 async def staff_pole_overview(pole_id: str, staff=Depends(get_current_staff)):
     """Return everything needed to render the pôle-focused staff page:
