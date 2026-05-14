@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 13 — Restructuration en 5 pôles + 4 nouveaux offer_types (spa_wellness, seminaire, team_building, offres_loisirs) + migration rétroactive + filtres ?pole=. 32/32 pytest PASS against https://reserve-bbr.preview.emergentagent.com/api. Verified: GET /api/poles returns the 5 pôles in correct sort_order (beach_club, hebergement, corporate, activites_events, le_kaai) with sub_offers hydrated including the synthetic 'events_maison' under activites_events (is_synthetic=true, kind=events_list, events[] contains seeded Saint-Valentin a4ad1d2b…). GET /api/poles/{id} validated for the 5 pôles (beach_club={pass_day,sunset,brunch}, hebergement={hebergement (room_tiers present), spa_wellness}, corporate={seminaire,team_building}, activites_events={offres_loisirs, events_maison(events_list)}, le_kaai={le_kaai}), 404 on unknown pôle. GET /api/offers/{spa_wellness|seminaire|team_building|offres_loisirs} returns pole field correctly mapped. POST /api/bookings happy paths: spa_wellness '14H' Tue → pole=hebergement, total=160000 (80k×2 adults); seminaire '8H' Tue → pole=corporate, total=150000; team_building '10H' Thu → pole=corporate, total=100000; offres_loisirs '10H' Mon → pole=activites_events, total=2*30k+1*15k=75000. POST /api/bookings refusals: seminaire on Saturday → 400 (allowed_weekdays Mon-Fri), team_building Sunday → 400, spa_wellness boat_time='6H' → 400. GET /api/staff/bookings?pole=… filters correctly for all 5 pôles, the fallback offer_type-in-pole.offers covers legacy bookings; pole=activites_events also surfaces special_event bookings. GET /api/staff/dashboard.pole_breakdown returns ordered list of 5 pôles with {today:{count,guests,revenue}, last_30d:{count,revenue}}. GET /api/staff/revenue?period=30d returns by_pole as list of 5 with name_fr+count+total. Migration rétroactive: 0 bookings out of 300+ remain without pole field — all pass_day → beach_club, hebergement → hebergement, le_kaai → le_kaai. Non-regression: GET /api/offers includes all 9 offers (5 old + 4 new), /api/special-events/featured still returns seeded Saint-Valentin, POST /api/staff/special-events as manager creates draft event successfully and admin DELETE cleanup works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13_poles.py",
+    "/app/test_reports/pytest/iter13_poles.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 5454 lines (was 5187 at iter12). The +267 LOC of pôles taxonomy (POLES/OFFER_TO_POLE/_pole_for_offer at L173-227 + endpoints /poles + /poles/{id} at L1107-1174 + pole_breakdown in dashboard L2018-2051 + by_pole in revenue L3458-3508 + backfill_booking_poles startup at L5419-5434) should move into /backend/routers/poles.py or /backend/services/poles.py. Same comment as iter12 — special_events should also be extracted.",
+    "backfill_booking_poles (L5419) runs on every startup with N update_many calls (one per offer_type in OFFER_TO_POLE). It's idempotent (filters on missing/empty pole), but at scale a single aggregation-pipeline update would be cleaner. Acceptable today (~9 small queries).",
+    "_pole_for_offer returns empty string for unknown offer_type instead of None — downstream filters guard against falsy so OK, but consistency suggestion: return None and have callers fallback. Minor.",
+    "POLES dict mixes the synthetic 'events_maison' sub-offer with the real OFFERS keys: OFFER_TO_POLE comprehension at L221 would create OFFER_TO_POLE['events_maison']='activites_events' which is fine since no booking uses offer_type='events_maison' (special_event is added separately at L223). Still, documenting in a comment near OFFER_TO_POLE that events_maison is virtual would help future readers.",
+    "Dashboard pole_breakdown counts revenue only for status in (confirmed, arrived, completed) for today but counts all non-cancelled revenue for last_30d. Likely intentional (today=realised, 30d=booked), but should be documented in the endpoint docstring.",
+    "Filter ?pole=… uses $or with pole + offer_type-in-pole.offers as a legacy fallback — works, but once backfill confirmed at startup, the offer_type fallback could be dropped to simplify queries. Keep for safety today.",
+    "GET /api/poles always sorts by sort_order in Python — fine for 5 elements but the sort_order field is duplicated in code (POLES dict) and not in DB. If a manager ever wants to reorder pôles, a small override mechanism similar to OFFER overrides (L5395 area) would help."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration13_poles.py"
+  ],
+  "success_rate": {
+    "backend": "100% (32/32)",
+    "frontend": "n/a (skipped per request)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 · manager@boulay.ci / Manager@2026 · reception@boulay.ci / Reception@2026. Login endpoint POST /api/auth/staff/login → access_token.",
+  "seed_data_creation": "Tests created several TEST_ prefixed bookings on next-future weekdays/weekend dates: 2× spa_wellness (160k), 1× seminaire (150k), 1× team_building (100k), 1× offres_loisirs (75k). These are pending (not paid) and bound to fake participants (test.pole*@example.ci). One TEST_iter13_event special_event was created and DELETE-cleaned by admin. Seeded Saint-Valentin event (a4ad1d2b-eaed-476f-8fa5-7d508b165dc4) preserved.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pôles taxonomy: POLES dict at server.py:173 defines 5 pôles with sort_order 1-5. OFFER_TO_POLE flattens it + adds special_event→activites_events. Bookings have a 'pole' string field auto-set on create via _pole_for_offer(body.offer_type) at L1412. Legacy bookings backfilled at startup (L5419) — idempotent. Filter ?pole=… in /api/staff/bookings supports $or {pole:X} or {offer_type:in [offers_of_X]} so legacy data still surfaces. New offer_types: spa_wellness (80k, every day, 10-18H), seminaire (150k, Mon-Fri, 8/9/10H), team_building (100k, Mon-Fri, 8/9/10H), offres_loisirs (30k adult / 15k child, every day, 10/12/14/16H). Dashboard.pole_breakdown + Revenue.by_pole sorted by sort_order, always returns 5 entries even if count=0. /api/poles/{id} hydrates 'events_maison' sub-offer with currently-active published special_events.",
+  "rca of the issue": "N/A — all 32 tests passed. Two initial test-side failures were due to wrong assumptions on test code: (a) /api/special-events/featured returns {\"event\":{...}} (wrapper) not the raw event; (b) special-events CRUD routes live under /api/staff/special-events not /api/special-events. Both corrected in the test file."
+}

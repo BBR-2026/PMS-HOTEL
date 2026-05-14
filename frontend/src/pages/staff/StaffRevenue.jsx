@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api, { API, getStaffToken } from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { TrendingUp, Wallet, ShoppingBag, Users, BarChart3, Clock, Globe, FileDown } from "lucide-react";
@@ -86,6 +87,7 @@ export default function StaffRevenue() {
   if (!data) return <div className="p-10 text-red-600">Impossible de charger le chiffre d'affaires.</div>;
 
   const byOffer = data.by_offer || [];
+  const byPole = (data.by_pole || []).filter((p) => p.count > 0);
   const byMethod = (data.by_method || []).map((m) => ({ ...m, name: METHOD_LABEL[m.method] || m.method }));
   const dailyTrend = data.daily_trend || [];
   const topClients = data.top_clients || [];
@@ -149,6 +151,45 @@ export default function StaffRevenue() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* By pôle */}
+        <div className="bg-white border border-[#0A0A0A]/8 p-6" data-testid="revenue-by-pole">
+          <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4">Répartition par pôle</div>
+          {byPole.length === 0 ? (
+            <div className="text-sm text-[#0A0A0A]/50 py-10 text-center">Aucune donnée.</div>
+          ) : (
+            <div className="space-y-3">
+              {byPole.sort((a, b) => b.total - a.total).map((p) => {
+                const totalAll = byPole.reduce((s, x) => s + x.total, 0) || 1;
+                const pct = Math.round((p.total / totalAll) * 100);
+                const POLE_BAR = {
+                  beach_club: "#B8922A",
+                  hebergement: "#3B82F6",
+                  corporate: "#64748B",
+                  activites_events: "#E11D48",
+                  le_kaai: "#A855F7",
+                };
+                return (
+                  <Link
+                    key={p.id}
+                    to={`/staff/reservations?pole=${p.id}`}
+                    className="block group"
+                    data-testid={`revenue-pole-row-${p.id}`}
+                  >
+                    <div className="flex items-baseline justify-between mb-1.5">
+                      <span className="text-sm text-[#0A0A0A] group-hover:text-[#B8922A] transition-colors">{p.name_fr}</span>
+                      <span className="text-sm font-medium text-[#0A0A0A]">{formatXOF(p.total)}</span>
+                    </div>
+                    <div className="h-2 bg-[#FAFAF7] overflow-hidden rounded-sm">
+                      <div className="h-full transition-all" style={{ width: `${pct}%`, backgroundColor: POLE_BAR[p.id] || "#B8922A" }} />
+                    </div>
+                    <div className="text-[0.65rem] text-[#0A0A0A]/45 mt-1">{p.count} réservation{p.count > 1 ? "s" : ""} · {pct}%</div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* By offer */}
         <div className="bg-white border border-[#0A0A0A]/8 p-6">
           <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4">Répartition par offre</div>

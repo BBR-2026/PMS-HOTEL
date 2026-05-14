@@ -53,7 +53,8 @@ export default function StaffDashboard() {
   if (loading) return <div className="p-10 text-[#0A0A0A]/50">Chargement…</div>;
   if (!data) return <div className="p-10 text-red-600">Impossible de charger le tableau de bord.</div>;
 
-  const { kpis, bookings_today, alerts } = data;
+  const { kpis, bookings_today, alerts, pole_breakdown } = data;
+  const totalRevenue30d = (pole_breakdown || []).reduce((s, p) => s + (p.last_30d?.revenue || 0), 0) || 1;
 
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-dashboard">
@@ -79,6 +80,44 @@ export default function StaffDashboard() {
         <KpiCard icon={Users} label="Clients attendus" value={kpis.guests_today} />
         <KpiCard icon={Anchor} label="Traversées prévues" value={kpis.crossings_today} />
       </div>
+
+      {/* Pôle breakdown */}
+      {pole_breakdown && pole_breakdown.length > 0 && (
+        <div className="bg-white border border-[#0A0A0A]/8 p-5 md:p-6 mb-10" data-testid="pole-breakdown-card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display-serif text-xl text-[#0A0A0A]">Activité par pôle</h2>
+            <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45">30 derniers jours</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {pole_breakdown.map((p) => {
+              const pct = Math.round(((p.last_30d?.revenue || 0) / totalRevenue30d) * 100);
+              const POLE_BAR = {
+                beach_club: "bg-[#B8922A]",
+                hebergement: "bg-blue-500",
+                corporate: "bg-slate-500",
+                activites_events: "bg-rose-500",
+                le_kaai: "bg-purple-500",
+              };
+              return (
+                <Link
+                  key={p.id}
+                  to={`/staff/reservations?pole=${p.id}`}
+                  className="block border border-[#0A0A0A]/8 p-3.5 hover:border-[#B8922A] transition-colors group"
+                  data-testid={`pole-tile-${p.id}`}
+                >
+                  <div className="text-[0.58rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 truncate">{p.name_fr}</div>
+                  <div className="text-2xl font-display-serif text-[#0A0A0A] mt-0.5">{p.last_30d?.count || 0}</div>
+                  <div className="text-[0.7rem] text-[#B8922A] mt-0.5">{formatXOF(p.last_30d?.revenue || 0)}</div>
+                  <div className="mt-2 h-1.5 bg-[#FAFAF7] overflow-hidden rounded-sm">
+                    <div className={`h-full ${POLE_BAR[p.id] || "bg-[#B8922A]"}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="text-[0.6rem] text-[#0A0A0A]/45 mt-1">{pct}% du CA · {p.today?.count || 0} aujourd'hui</div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Planning */}

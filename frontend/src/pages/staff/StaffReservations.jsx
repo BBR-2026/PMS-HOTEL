@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { toast } from "sonner";
@@ -36,16 +36,48 @@ const OFFER_DOT = {
   brunch: "bg-green-600",
   le_kaai: "bg-purple-500",
   hebergement: "bg-blue-600",
+  spa_wellness: "bg-pink-500",
+  seminaire: "bg-slate-600",
+  team_building: "bg-slate-500",
+  offres_loisirs: "bg-cyan-500",
+  special_event: "bg-rose-600",
 };
-const OFFER_TABS = [
+
+const POLE_LABEL = {
+  beach_club: "Beach Club",
+  hebergement: "Hébergement",
+  corporate: "Corporate",
+  activites_events: "Activités & Événements",
+  le_kaai: "Le Kaai",
+};
+const POLE_COLOR = {
+  beach_club: "text-[#B8922A] border-[#B8922A]/40 bg-[#B8922A]/5",
+  hebergement: "text-blue-700 border-blue-300 bg-blue-50",
+  corporate: "text-slate-700 border-slate-300 bg-slate-50",
+  activites_events: "text-rose-700 border-rose-300 bg-rose-50",
+  le_kaai: "text-purple-700 border-purple-300 bg-purple-50",
+};
+
+const POLE_TABS = [
   { id: "all", label: "Toutes", filter: null },
-  { id: "pass_day", label: "Day Pass", filter: "pass_day" },
-  { id: "sunset", label: "The Sunset", filter: "sunset" },
-  { id: "brunch", label: "B Brunch", filter: "brunch" },
-  { id: "le_kaai", label: "Le Kaai", filter: "le_kaai" },
+  { id: "beach_club", label: "Beach Club", filter: "beach_club" },
   { id: "hebergement", label: "Hébergement", filter: "hebergement" },
+  { id: "corporate", label: "Corporate", filter: "corporate" },
+  { id: "activites_events", label: "Activités & Événements", filter: "activites_events" },
+  { id: "le_kaai", label: "Le Kaai", filter: "le_kaai" },
   { id: "payments", label: "Paiements", filter: "__payments__" },
 ];
+
+function PoleBadge({ pole }) {
+  if (!pole) return null;
+  const label = POLE_LABEL[pole] || pole;
+  const color = POLE_COLOR[pole] || "text-[#0A0A0A]/55 border-[#0A0A0A]/15 bg-[#FAFAF7]";
+  return (
+    <span className={`text-[0.55rem] uppercase tracking-[0.18em] px-1.5 py-0.5 border rounded-sm whitespace-nowrap ${color}`}>
+      {label}
+    </span>
+  );
+}
 
 function StatusBadge({ status }) {
   return (
@@ -109,6 +141,7 @@ function BookingsList({ bookings, onOpen }) {
                   <span className={`inline-block w-1.5 h-1.5 rounded-full ${OFFER_DOT[b.offer_type] || "bg-[#0A0A0A]/30"}`} />
                   {b.offer_name}
                 </span>
+                <div className="mt-1"><PoleBadge pole={b.pole} /></div>
               </td>
               <td className="py-3 px-3 tabular-nums">
                 {b.adults}A{b.children > 0 ? ` · ${b.children}E` : ""}
@@ -249,7 +282,8 @@ function BookingDrawer({ id, onClose, onUpdated }) {
               <p className="text-sm text-[#0A0A0A]/55 mt-1">
                 #{b.id.slice(0, 8).toUpperCase()} · Créée le {new Date(b.created_at).toLocaleString("fr-FR")}
               </p>
-              <div className="flex gap-2 mt-3">
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <PoleBadge pole={b.pole} />
                 <StatusBadge status={b.status} />
                 <PaymentBadge booking={b} />
               </div>
@@ -408,8 +442,10 @@ function PaymentsPanel({ onOpen, refreshKey }) {
 
 // ------------------ Main page ------------------
 export default function StaffReservations() {
+  const [searchParams] = useSearchParams();
+  const initialPole = searchParams.get("pole");
   const [view, setView] = useState("list"); // list | calendar
-  const [tab, setTab] = useState("all");
+  const [tab, setTab] = useState(initialPole && POLE_TABS.find((t) => t.id === initialPole) ? initialPole : "all");
   const [status, setStatus] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -420,8 +456,8 @@ export default function StaffReservations() {
   const [openId, setOpenId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const offerFilter = useMemo(() => {
-    const t = OFFER_TABS.find((x) => x.id === tab);
+  const poleFilter = useMemo(() => {
+    const t = POLE_TABS.find((x) => x.id === tab);
     return t?.filter && t.filter !== "__payments__" ? t.filter : null;
   }, [tab]);
 
@@ -429,7 +465,7 @@ export default function StaffReservations() {
     if (tab === "payments") return;
     setLoading(true);
     const params = {};
-    if (offerFilter) params.offer_type = offerFilter;
+    if (poleFilter) params.pole = poleFilter;
     if (status) params.status = status;
     if (paymentStatus) params.payment_status = paymentStatus;
     if (search) params.search = search;
@@ -446,7 +482,7 @@ export default function StaffReservations() {
         else toast.error("Erreur de chargement des réservations");
       })
       .finally(() => setLoading(false));
-  }, [view, tab, offerFilter, status, paymentStatus, search, month, refreshKey]);
+  }, [view, tab, poleFilter, status, paymentStatus, search, month, refreshKey]);
 
   const refresh = () => setRefreshKey((x) => x + 1);
 
@@ -466,9 +502,9 @@ export default function StaffReservations() {
         </Link>
       </div>
 
-      {/* Offer tabs */}
+      {/* Pôle tabs */}
       <div className="flex flex-wrap gap-1 border-b border-[#0A0A0A]/10 mb-6" data-testid="reservation-tabs">
-        {OFFER_TABS.map((t) => (
+        {POLE_TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}

@@ -2015,6 +2015,41 @@ async def staff_dashboard(staff=Depends(get_current_staff)):
 
     unpaid = await db.bookings.find({"status": "pending"}, {"_id": 0, "id": 1, "offer_name": 1, "total_amount": 1, "phone": 1, "date": 1}).limit(20).to_list(length=20)
 
+    # Pôle breakdown — counts + revenue today + last 30 days
+    pole_counts_today: dict = {pid: {"count": 0, "guests": 0, "revenue": 0} for pid in POLES}
+    for b in bookings_today:
+        pole = b.get("pole") or _pole_for_offer(b.get("offer_type", ""))
+        if not pole or pole not in pole_counts_today:
+            continue
+        pole_counts_today[pole]["count"] += 1
+        pole_counts_today[pole]["guests"] += int(b.get("adults", 0)) + int(b.get("children", 0))
+        if b.get("status") in ("confirmed", "arrived", "completed"):
+            pole_counts_today[pole]["revenue"] += int(b.get("total_amount", 0))
+
+    # Last 30 days breakdown
+    from datetime import timedelta as _td
+    cutoff = (datetime.now(timezone.utc).date() - _td(days=30)).isoformat()
+    pole_30d: dict = {pid: {"count": 0, "revenue": 0} for pid in POLES}
+    cur30 = db.bookings.find(
+        {"date": {"$gte": cutoff}, "status": {"$ne": "cancelled"}},
+        {"_id": 0, "pole": 1, "offer_type": 1, "total_amount": 1},
+    )
+    async for b in cur30:
+        pole = b.get("pole") or _pole_for_offer(b.get("offer_type", ""))
+        if not pole or pole not in pole_30d:
+            continue
+        pole_30d[pole]["count"] += 1
+        pole_30d[pole]["revenue"] += int(b.get("total_amount", 0) or 0)
+
+    pole_breakdown = []
+    for pid, p in sorted(POLES.items(), key=lambda kv: kv[1].get("sort_order", 99)):
+        pole_breakdown.append({
+            "id": pid,
+            "name_fr": p["name_fr"],
+            "today": pole_counts_today.get(pid, {"count": 0, "guests": 0, "revenue": 0}),
+            "last_30d": pole_30d.get(pid, {"count": 0, "revenue": 0}),
+        })
+
     return {
         "kpis": {
             "bookings_today": len(bookings_today),
@@ -2028,6 +2063,7 @@ async def staff_dashboard(staff=Depends(get_current_staff)):
             "imminent_arrivals": imminent,
             "unpaid_bookings": unpaid,
         },
+        "pole_breakdown": pole_breakdown,
     }
 
 
@@ -3419,6 +3455,7 @@ async def revenue_overview(
     avg_basket = (total_revenue / total_bookings) if total_bookings else 0
 
     by_offer: dict = {}
+    by_pole: dict = {pid: {"id": pid, "name_fr": POLES[pid]["name_fr"], "count": 0, "total": 0} for pid in POLES}
     by_method: dict = {}
     by_day: dict = {}
     by_client: dict = {}
@@ -3428,6 +3465,11 @@ async def revenue_overview(
         by_offer.setdefault(oid, {"offer_id": oid, "offer_name": b.get("offer_name", oid), "count": 0, "total": 0})
         by_offer[oid]["count"] += 1
         by_offer[oid]["total"] += b.get("total_amount", 0)
+
+        pole = b.get("pole") or _pole_for_offer(oid)
+        if pole in by_pole:
+            by_pole[pole]["count"] += 1
+            by_pole[pole]["total"] += b.get("total_amount", 0)
 
         m = b.get("payment_method") or "unknown"
         by_method.setdefault(m, {"method": m, "count": 0, "total": 0})
@@ -3463,6 +3505,7 @@ async def revenue_overview(
         "total_bookings": total_bookings,
         "avg_basket": int(avg_basket),
         "by_offer": list(by_offer.values()),
+        "by_pole": list(by_pole.values()),
         "by_method": list(by_method.values()),
         "daily_trend": daily_trend,
         "top_clients": top_clients,
