@@ -10,7 +10,6 @@ import {
   X,
   CheckCircle2,
   XCircle,
-  Wallet,
   Ticket as TicketIcon,
   ChevronLeft,
   ChevronRight,
@@ -65,7 +64,6 @@ const POLE_TABS = [
   { id: "corporate", label: "Corporate", filter: "corporate" },
   { id: "activites_events", label: "Activités & Événements", filter: "activites_events" },
   { id: "le_kaai", label: "Le Kaai", filter: "le_kaai" },
-  { id: "payments", label: "Paiements", filter: "__payments__" },
 ];
 
 function PoleBadge({ pole }) {
@@ -390,56 +388,6 @@ function BookingDrawer({ id, onClose, onUpdated }) {
   );
 }
 
-// ------------------ Payments tab ------------------
-function PaymentsPanel({ onOpen, refreshKey }) {
-  const [summary, setSummary] = useState(null);
-  useEffect(() => {
-    api.get("/staff/payments/summary")
-      .then((r) => setSummary(r.data))
-      .catch(() => toast.error("Accès refusé"));
-  }, [refreshKey]);
-  if (!summary) return <p className="text-sm text-[#0A0A0A]/45 py-12 text-center">Chargement…</p>;
-
-  const methods = summary.by_method || {};
-  return (
-    <div data-testid="payments-panel">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white border border-red-200 p-5">
-          <div className="text-[0.6rem] uppercase tracking-[0.22em] text-red-700 mb-2">Impayés</div>
-          <div className="font-display-serif text-2xl text-[#0A0A0A]">{summary.unpaid_count}</div>
-          <div className="text-[0.7rem] text-[#0A0A0A]/55 mt-1">{formatXOF(summary.unpaid_total)}</div>
-        </div>
-        {["cash", "card", "mobile_money"].map((m) => (
-          <div key={m} className="bg-white border border-[#0A0A0A]/8 p-5">
-            <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">
-              {m === "cash" ? "Espèces" : m === "card" ? "Carte" : "Mobile Money"}
-            </div>
-            <div className="font-display-serif text-2xl text-[#0A0A0A]">{methods[m]?.count || 0}</div>
-            <div className="text-[0.7rem] text-[#0A0A0A]/55 mt-1">{formatXOF(methods[m]?.total || 0)}</div>
-          </div>
-        ))}
-      </div>
-
-      <h3 className="font-display-serif text-xl text-[#0A0A0A] mb-4">Réservations impayées</h3>
-      {summary.unpaid.length === 0 ? (
-        <p className="text-sm text-[#0A0A0A]/45 py-8 text-center">Aucun impayé en attente 🎉</p>
-      ) : (
-        <ul className="space-y-2">
-          {summary.unpaid.map((u) => (
-            <li key={u.id} onClick={() => onOpen(u.id)} className="flex items-center justify-between bg-white border border-[#0A0A0A]/8 p-4 hover:border-[#B8922A] cursor-pointer" data-testid={`unpaid-${u.id.slice(0, 8)}`}>
-              <div>
-                <div className="font-medium text-[#0A0A0A]">{u.offer_name}</div>
-                <div className="text-[0.7rem] text-[#0A0A0A]/55">{u.date} · {u.phone}</div>
-              </div>
-              <div className="text-[#B8922A] font-medium tabular-nums">{formatXOF(u.total_amount || 0)}</div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 // ------------------ Main page ------------------
 export default function StaffReservations() {
   const [searchParams] = useSearchParams();
@@ -513,59 +461,52 @@ export default function StaffReservations() {
             }`}
             data-testid={`tab-${t.id}`}
           >
-            {t.id === "payments" && <Wallet size={11} className="inline mr-1.5 -mt-0.5" />}
             {t.label}
           </button>
         ))}
       </div>
 
-      {tab === "payments" ? (
-        <PaymentsPanel onOpen={setOpenId} refreshKey={refreshKey} />
-      ) : (
-        <>
-          {/* Filters + view toggle */}
-          <div className="flex flex-wrap items-center gap-3 mb-5">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0A0A0A]/40" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher nom, téléphone, email…"
-                className="w-full border border-[#0A0A0A]/15 pl-9 pr-3 py-2 text-sm focus:border-[#B8922A] outline-none"
-                data-testid="reservations-search"
-              />
-            </div>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none" data-testid="filter-status">
-              <option value="">Tous statuts</option>
-              {Object.entries(STATUS_FR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-            <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none" data-testid="filter-payment">
-              <option value="">Tous paiements</option>
-              <option value="paid">Payé</option>
-              <option value="unpaid">Impayé</option>
-            </select>
-            <div className="flex border border-[#0A0A0A]/15 ml-auto">
-              <button onClick={() => setView("list")} className={`px-3 py-2 inline-flex items-center gap-1.5 text-[0.7rem] uppercase tracking-[0.18em] ${view === "list" ? "bg-[#B8922A] text-white" : "text-[#0A0A0A]/55 hover:text-[#0A0A0A]"}`} data-testid="view-list">
-                <ListIcon size={12} /> Liste
-              </button>
-              <button onClick={() => setView("calendar")} className={`px-3 py-2 inline-flex items-center gap-1.5 text-[0.7rem] uppercase tracking-[0.18em] ${view === "calendar" ? "bg-[#B8922A] text-white" : "text-[#0A0A0A]/55 hover:text-[#0A0A0A]"}`} data-testid="view-calendar">
-                <CalendarDays size={12} /> Calendrier
-              </button>
-            </div>
-          </div>
+      {/* Filters + view toggle */}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0A0A0A]/40" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher nom, téléphone, email…"
+            className="w-full border border-[#0A0A0A]/15 pl-9 pr-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+            data-testid="reservations-search"
+          />
+        </div>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none" data-testid="filter-status">
+          <option value="">Tous statuts</option>
+          {Object.entries(STATUS_FR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none" data-testid="filter-payment">
+          <option value="">Tous paiements</option>
+          <option value="paid">Payé</option>
+          <option value="unpaid">Impayé</option>
+        </select>
+        <div className="flex border border-[#0A0A0A]/15 ml-auto">
+          <button onClick={() => setView("list")} className={`px-3 py-2 inline-flex items-center gap-1.5 text-[0.7rem] uppercase tracking-[0.18em] ${view === "list" ? "bg-[#B8922A] text-white" : "text-[#0A0A0A]/55 hover:text-[#0A0A0A]"}`} data-testid="view-list">
+            <ListIcon size={12} /> Liste
+          </button>
+          <button onClick={() => setView("calendar")} className={`px-3 py-2 inline-flex items-center gap-1.5 text-[0.7rem] uppercase tracking-[0.18em] ${view === "calendar" ? "bg-[#B8922A] text-white" : "text-[#0A0A0A]/55 hover:text-[#0A0A0A]"}`} data-testid="view-calendar">
+            <CalendarDays size={12} /> Calendrier
+          </button>
+        </div>
+      </div>
 
-          {/* Content */}
-          <div className="bg-white border border-[#0A0A0A]/8 p-5 md:p-6">
-            {loading ? (
-              <p className="text-sm text-[#0A0A0A]/45 py-12 text-center">Chargement…</p>
-            ) : view === "list" ? (
-              <BookingsList bookings={bookings} onOpen={setOpenId} />
-            ) : (
-              <BookingsCalendar month={month} onChangeMonth={setMonth} byDate={calendarData.by_date} onOpen={setOpenId} />
-            )}
-          </div>
-        </>
-      )}
+      {/* Content */}
+      <div className="bg-white border border-[#0A0A0A]/8 p-5 md:p-6">
+        {loading ? (
+          <p className="text-sm text-[#0A0A0A]/45 py-12 text-center">Chargement…</p>
+        ) : view === "list" ? (
+          <BookingsList bookings={bookings} onOpen={setOpenId} />
+        ) : (
+          <BookingsCalendar month={month} onChangeMonth={setMonth} byDate={calendarData.by_date} onOpen={setOpenId} />
+        )}
+      </div>
 
       <BookingDrawer id={openId} onClose={() => setOpenId(null)} onUpdated={refresh} />
     </div>

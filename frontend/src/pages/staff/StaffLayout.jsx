@@ -18,9 +18,9 @@ import {
   X,
   History,
   Waves,
-  Building2,
   Briefcase,
   CalendarHeart,
+  Wallet,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -37,6 +37,7 @@ const NAV = [
   { to: "/staff/pole/le_kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: ["manager", "admin"] },
   { section: "Réservations", roles: ["manager", "admin"] },
   { to: "/staff/reservations", icon: Ticket, label: "Toutes les réservations", roles: ["manager", "admin"] },
+  { to: "/staff/paiements", icon: Wallet, label: "Paiements", roles: ["manager", "admin"] },
   { to: "/staff/clients", icon: Users, label: "Clients", roles: ["manager", "admin"] },
   { to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: ["manager", "admin"] },
   { to: "/staff/recus", icon: ReceiptText, label: "Reçus de paiement", roles: ["manager", "admin"] },

@@ -3209,30 +3209,85 @@ async def update_booking_payment(
 
 
 @api.get("/staff/payments/summary")
-async def payments_summary(staff=Depends(get_current_staff)):
-    """Quick KPIs for the Paiements tab: unpaid + by-method breakdown."""
+async def payments_summary(
+    pole: Optional[str] = None,
+    period: Optional[str] = "30d",
+    staff=Depends(get_current_staff),
+):
+    """Payment KPIs + lists for the dedicated /staff/payments page.
+    Optional filters:
+      - pole : restricts unpaid+paid stats to a given pôle
+      - period : 'today' | '7d' | '30d' | 'all' — affects the paid-by-method breakdown
+    """
     await _require_role(staff, ["manager", "admin"])
+    pole_filter: dict = {}
+    if pole and pole in POLES:
+        offers_in = list(POLES[pole].get("offers", []))
+        if pole == "activites_events":
+            offers_in = list(set(offers_in + ["special_event"]))
+        pole_filter = {"$or": [{"pole": pole}, {"offer_type": {"$in": offers_in}}]}
+
+    unpaid_match: dict = {
+        "$and": [
+            {"$or": [{"paid_at": None}, {"paid_at": {"$exists": False}}]},
+            {"status": {"$ne": "cancelled"}},
+        ],
+    }
+    if pole_filter:
+        unpaid_match["$and"].append(pole_filter)
     unpaid_cursor = db.bookings.find(
-        {"$or": [{"paid_at": None}, {"paid_at": {"$exists": False}}], "status": {"$ne": "cancelled"}},
-        {"_id": 0, "id": 1, "offer_name": 1, "date": 1, "total_amount": 1, "phone": 1, "email": 1, "participants": 1},
-    )
+        unpaid_match,
+        {
+            "_id": 0, "id": 1, "offer_type": 1, "offer_name": 1, "date": 1,
+            "total_amount": 1, "deposit_amount": 1, "deposit_pct": 1, "paid_amount": 1,
+            "phone": 1, "email": 1, "participants": 1, "pole": 1, "status": 1,
+            "created_at": 1, "boat_time": 1, "adults": 1, "children": 1,
+        },
+    ).sort("created_at", -1)
     unpaid = await unpaid_cursor.to_list(length=500)
     unpaid_total = sum(b.get("total_amount", 0) for b in unpaid)
+
+    # Paid breakdown — period-bounded
+    paid_match: dict = {"paid_at": {"$ne": None}}
+    if period and period != "all":
+        days = {"today": 0, "7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+        cutoff = (datetime.now(timezone.utc).date() - timedelta(days=days)).isoformat()
+        paid_match["date"] = {"$gte": cutoff}
+    if pole_filter:
+        paid_match = {"$and": [paid_match, pole_filter]}
     paid = await db.bookings.find(
-        {"paid_at": {"$ne": None}},
-        {"_id": 0, "payment_method": 1, "total_amount": 1},
-    ).to_list(length=5000)
+        paid_match,
+        {"_id": 0, "id": 1, "offer_name": 1, "date": 1, "payment_method": 1, "total_amount": 1, "paid_amount": 1, "paid_at": 1, "phone": 1, "participants": 1, "pole": 1, "status": 1},
+    ).sort("paid_at", -1).to_list(length=2000)
     by_method: dict = {}
+    paid_total = 0
     for b in paid:
         m = b.get("payment_method") or "unknown"
         by_method.setdefault(m, {"count": 0, "total": 0})
         by_method[m]["count"] += 1
         by_method[m]["total"] += b.get("total_amount", 0)
+        paid_total += int(b.get("total_amount", 0) or 0)
+
+    # Today's paid amount (always, for the "today" KPI tile)
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    today_paid = await db.bookings.find(
+        {"paid_at": {"$ne": None}, "date": today_iso},
+        {"_id": 0, "total_amount": 1},
+    ).to_list(length=1000)
+    today_revenue = sum(int(b.get("total_amount", 0) or 0) for b in today_paid)
+
     return {
         "unpaid": unpaid,
         "unpaid_count": len(unpaid),
         "unpaid_total": unpaid_total,
+        "paid_count": len(paid),
+        "paid_total": paid_total,
+        "today_revenue": today_revenue,
+        "today_paid_count": len(today_paid),
         "by_method": by_method,
+        "recent_paid": paid[:30],
+        "period": period or "30d",
+        "pole": pole or "",
     }
 
 
