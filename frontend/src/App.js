@@ -27,6 +27,7 @@ import StaffReceipts from "./pages/staff/StaffReceipts";
 import StaffCheckinsHistory from "./pages/staff/StaffCheckinsHistory";
 import StaffActivitiesConfig from "./pages/staff/StaffActivitiesConfig";
 import StaffSpecialEvents from "./pages/staff/StaffSpecialEvents";
+import PolePage from "./pages/PolePage";
 import RoleGuard from "./components/RoleGuard";
 
 const MANAGER_PLUS = ["manager", "admin"];
@@ -63,6 +64,7 @@ function App() {
           <Routes>
             <Route element={<PublicLayout />}>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/pole/:poleId" element={<PolePage />} />
               <Route path="/booking/:offerId" element={<BookingTunnel />} />
               <Route path="/booking/special-event/:eventId" element={<BookingTunnel />} />
               <Route path="/events" element={<EventPrivatization />} />

@@ -119,9 +119,118 @@ OFFERS = {
             },
         ],
     },
+    "spa_wellness": {
+        "id": "spa_wellness",
+        "name_fr": "Spa & Wellness",
+        "name_en": "Spa & Wellness",
+        "schedule_fr": "Tous les jours · Soins 10h — 18h",
+        "schedule_en": "Every day · Treatments 10am — 6pm",
+        "tagline_fr": "Soins signature et rituels bien-être au bord de la lagune.",
+        "tagline_en": "Signature treatments and wellness rituals by the lagoon.",
+        "price_adult": 80000,
+        "price_child": 0,
+        "max_capacity": 12,
+    },
+    "seminaire": {
+        "id": "seminaire",
+        "name_fr": "Séminaire",
+        "name_en": "Corporate Seminar",
+        "schedule_fr": "Du lundi au vendredi · Journée pro",
+        "schedule_en": "Monday to Friday · Business day",
+        "tagline_fr": "Salles équipées, vue océan et pauses gastronomiques pour vos séminaires.",
+        "tagline_en": "Equipped rooms, ocean view and gourmet breaks for your seminars.",
+        "price_adult": 150000,
+        "price_child": 0,
+        "max_capacity": 80,
+    },
+    "team_building": {
+        "id": "team_building",
+        "name_fr": "Team Building",
+        "name_en": "Team Building",
+        "schedule_fr": "Du lundi au vendredi · Journée immersive",
+        "schedule_en": "Monday to Friday · Immersive day",
+        "tagline_fr": "Activités lagunaires, défis et expériences pour fédérer vos équipes.",
+        "tagline_en": "Lagoon activities, challenges and experiences to unite your teams.",
+        "price_adult": 100000,
+        "price_child": 0,
+        "max_capacity": 80,
+    },
+    "offres_loisirs": {
+        "id": "offres_loisirs",
+        "name_fr": "Offres Loisirs",
+        "name_en": "Leisure Packs",
+        "schedule_fr": "Tous les jours · Forfait découverte",
+        "schedule_en": "Every day · Discovery pack",
+        "tagline_fr": "Jet ski, paddle, kayak et plus — une journée d'activités lagunaires.",
+        "tagline_en": "Jet ski, paddle, kayak and more — a day of lagoon activities.",
+        "price_adult": 30000,
+        "price_child": 15000,
+        "max_capacity": 80,
+    },
 }
 
-OfferType = Literal["pass_day", "sunset", "brunch", "le_kaai", "hebergement", "special_event"]
+# Pôles d'entrée — taxonomie publique
+POLES = {
+    "beach_club": {
+        "id": "beach_club",
+        "name_fr": "Beach Club",
+        "name_en": "Beach Club",
+        "tagline_fr": "Le club de plage signature, du lundi au dimanche.",
+        "tagline_en": "The signature beach club, Monday to Sunday.",
+        "offers": ["pass_day", "sunset", "brunch"],
+        "sort_order": 1,
+    },
+    "hebergement": {
+        "id": "hebergement",
+        "name_fr": "Hébergement",
+        "name_en": "Accommodation",
+        "tagline_fr": "Suites signature et soins bien-être au cœur de la lagune.",
+        "tagline_en": "Signature suites and wellness treatments at the heart of the lagoon.",
+        "offers": ["hebergement", "spa_wellness"],
+        "sort_order": 2,
+    },
+    "corporate": {
+        "id": "corporate",
+        "name_fr": "Corporate",
+        "name_en": "Corporate",
+        "tagline_fr": "Séminaires et team buildings haut de gamme, en bord d'océan.",
+        "tagline_en": "Premium seminars and team buildings, by the ocean.",
+        "offers": ["seminaire", "team_building"],
+        "sort_order": 3,
+    },
+    "activites_events": {
+        "id": "activites_events",
+        "name_fr": "Activités & Événements",
+        "name_en": "Activities & Events",
+        "tagline_fr": "Loisirs lagunaires et événements maison signés Boulay.",
+        "tagline_en": "Lagoon leisure and signature in-house events by Boulay.",
+        "offers": ["offres_loisirs", "events_maison"],  # 'events_maison' = special_events
+        "sort_order": 4,
+    },
+    "le_kaai": {
+        "id": "le_kaai",
+        "name_fr": "Le Kaai",
+        "name_en": "Le Kaai",
+        "tagline_fr": "Le restaurant signature — gastronomie entre lagune et océan.",
+        "tagline_en": "The signature restaurant — gastronomy between lagoon and ocean.",
+        "offers": ["le_kaai"],
+        "sort_order": 5,
+    },
+}
+
+OFFER_TO_POLE = {offer_id: pid for pid, p in POLES.items() for offer_id in p["offers"]}
+# Special events live under 'activites_events' as the 'events_maison' sub-offer
+OFFER_TO_POLE["special_event"] = "activites_events"
+
+
+def _pole_for_offer(offer_id: str) -> str:
+    return OFFER_TO_POLE.get(offer_id, "")
+
+
+OfferType = Literal[
+    "pass_day", "sunset", "brunch", "le_kaai", "hebergement", "special_event",
+    "spa_wellness", "seminaire", "team_building", "offres_loisirs",
+]
 BookingStatus = Literal["pending", "confirmed", "arrived", "completed", "cancelled"]
 
 # Weekday boat times (every 2 hours) and weekend boat times (hourly)
@@ -133,6 +242,10 @@ BOAT_TIMES_BY_OFFER = {
     "pass_day": BOAT_TIMES_WEEKDAY,
     "sunset": BOAT_TIMES_WEEKEND,
     "brunch": BOAT_TIMES_WEEKEND,
+    "spa_wellness": ["10H", "12H", "14H", "16H", "18H"],
+    "seminaire": ["8H", "9H", "10H"],
+    "team_building": ["8H", "9H", "10H"],
+    "offres_loisirs": ["10H", "12H", "14H", "16H"],
     # le_kaai + hebergement are day-dependent — resolved via _boat_times_for_date()
 }
 
@@ -143,6 +256,10 @@ ALLOWED_WEEKDAYS_BY_OFFER = {
     "brunch": [6],                     # Sunday only
     "le_kaai": [0, 1, 2, 3, 4, 5, 6],  # Every day
     "hebergement": [0, 1, 2, 3, 4, 5, 6],  # Every day
+    "spa_wellness": [0, 1, 2, 3, 4, 5, 6],  # Every day
+    "seminaire": [0, 1, 2, 3, 4],          # Mon-Fri
+    "team_building": [0, 1, 2, 3, 4],      # Mon-Fri
+    "offres_loisirs": [0, 1, 2, 3, 4, 5, 6],  # Every day
 }
 
 
@@ -981,7 +1098,80 @@ async def list_offers():
 async def get_offer(offer_id: str):
     if offer_id not in OFFERS:
         raise HTTPException(status_code=404, detail="Offer not found")
-    return _with_boat_times(OFFERS[offer_id])
+    out = _with_boat_times(OFFERS[offer_id])
+    out["pole"] = _pole_for_offer(offer_id)
+    return out
+
+
+# ----- Poles (taxonomy of public entry points) -----
+@api.get("/poles")
+async def list_poles():
+    """Public — returns the 5 entry-point pôles with their sub-offers hydrated.
+    The frontend uses this to build the landing page (5 pôle cards) and the
+    per-pôle landing pages (sub-offer mini-cards)."""
+    out = []
+    for pid, p in sorted(POLES.items(), key=lambda kv: kv[1].get("sort_order", 99)):
+        sub_offers = []
+        for oid in p["offers"]:
+            if oid == "events_maison":
+                # Synthetic sub-offer pointing at the special_events module
+                sub_offers.append({
+                    "id": "events_maison",
+                    "name_fr": "Events Maison",
+                    "name_en": "In-house Events",
+                    "schedule_fr": "Événements spéciaux signature",
+                    "schedule_en": "Signature special events",
+                    "tagline_fr": "Découvrez les événements spéciaux à venir.",
+                    "tagline_en": "Discover the upcoming signature events.",
+                    "price_adult": 0,
+                    "price_child": 0,
+                    "max_capacity": 0,
+                    "is_synthetic": True,
+                    "kind": "events_list",
+                })
+            elif oid in OFFERS:
+                o = dict(OFFERS[oid])
+                o.update(_with_boat_times(o))
+                sub_offers.append(o)
+        out.append({**p, "sub_offers": sub_offers})
+    return out
+
+
+@api.get("/poles/{pole_id}")
+async def get_pole(pole_id: str):
+    if pole_id not in POLES:
+        raise HTTPException(status_code=404, detail="Pôle non trouvé")
+    p = POLES[pole_id]
+    sub_offers = []
+    for oid in p["offers"]:
+        if oid == "events_maison":
+            # Hydrate with all published+active special events (not just the featured one)
+            today = datetime.now(timezone.utc).date().isoformat()
+            cursor = db.special_events.find({"status": "published"}, {"_id": 0}).sort("created_at", -1)
+            evs = []
+            async for ev in cursor:
+                if not _event_is_currently_active(ev, today):
+                    continue
+                evs.append({
+                    **_public_event(ev),
+                    "event_dates": [d for d in (ev.get("event_dates") or []) if d >= today],
+                })
+            sub_offers.append({
+                "id": "events_maison",
+                "name_fr": "Events Maison",
+                "name_en": "In-house Events",
+                "schedule_fr": "Événements spéciaux signature",
+                "schedule_en": "Signature special events",
+                "tagline_fr": "Découvrez les événements spéciaux à venir.",
+                "tagline_en": "Discover the upcoming signature events.",
+                "is_synthetic": True,
+                "kind": "events_list",
+                "events": evs,
+            })
+        elif oid in OFFERS:
+            o = _with_boat_times(OFFERS[oid])
+            sub_offers.append(o)
+    return {**p, "sub_offers": sub_offers}
 
 
 # ----- Availability -----
@@ -1219,6 +1409,7 @@ async def create_booking(body: BookingCreate):
         "reference_token": reference_token,
         "offer_type": body.offer_type,
         "offer_name": offer["name_fr"],
+        "pole": _pole_for_offer(body.offer_type),
         "special_event_id": offer["event_id"] if is_special else None,
         "date": body.date,
         "checkout_date": checkout_iso,
@@ -2740,6 +2931,7 @@ async def mark_arrived(booking_id: str, staff=Depends(get_current_staff)):
 @api.get("/staff/bookings")
 async def list_bookings(
     offer_type: Optional[str] = None,
+    pole: Optional[str] = None,
     status: Optional[str] = None,
     payment_status: Optional[str] = None,
     date_from: Optional[str] = None,
@@ -2753,6 +2945,20 @@ async def list_bookings(
     q: dict = {}
     if offer_type:
         q["offer_type"] = offer_type
+    if pole:
+        # Match bookings tagged with the pole, or fallback to offer_type ∈ pole.offers
+        # so legacy bookings (without `pole` field) still surface.
+        if pole in POLES:
+            offers_in_pole = list(POLES[pole].get("offers", []))
+            # special_event lives under activites_events via OFFER_TO_POLE
+            if pole == "activites_events":
+                offers_in_pole = list(set(offers_in_pole + ["special_event"]))
+            q["$or"] = (q.get("$or") or []) + [
+                {"pole": pole},
+                {"offer_type": {"$in": offers_in_pole}},
+            ]
+        else:
+            q["pole"] = pole
     if status:
         q["status"] = status
     if date_from or date_to:
@@ -5165,6 +5371,24 @@ async def apply_offer_overrides_on_boot():
         logging.info("Offer overrides applied on boot")
     except Exception as e:
         logging.warning("Offer override boot failed: %s", e)
+
+
+@app.on_event("startup")
+async def backfill_booking_poles():
+    """One-shot retroactive migration: every booking without a `pole` field gets one
+    derived from its offer_type. Re-runs are cheap (it filters on missing/empty pole)."""
+    try:
+        updated = 0
+        for offer_id, pole_id in OFFER_TO_POLE.items():
+            res = await db.bookings.update_many(
+                {"offer_type": offer_id, "$or": [{"pole": {"$exists": False}}, {"pole": ""}, {"pole": None}]},
+                {"$set": {"pole": pole_id}},
+            )
+            updated += res.modified_count
+        if updated:
+            logging.info("Backfilled `pole` field on %d existing bookings", updated)
+    except Exception as e:
+        logging.warning("Pole backfill failed: %s", e)
 
 
 

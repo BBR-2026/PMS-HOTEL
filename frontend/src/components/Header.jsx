@@ -1,8 +1,15 @@
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink } from "react-router-dom";
 import { useLang } from "../context/LanguageContext";
+import api from "../lib/api";
 
 export default function Header() {
   const { lang, toggle } = useLang();
+  const [poles, setPoles] = useState([]);
+
+  useEffect(() => {
+    api.get("/poles").then((r) => setPoles(r.data || [])).catch(() => {});
+  }, []);
 
   return (
     <header
@@ -18,6 +25,23 @@ export default function Header() {
             style={{ filter: "brightness(0.9)" }}
           />
         </Link>
+
+        <nav className="hidden lg:flex items-center gap-7" data-testid="poles-nav">
+          {poles.map((p) => (
+            <NavLink
+              key={p.id}
+              to={`/pole/${p.id}`}
+              className={({ isActive }) =>
+                `text-[0.7rem] uppercase tracking-[0.22em] transition-colors ${
+                  isActive ? "text-[#B8922A]" : "text-[#0A0A0A]/65 hover:text-[#B8922A]"
+                }`
+              }
+              data-testid={`nav-pole-${p.id}`}
+            >
+              {p.name_fr}
+            </NavLink>
+          ))}
+        </nav>
 
         <button
           data-testid="language-toggle"
