@@ -14,7 +14,8 @@ from typing import List, Optional, Literal
 import jwt
 import qrcode
 import bcrypt
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body
+import httpx
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -31,6 +32,14 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ.get("JWT_SECRET", "boulay-beach-resort-secret-key-change-me")
 JWT_ALG = "HS256"
 JWT_EXPIRE_HOURS = 72
+
+# ============== FineoPay configuration ==============
+FINEO_BUSINESS_CODE = os.environ.get("FINEO_BUSINESS_CODE", "")
+FINEO_API_KEY = os.environ.get("FINEO_API_KEY", "")
+FINEO_BASE_URL = os.environ.get("FINEO_BASE_URL", "https://dev.fineopay.com/api/v1/business/dev/").rstrip("/") + "/"
+FINEO_CALLBACK_SECRET = os.environ.get("FINEO_CALLBACK_SECRET", "")
+FINEO_PUBLIC_BASE_URL = os.environ.get("FINEO_PUBLIC_BASE_URL", "").rstrip("/")
+FINEO_ENABLED = bool(FINEO_BUSINESS_CODE and FINEO_API_KEY and FINEO_PUBLIC_BASE_URL)
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -6665,6 +6674,296 @@ async def backfill_booking_poles():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+# ============================================================
+# FineoPay integration (real payment gateway, replaces mock)
+# ============================================================
+class FineoCheckoutBody(BaseModel):
+    booking_id: str
+    intent: Literal["booking", "wallet", "deposit"] = "booking"
+    amount: Optional[int] = None  # required for "deposit" intent (custom amount)
+
+
+class FineoClient:
+    """Thin async client for FineoPay's business API.
+
+    Docs: https://devsandbox.fineopay.com/ — 2 headers (businessCode, apiKey),
+    JSON bodies. Hosted-checkout flow: POST /checkout-link returns a URL we
+    redirect the customer to; the gateway calls our callbackUrl when the
+    transaction settles.
+    """
+
+    def __init__(self):
+        self.base_url = FINEO_BASE_URL
+        self.headers = {
+            "businessCode": FINEO_BUSINESS_CODE,
+            "apiKey": FINEO_API_KEY,
+            "Content-Type": "application/json",
+        }
+        self.timeout = httpx.Timeout(connect=5.0, read=15.0, write=10.0, pool=5.0)
+
+    async def create_checkout_link(self, payload: dict) -> dict:
+        async with httpx.AsyncClient(timeout=self.timeout) as cli:
+            r = await cli.post(f"{self.base_url}checkout-link", json=payload, headers=self.headers)
+            r.raise_for_status()
+            return r.json()
+
+    async def get_transaction(self, reference: str) -> dict:
+        async with httpx.AsyncClient(timeout=self.timeout) as cli:
+            r = await cli.get(f"{self.base_url}transactions/{reference}", headers=self.headers)
+            r.raise_for_status()
+            return r.json()
+
+
+def _fineo_callback_url() -> str:
+    return f"{FINEO_PUBLIC_BASE_URL}/api/webhooks/fineo?secret={FINEO_CALLBACK_SECRET}"
+
+
+def _fineo_return_url(booking_id: str, intent: str) -> str:
+    return f"{FINEO_PUBLIC_BASE_URL}/payment/fineo/result?booking_id={booking_id}&intent={intent}"
+
+
+@api.post("/payments/fineo/checkout")
+async def fineo_create_checkout(body: FineoCheckoutBody):
+    """Create a FineoPay hosted-checkout link for a booking, a wallet
+    settlement or a custom deposit. Idempotency: we reuse the same syncRef
+    derived from booking_id+intent so retries hit the same Fineo transaction."""
+    if not FINEO_ENABLED:
+        raise HTTPException(status_code=503, detail="FineoPay non configuré sur cette instance.")
+
+    booking = await db.bookings.find_one({"id": body.booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if body.intent == "booking":
+        amount = int(booking.get("total_amount", 0) or 0)
+        title = f"Réservation {booking.get('id', '')[:8].upper()} — {booking.get('offer_type', '')}"
+    elif body.intent == "wallet":
+        wallet = await db.wallets.find_one({"booking_id": body.booking_id}, {"_id": 0})
+        if not wallet:
+            raise HTTPException(status_code=404, detail="Wallet not found")
+        amount = int(wallet.get("total_charged", 0) or 0)
+        title = f"Consommation sur place — {booking.get('id', '')[:8].upper()}"
+    elif body.intent == "deposit":
+        if not body.amount or body.amount <= 0:
+            raise HTTPException(status_code=400, detail="Montant d'acompte requis (> 0).")
+        amount = int(body.amount)
+        title = f"Acompte hébergement — {booking.get('id', '')[:8].upper()}"
+    else:
+        raise HTTPException(status_code=400, detail="Intent invalide")
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Montant à payer invalide ou déjà soldé.")
+
+    sync_ref = f"BBR-{body.intent.upper()}-{body.booking_id}"
+
+    # Idempotency: if we've already created an active checkout for this sync_ref
+    # and it's still pending, reuse the URL — avoid double-billing.
+    existing = await db.fineo_payments.find_one(
+        {"sync_ref": sync_ref, "status": {"$in": ["pending", "processing"]}},
+        {"_id": 0},
+    )
+    if existing and existing.get("checkout_url"):
+        return {
+            "checkout_url": existing["checkout_url"],
+            "sync_ref": sync_ref,
+            "amount": existing.get("amount", amount),
+            "reused": True,
+        }
+
+    payload = {
+        "title": title,
+        "amount": amount,
+        "callbackUrl": _fineo_callback_url(),
+        "returnUrl": _fineo_return_url(body.booking_id, body.intent),
+        "syncRef": sync_ref,
+        "inputs": [
+            {"label": "Nom du client", "value": (booking.get("name") or "").strip() or "Client BBR"},
+            {"label": "Téléphone", "value": booking.get("phone") or ""},
+            {"label": "Email", "value": booking.get("email") or ""},
+        ],
+    }
+
+    client_ = FineoClient()
+    try:
+        resp = await client_.create_checkout_link(payload)
+    except httpx.HTTPStatusError as e:
+        logging.exception("Fineo checkout failed (%s): %s", e.response.status_code, e.response.text)
+        raise HTTPException(status_code=502, detail=f"FineoPay a refusé la demande ({e.response.status_code}).") from e
+    except httpx.HTTPError as e:
+        logging.exception("Fineo network error: %s", e)
+        raise HTTPException(status_code=502, detail="FineoPay injoignable. Réessayez dans un instant.") from e
+
+    if not resp.get("success") or "checkoutLink" not in (resp.get("data") or {}):
+        logging.error("Unexpected Fineo response: %s", resp)
+        raise HTTPException(status_code=502, detail="Réponse FineoPay inattendue.")
+
+    checkout_url = resp["data"]["checkoutLink"]
+
+    await db.fineo_payments.update_one(
+        {"sync_ref": sync_ref},
+        {
+            "$set": {
+                "sync_ref": sync_ref,
+                "booking_id": body.booking_id,
+                "intent": body.intent,
+                "amount": amount,
+                "checkout_url": checkout_url,
+                "status": "pending",
+                "updated_at": now_iso(),
+            },
+            "$setOnInsert": {"created_at": now_iso()},
+        },
+        upsert=True,
+    )
+
+    return {
+        "checkout_url": checkout_url,
+        "sync_ref": sync_ref,
+        "amount": amount,
+        "reused": False,
+    }
+
+
+@api.get("/payments/fineo/status/{booking_id}")
+async def fineo_payment_status(booking_id: str, intent: str = "booking"):
+    """Polling endpoint used by the frontend result page while awaiting the
+    callback. Falls back to a live GET on Fineo if the callback hasn't been
+    received yet."""
+    sync_ref = f"BBR-{intent.upper()}-{booking_id}"
+    pay = await db.fineo_payments.find_one({"sync_ref": sync_ref}, {"_id": 0})
+    if not pay:
+        return {"status": "unknown", "sync_ref": sync_ref}
+    # If callback already settled it: return immediately.
+    if pay.get("status") in ("paid", "failed", "expired"):
+        return {
+            "status": pay["status"],
+            "sync_ref": sync_ref,
+            "amount": pay.get("amount"),
+            "reference": pay.get("reference"),
+            "settled_at": pay.get("settled_at"),
+        }
+    # Live status from Fineo (best-effort)
+    if FINEO_ENABLED and pay.get("reference"):
+        try:
+            tx = await FineoClient().get_transaction(pay["reference"])
+            status = (tx.get("data", {}) or {}).get("status") or pay["status"]
+            return {"status": status, "sync_ref": sync_ref, "amount": pay.get("amount"), "reference": pay.get("reference")}
+        except Exception:
+            pass
+    return {"status": pay.get("status", "pending"), "sync_ref": sync_ref, "amount": pay.get("amount")}
+
+
+async def _settle_payment(booking_id: str, intent: str, sync_ref: str, fineo_ref: str, amount: int) -> None:
+    """Idempotently mark a booking/wallet/deposit as paid via FineoPay and
+    emit a fiscal receipt. Safe to call multiple times (callback retries)."""
+    now = now_iso()
+    if intent == "booking":
+        await db.bookings.update_one(
+            {"id": booking_id, "paid_at": {"$exists": False}},
+            {"$set": {
+                "paid_at": now,
+                "payment_method": "fineo",
+                "payment_reference": fineo_ref,
+                "paid_amount": amount,
+            }},
+        )
+        booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+        if booking:
+            try:
+                await _create_receipt(
+                    source="booking",
+                    source_id=booking_id,
+                    customer_name=booking.get("name", ""),
+                    customer_email=booking.get("email", ""),
+                    customer_phone=booking.get("phone", ""),
+                    lines=[{"description": f"Réservation {booking.get('offer_type', '')}",
+                            "quantity": 1, "unit_price": amount, "total": amount}],
+                    payment_method="fineo",
+                    issued_by="FineoPay",
+                    issued_by_role="gateway",
+                    metadata={"booking_id": booking_id, "fineo_ref": fineo_ref, "sync_ref": sync_ref},
+                )
+            except Exception as ex:
+                logging.exception("Booking receipt creation failed: %s", ex)
+    elif intent == "wallet":
+        wallet = await db.wallets.find_one({"booking_id": booking_id}, {"_id": 0})
+        if wallet and wallet.get("status") != "closed":
+            await db.wallets.update_one(
+                {"token": wallet["token"]},
+                {"$set": {
+                    "status": "closed",
+                    "closed_at": now,
+                    "closed_by": "FineoPay",
+                    "payment_method": "fineo",
+                    "paid_amount": amount,
+                    "paid_at": now,
+                    "fineo_reference": fineo_ref,
+                }},
+            )
+    elif intent == "deposit":
+        await db.bookings.update_one(
+            {"id": booking_id},
+            {
+                "$inc": {"deposit_paid": amount},
+                "$push": {
+                    "deposit_payments": {
+                        "amount": amount,
+                        "method": "fineo",
+                        "reference": fineo_ref,
+                        "paid_at": now,
+                    },
+                },
+            },
+        )
+
+
+@app.post("/api/webhooks/fineo")
+async def fineo_webhook(request: Request):
+    """Server-to-server callback from FineoPay. Authenticated via the
+    `secret` query string (a 32+ char random token we generated and gave to
+    Fineo as part of the callbackUrl). Idempotent."""
+    secret = request.query_params.get("secret", "")
+    if not secret or not FINEO_CALLBACK_SECRET or secret != FINEO_CALLBACK_SECRET:
+        raise HTTPException(status_code=401, detail="Bad webhook secret")
+    body = await request.json()
+    sync_ref = body.get("syncRef") or body.get("sync_ref")
+    fineo_ref = body.get("reference") or body.get("transactionReference")
+    status = (body.get("status") or "").lower()
+    amount = int(body.get("amount", 0) or 0)
+    if not sync_ref or not fineo_ref:
+        raise HTTPException(status_code=400, detail="Missing syncRef or reference")
+
+    pay = await db.fineo_payments.find_one({"sync_ref": sync_ref}, {"_id": 0})
+    if not pay:
+        # Out-of-order callback or unknown payment: log & accept 200 to avoid retries storm
+        logging.warning("Fineo callback for unknown sync_ref=%s ref=%s", sync_ref, fineo_ref)
+        return {"received": True}
+
+    new_status = "paid" if status in ("success", "successful", "completed", "paid") else (
+        "failed" if status in ("failed", "declined") else (
+            "expired" if status in ("expired", "cancelled") else "pending"
+        )
+    )
+    await db.fineo_payments.update_one(
+        {"sync_ref": sync_ref},
+        {"$set": {
+            "status": new_status,
+            "reference": fineo_ref,
+            "settled_at": now_iso() if new_status == "paid" else None,
+            "raw_callback": body,
+            "updated_at": now_iso(),
+        }},
+    )
+
+    if new_status == "paid":
+        try:
+            await _settle_payment(pay["booking_id"], pay["intent"], sync_ref, fineo_ref, amount or pay.get("amount", 0))
+        except Exception as ex:
+            logging.exception("Fineo settle_payment failed: %s", ex)
+
+    return {"received": True, "status": new_status}
 
 
 app.include_router(api)
