@@ -46,7 +46,6 @@ const NAV = [
   { to: "/staff/embarquements-historique", icon: Anchor, label: "Historique embarquements", roles: ["manager", "admin"] },
   { to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: ["receptionist", "manager", "admin"] },
   { to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: ["receptionist", "manager", "admin"] },
-  { to: "/staff/loisirs", icon: Sparkles, label: "Loisirs", roles: ["manager", "admin"] },
   { section: "Administration", roles: ["admin"] },
   { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: ["manager", "admin"] },
   { to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: ["manager", "admin"] },
