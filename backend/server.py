@@ -102,20 +102,13 @@ OFFERS = {
                 "name_fr": "Chambre Supérieure",
                 "name_en": "Superior Room",
                 "price": 200000,
-                "inventory": 18,
+                "inventory": 20,
             },
             {
-                "id": "suite_jardin",
-                "name_fr": "Suite Côté Jardin",
-                "name_en": "Garden View Suite",
-                "price": 420000,
-                "inventory": 6,
-            },
-            {
-                "id": "suite_mer",
-                "name_fr": "Suite Côté Mer",
-                "name_en": "Sea View Suite",
-                "price": 470000,
+                "id": "suite",
+                "name_fr": "Suite",
+                "name_en": "Suite",
+                "price": 445000,
                 "inventory": 6,
             },
         ],
@@ -169,6 +162,26 @@ OFFERS = {
         "max_capacity": 80,
     },
 }
+
+# ============== PHYSICAL ROOM INVENTORY (Hébergement) ==============
+# Each physical room belongs to a tier and has a stable identifier that the
+# staff sees (room number for "superieure", suite name for "suite").
+HEBERGEMENT_ROOMS = [
+    # Supérieures — aile A (étage 1)
+    *[{"id": f"R{n}", "label": str(n), "tier": "superieure"} for n in range(1001, 1011)],
+    # Supérieures — aile B (étage 2)
+    *[{"id": f"R{n}", "label": str(n), "tier": "superieure"} for n in range(1011, 1021)],
+    # Suites — 6 chambres signature nommées
+    {"id": "SUITE_MAKENA", "label": "Makena", "tier": "suite"},
+    {"id": "SUITE_MOHELI", "label": "Moheli", "tier": "suite"},
+    {"id": "SUITE_KALEMA", "label": "Kalema", "tier": "suite"},
+    {"id": "SUITE_MAUPITI", "label": "Maupiti", "tier": "suite"},
+    {"id": "SUITE_NZURI", "label": "N'Zuri", "tier": "suite"},
+    {"id": "SUITE_MANDA", "label": "Manda", "tier": "suite"},
+]
+HEBERGEMENT_ROOMS_BY_ID = {r["id"]: r for r in HEBERGEMENT_ROOMS}
+HEBERGEMENT_DEFAULT_CHECKIN = "14:00"   # 2pm hotel-wide check-in
+HEBERGEMENT_DEFAULT_CHECKOUT = "12:00"  # 12pm hotel-wide check-out
 
 # Pôles d'entrée — taxonomie publique
 POLES = {
@@ -5165,19 +5178,204 @@ async def hebergement_today(date: Optional[str] = None, staff=Depends(get_curren
     """Arrivals (check-in) and departures (check-out) for a given day. Defaults to today."""
     await _require_role(staff, ["manager", "admin", "receptionist"])
     target = date or datetime.now(timezone.utc).date().isoformat()
+    proj = {
+        "_id": 0, "id": 1, "boat_time": 1, "return_boat_time": 1,
+        "room_tier": 1, "room_tier_name": 1, "room_id": 1, "room_label": 1,
+        "rooms": 1, "adults": 1, "children": 1, "phone": 1, "email": 1,
+        "name": 1, "first_name": 1, "last_name": 1, "participants": 1,
+        "status": 1, "paid_at": 1, "nights": 1, "date": 1, "checkout_date": 1,
+        "special_requests": 1, "checked_in_at": 1, "checked_out_at": 1,
+    }
     arrivals = await db.bookings.find(
         {"offer_type": "hebergement", "date": target, "status": {"$ne": "cancelled"}},
-        {"_id": 0, "id": 1, "boat_time": 1, "room_tier_name": 1, "rooms": 1, "adults": 1,
-         "children": 1, "phone": 1, "email": 1, "participants": 1, "status": 1, "paid_at": 1,
-         "nights": 1, "checkout_date": 1, "special_requests": 1},
+        proj,
     ).sort("boat_time", 1).to_list(length=500)
     departures = await db.bookings.find(
         {"offer_type": "hebergement", "checkout_date": target, "status": {"$ne": "cancelled"}},
-        {"_id": 0, "id": 1, "return_boat_time": 1, "room_tier_name": 1, "rooms": 1, "adults": 1,
-         "children": 1, "phone": 1, "email": 1, "participants": 1, "status": 1, "date": 1,
-         "nights": 1, "special_requests": 1},
+        proj,
     ).sort("return_boat_time", 1).to_list(length=500)
-    return {"date": target, "arrivals": arrivals, "departures": departures}
+    for lst in (arrivals, departures):
+        for b in lst:
+            rid = b.get("room_id")
+            if rid and not b.get("room_label"):
+                meta = HEBERGEMENT_ROOMS_BY_ID.get(rid)
+                if meta:
+                    b["room_label"] = meta["label"]
+    return {
+        "date": target,
+        "arrivals": arrivals,
+        "departures": departures,
+        "default_checkin_time": HEBERGEMENT_DEFAULT_CHECKIN,
+        "default_checkout_time": HEBERGEMENT_DEFAULT_CHECKOUT,
+    }
+
+
+@api.get("/staff/hebergement/occupancy")
+async def hebergement_occupancy(date: Optional[str] = None, staff=Depends(get_current_staff)):
+    """Physical-room occupancy snapshot for a given day.
+
+    Returns each room (Supérieures 1001-1020 + 6 Suites nommées) with its
+    current status (available / occupied / arriving_today / departing_today)
+    and the booking attached if any. Plus per-tier KPIs (total/available/occupied).
+    """
+    await _require_role(staff, ["manager", "admin", "receptionist"])
+    target = date or datetime.now(timezone.utc).date().isoformat()
+
+    # All hebergement bookings that overlap the target day
+    cursor = db.bookings.find(
+        {
+            "offer_type": "hebergement",
+            "status": {"$ne": "cancelled"},
+            "date": {"$lte": target},
+            "checkout_date": {"$gt": target},
+        },
+        {
+            "_id": 0, "id": 1, "date": 1, "checkout_date": 1, "room_id": 1,
+            "room_tier": 1, "room_tier_name": 1, "rooms": 1,
+            "adults": 1, "children": 1, "first_name": 1, "last_name": 1,
+            "name": 1, "email": 1, "phone": 1, "boat_time": 1,
+            "return_boat_time": 1, "checked_in_at": 1, "checked_out_at": 1,
+        },
+    )
+    overlapping = await cursor.to_list(length=2000)
+
+    # Bookings that ARRIVE today (date == target) and DEPART today (checkout == target)
+    arriving_today_ids = {b["id"] for b in overlapping if b.get("date") == target}
+    departing_cursor = db.bookings.find(
+        {
+            "offer_type": "hebergement",
+            "status": {"$ne": "cancelled"},
+            "checkout_date": target,
+        },
+        {"_id": 0, "id": 1, "room_id": 1, "room_tier": 1, "date": 1,
+         "adults": 1, "children": 1, "first_name": 1, "last_name": 1, "name": 1,
+         "phone": 1, "email": 1, "return_boat_time": 1, "checked_out_at": 1},
+    )
+    departing_today = await departing_cursor.to_list(length=500)
+    departing_today_ids = {b["id"] for b in departing_today}
+
+    # Build room → booking index
+    booking_by_room: dict = {}
+    for b in overlapping:
+        rid = b.get("room_id")
+        if rid:
+            booking_by_room[rid] = b
+
+    # Compose rooms list with statuses
+    rooms_out = []
+    for r in HEBERGEMENT_ROOMS:
+        bk = booking_by_room.get(r["id"])
+        status = "available"
+        if bk:
+            if bk["id"] in departing_today_ids:
+                status = "departing_today"
+            elif bk["id"] in arriving_today_ids:
+                status = "arriving_today"
+            else:
+                status = "occupied"
+        rooms_out.append({
+            **r,
+            "status": status,
+            "booking": bk,
+        })
+
+    # Departures of bookings whose room hasn't yet been assigned still listed
+    for b in departing_today:
+        if not b.get("room_id"):
+            rooms_out.append({
+                "id": None, "label": "—", "tier": b.get("room_tier"),
+                "status": "departing_today", "booking": b,
+            })
+
+    # KPIs per tier (based on the configured inventory)
+    tier_inv = {t["id"]: int(t.get("inventory", 0)) for t in OFFERS["hebergement"]["room_tiers"]}
+    tier_name = {t["id"]: t.get("name_fr") or t["id"] for t in OFFERS["hebergement"]["room_tiers"]}
+    by_tier: dict = {}
+    for r in rooms_out:
+        if not r.get("id"):
+            continue
+        t = r["tier"]
+        slot = by_tier.setdefault(t, {
+            "tier_id": t, "tier_name": tier_name.get(t, t),
+            "total": tier_inv.get(t, 0),
+            "occupied": 0, "available": 0,
+            "arriving_today": 0, "departing_today": 0,
+        })
+        if r["status"] in ("occupied", "arriving_today", "departing_today"):
+            slot["occupied"] += 1
+            if r["status"] == "arriving_today":
+                slot["arriving_today"] += 1
+            elif r["status"] == "departing_today":
+                slot["departing_today"] += 1
+        else:
+            slot["available"] += 1
+
+    # Pending arrivals / departures (no room assigned yet — to be assigned by staff)
+    pending_arrivals = [b for b in overlapping if b.get("date") == target and not b.get("room_id")]
+
+    return {
+        "date": target,
+        "default_checkin_time": HEBERGEMENT_DEFAULT_CHECKIN,
+        "default_checkout_time": HEBERGEMENT_DEFAULT_CHECKOUT,
+        "rooms": rooms_out,
+        "by_tier": sorted(by_tier.values(), key=lambda x: x["tier_id"]),
+        "totals": {
+            "rooms_total": len(HEBERGEMENT_ROOMS),
+            "rooms_occupied": sum(1 for r in rooms_out if r.get("id") and r["status"] != "available"),
+            "rooms_available": sum(1 for r in rooms_out if r.get("id") and r["status"] == "available"),
+            "arriving_today": len([b for b in overlapping if b.get("date") == target]),
+            "departing_today": len(departing_today),
+            "pending_arrivals_no_room": len(pending_arrivals),
+        },
+    }
+
+
+class AssignRoomBody(BaseModel):
+    room_id: Optional[str] = None  # null clears assignment
+
+
+@api.patch("/staff/bookings/{booking_id}/assign-room")
+async def assign_room(booking_id: str, body: AssignRoomBody, staff=Depends(get_current_staff)):
+    """Assign (or clear) a physical room for an hebergement booking."""
+    await _require_role(staff, ["manager", "admin", "receptionist"])
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.get("offer_type") != "hebergement":
+        raise HTTPException(status_code=400, detail="Only hebergement bookings can be assigned a room")
+    if body.room_id is None:
+        await db.bookings.update_one(
+            {"id": booking_id},
+            {"$set": {"room_id": None, "room_label": None}},
+        )
+        return {"id": booking_id, "room_id": None}
+    meta = HEBERGEMENT_ROOMS_BY_ID.get(body.room_id)
+    if not meta:
+        raise HTTPException(status_code=400, detail="Unknown room_id")
+    if meta["tier"] != booking.get("room_tier"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cette chambre est de catégorie {meta['tier']} alors que la réservation porte sur {booking.get('room_tier')}.",
+        )
+    # Check overlap with another booking on the same room
+    overlap = await db.bookings.find_one({
+        "id": {"$ne": booking_id},
+        "offer_type": "hebergement",
+        "status": {"$ne": "cancelled"},
+        "room_id": body.room_id,
+        "date": {"$lt": booking.get("checkout_date")},
+        "checkout_date": {"$gt": booking.get("date")},
+    })
+    if overlap:
+        raise HTTPException(
+            status_code=409,
+            detail=f"La chambre {meta['label']} est déjà occupée sur cette période (réservation {overlap.get('id')}).",
+        )
+    await db.bookings.update_one(
+        {"id": booking_id},
+        {"$set": {"room_id": body.room_id, "room_label": meta["label"]}},
+    )
+    return {"id": booking_id, "room_id": body.room_id, "room_label": meta["label"]}
 
 
 @api.get("/staff/hebergement/calendar")

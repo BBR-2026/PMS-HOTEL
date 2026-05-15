@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../../lib/api";
 import { format } from "date-fns";
 import { fr as frLocale } from "date-fns/locale";
-import { BedDouble, ChevronLeft, ChevronRight, LogIn, LogOut, FileDown, TrendingUp } from "lucide-react";
+import { BedDouble, ChevronLeft, ChevronRight, LogIn, LogOut, FileDown, TrendingUp, Key, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 import { getStaffToken } from "../../lib/api";
 import {
   ResponsiveContainer,
@@ -18,8 +19,19 @@ import {
 
 const TIER_COLORS = {
   superieure: "#B8922A",
-  suite_jardin: "#16A34A",
-  suite_mer: "#2563EB",
+  suite: "#16A34A",
+};
+
+const TIER_LABEL = {
+  superieure: "Chambre Supérieure",
+  suite: "Suite",
+};
+
+const ROOM_STATUS_LABEL = {
+  available: { fr: "Disponible", cls: "bg-emerald-50 border-emerald-300 text-emerald-700" },
+  occupied: { fr: "Occupée", cls: "bg-rose-50 border-rose-300 text-rose-700" },
+  arriving_today: { fr: "Arrive aujourd'hui", cls: "bg-amber-50 border-amber-300 text-amber-800" },
+  departing_today: { fr: "Départ aujourd'hui", cls: "bg-sky-50 border-sky-300 text-sky-700" },
 };
 
 const PERIODS = [
@@ -48,21 +60,30 @@ export default function StaffHebergement() {
   const [selectedDay, setSelectedDay] = useState(today);
   const [calendar, setCalendar] = useState(null);
   const [today_, setToday_] = useState(null);
+  const [occupancy, setOccupancy] = useState(null);
   const [loading, setLoading] = useState(true);
   const [statsPeriod, setStatsPeriod] = useState("month");
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [assigningFor, setAssigningFor] = useState(null); // booking object
+
+  const refreshOccupancy = (day) =>
+    api.get(`/staff/hebergement/occupancy?date=${day || selectedDay}`)
+      .then((r) => setOccupancy(r.data))
+      .catch(() => setOccupancy(null));
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
       api.get(`/staff/hebergement/calendar?month=${month}`),
       api.get(`/staff/hebergement/today?date=${selectedDay}`),
+      api.get(`/staff/hebergement/occupancy?date=${selectedDay}`),
     ])
-      .then(([cal, tdy]) => {
+      .then(([cal, tdy, occ]) => {
         setCalendar(cal.data);
         setToday_(tdy.data);
+        setOccupancy(occ.data);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -116,8 +137,7 @@ export default function StaffHebergement() {
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[0.6rem] sm:text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ background: TIER_COLORS.superieure }}></span> Supérieure</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ background: TIER_COLORS.suite_jardin }}></span> Jardin</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ background: TIER_COLORS.suite_mer }}></span> Mer</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ background: TIER_COLORS.suite }}></span> Suite</span>
           <span className="flex items-center gap-1.5 text-red-700"><span className="w-2.5 h-2.5 bg-red-500"></span> Surbookée</span>
         </div>
       </div>
@@ -197,6 +217,15 @@ export default function StaffHebergement() {
         )}
       </div>
 
+      {/* ============================================================
+         OCCUPATION DES CHAMBRES (par chambre physique)
+         ============================================================ */}
+      <OccupancyPanel
+        occupancy={occupancy}
+        selectedDay={selectedDay}
+        onAssignClick={(booking) => setAssigningFor(booking)}
+      />
+
       {/* Today / selected day arrivals & departures */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="bg-white border border-[#0A0A0A]/8 p-5">
@@ -213,16 +242,33 @@ export default function StaffHebergement() {
             <div className="space-y-2">
               {today_.arrivals.map((b) => {
                 const p = (b.participants || [])[0] || {};
+                const checkinTime = today_?.default_checkin_time || "14:00";
                 return (
                   <div key={b.id} className="border border-[#0A0A0A]/10 p-3" data-testid={`arrival-${b.id}`}>
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-sm font-medium text-[#0A0A0A]">{p.surname} {p.name}</div>
-                      <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Bateau {b.boat_time}</div>
+                      <div className="text-[0.6rem] uppercase tracking-[0.22em] text-emerald-700 inline-flex items-center gap-1.5">
+                        <LogIn size={10} /> Check-in {checkinTime}
+                      </div>
                     </div>
                     <div className="text-[0.72rem] text-[#0A0A0A]/65 flex flex-wrap gap-x-3 gap-y-0.5">
-                      <span>{b.room_tier_name}</span>
+                      <span className="font-medium">{TIER_LABEL[b.room_tier] || b.room_tier_name || "—"}</span>
+                      {b.room_label ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#B8922A]/8 border border-[#B8922A]/30 text-[#B8922A] text-[0.62rem] font-medium uppercase tracking-[0.14em]">
+                          <Key size={9} /> {b.room_label}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setAssigningFor(b)}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 border border-amber-300 text-amber-800 text-[0.62rem] uppercase tracking-[0.14em] hover:bg-amber-100"
+                          data-testid={`assign-room-${b.id}`}
+                        >
+                          <AlertCircle size={9} /> Attribuer chambre
+                        </button>
+                      )}
                       <span>{b.rooms} ch. · {(b.adults || 0) + (b.children || 0)} pers.</span>
                       <span>{b.nights} nuit{b.nights > 1 ? "s" : ""}</span>
+                      <span>Bateau {b.boat_time}</span>
                       <span>{b.phone || "—"}</span>
                     </div>
                   </div>
@@ -246,16 +292,25 @@ export default function StaffHebergement() {
             <div className="space-y-2">
               {today_.departures.map((b) => {
                 const p = (b.participants || [])[0] || {};
+                const checkoutTime = today_?.default_checkout_time || "12:00";
                 return (
                   <div key={b.id} className="border border-[#0A0A0A]/10 p-3" data-testid={`departure-${b.id}`}>
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-sm font-medium text-[#0A0A0A]">{p.surname} {p.name}</div>
-                      <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Bateau {b.return_boat_time}</div>
+                      <div className="text-[0.6rem] uppercase tracking-[0.22em] text-sky-700 inline-flex items-center gap-1.5">
+                        <LogOut size={10} /> Check-out {checkoutTime}
+                      </div>
                     </div>
                     <div className="text-[0.72rem] text-[#0A0A0A]/65 flex flex-wrap gap-x-3 gap-y-0.5">
-                      <span>{b.room_tier_name}</span>
+                      <span className="font-medium">{TIER_LABEL[b.room_tier] || b.room_tier_name || "—"}</span>
+                      {b.room_label && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#B8922A]/8 border border-[#B8922A]/30 text-[#B8922A] text-[0.62rem] font-medium uppercase tracking-[0.14em]">
+                          <Key size={9} /> {b.room_label}
+                        </span>
+                      )}
                       <span>{b.rooms} ch. · {(b.adults || 0) + (b.children || 0)} pers.</span>
                       <span>Check-in {b.date}</span>
+                      <span>Bateau {b.return_boat_time || "—"}</span>
                       <span>{b.phone || "—"}</span>
                     </div>
                   </div>
@@ -489,6 +544,240 @@ export default function StaffHebergement() {
             </div>
           </>
         )}
+      </div>
+
+      {assigningFor && (
+        <AssignRoomModal
+          booking={assigningFor}
+          occupancy={occupancy}
+          onClose={() => setAssigningFor(null)}
+          onAssigned={() => {
+            setAssigningFor(null);
+            refreshOccupancy();
+            api.get(`/staff/hebergement/today?date=${selectedDay}`).then((r) => setToday_(r.data)).catch(() => {});
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// OCCUPANCY PANEL — physical-room grid for the selected day
+// ============================================================
+function OccupancyPanel({ occupancy, selectedDay, onAssignClick }) {
+  if (!occupancy) {
+    return (
+      <div className="bg-white border border-[#0A0A0A]/8 p-5 mb-5" data-testid="heb-occupancy-loading">
+        <div className="text-sm text-[#0A0A0A]/50">Chargement de l'occupation…</div>
+      </div>
+    );
+  }
+  const t = occupancy.totals || {};
+  const byTier = occupancy.by_tier || [];
+  const supRooms = (occupancy.rooms || []).filter((r) => r.tier === "superieure" && r.id);
+  const suiteRooms = (occupancy.rooms || []).filter((r) => r.tier === "suite" && r.id);
+  const pendingArrivals = (occupancy.rooms || []).filter((r) => !r.id && r.booking);
+
+  return (
+    <div className="bg-white border border-[#0A0A0A]/8 p-5 mb-5" data-testid="heb-occupancy-panel">
+      <div className="flex flex-wrap items-baseline justify-between mb-4 gap-2">
+        <div>
+          <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1 inline-flex items-center gap-2">
+            <BedDouble size={12} /> Occupation des chambres
+          </div>
+          <h2 className="font-display-serif text-xl sm:text-2xl text-[#0A0A0A]">
+            {selectedDay}
+          </h2>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-[#0A0A0A]/55">
+          <Legend cls={ROOM_STATUS_LABEL.available.cls} label="Disponible" />
+          <Legend cls={ROOM_STATUS_LABEL.occupied.cls} label="Occupée" />
+          <Legend cls={ROOM_STATUS_LABEL.arriving_today.cls} label="Arrivée jour J" />
+          <Legend cls={ROOM_STATUS_LABEL.departing_today.cls} label="Départ jour J" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-5">
+        <KpiCard label="Total chambres" value={t.rooms_total || 0} />
+        <KpiCard label="Occupées" value={t.rooms_occupied || 0} />
+        <KpiCard label="Disponibles" value={t.rooms_available || 0} />
+        <KpiCard label="Arrivées du jour" value={t.arriving_today || 0} />
+        <KpiCard label="Départs du jour" value={t.departing_today || 0} />
+        <KpiCard
+          label="Sans chambre"
+          value={t.pending_arrivals_no_room || 0}
+          ghost={t.pending_arrivals_no_room === 0}
+        />
+      </div>
+
+      {byTier.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" data-testid="heb-occupancy-by-tier">
+          {byTier.map((bt) => {
+            const occPct = bt.total > 0 ? Math.round((bt.occupied / bt.total) * 100) : 0;
+            return (
+              <div key={bt.tier_id} className="border border-[#0A0A0A]/10 p-3.5">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-sm font-medium text-[#0A0A0A]">{bt.tier_name}</div>
+                  <div className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">
+                    {bt.occupied}/{bt.total} ({occPct}%)
+                  </div>
+                </div>
+                <div className="h-1.5 bg-[#FAFAF7] rounded overflow-hidden mb-2">
+                  <div
+                    className="h-full transition-all"
+                    style={{ width: `${occPct}%`, backgroundColor: TIER_COLORS[bt.tier_id] || "#B8922A" }}
+                  />
+                </div>
+                <div className="text-[0.7rem] text-[#0A0A0A]/55 flex flex-wrap gap-x-3 gap-y-0.5">
+                  <span>{bt.available} disponible{bt.available > 1 ? "s" : ""}</span>
+                  {bt.arriving_today > 0 && <span className="text-amber-700">{bt.arriving_today} arrivée{bt.arriving_today > 1 ? "s" : ""}</span>}
+                  {bt.departing_today > 0 && <span className="text-sky-700">{bt.departing_today} départ{bt.departing_today > 1 ? "s" : ""}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {pendingArrivals.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 p-3 mb-5 text-[0.78rem] text-amber-900 inline-flex items-start gap-2" data-testid="heb-pending-no-room">
+          <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+          <span>
+            <strong className="font-medium">{pendingArrivals.length}</strong> arrivée{pendingArrivals.length > 1 ? "s" : ""} aujourd'hui sans chambre attribuée. Utilisez "Attribuer chambre" dans la liste des arrivées.
+          </span>
+        </div>
+      )}
+
+      <RoomGroup title="Chambres Supérieures (1001-1020)" rooms={supRooms} onAssignClick={onAssignClick} />
+      <div className="mt-5">
+        <RoomGroup title="Suites" rooms={suiteRooms} onAssignClick={onAssignClick} />
+      </div>
+    </div>
+  );
+}
+
+function Legend({ cls, label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`w-3 h-3 border ${cls}`} />
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function RoomGroup({ title, rooms, onAssignClick }) {
+  if (rooms.length === 0) return null;
+  return (
+    <div>
+      <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-2">{title}</div>
+      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-2">
+        {rooms.map((r) => (
+          <RoomCell key={r.id} room={r} onAssignClick={onAssignClick} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RoomCell({ room, onAssignClick }) {
+  const meta = ROOM_STATUS_LABEL[room.status] || ROOM_STATUS_LABEL.available;
+  const b = room.booking;
+  const guestName = b ? `${(b.first_name || "") + " " + (b.last_name || "")}`.trim() || b.name || "—" : "";
+  return (
+    <div
+      className={`border p-2 text-center ${meta.cls} relative group cursor-${b ? "pointer" : "default"}`}
+      data-testid={`room-${room.id}`}
+      title={b ? `${guestName} · ${b.adults || 0}A${b.children ? "/" + b.children + "E" : ""} · ${b.date} → ${b.checkout_date}` : "Disponible"}
+      onClick={() => b && onAssignClick && onAssignClick(b)}
+    >
+      <div className="font-display-serif text-base leading-tight truncate">{room.label}</div>
+      <div className="text-[0.55rem] uppercase tracking-[0.14em] mt-0.5 leading-tight truncate">{meta.fr}</div>
+      {b && (
+        <div className="text-[0.6rem] mt-0.5 truncate" title={guestName}>
+          {guestName.split(" ")[0] || ""}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// ASSIGN ROOM MODAL — manager assigns a physical room to a booking
+// ============================================================
+function AssignRoomModal({ booking, occupancy, onClose, onAssigned }) {
+  const [busy, setBusy] = useState(false);
+  const eligibleRooms = (occupancy?.rooms || []).filter(
+    (r) => r.id && r.tier === booking.room_tier &&
+      (r.status === "available" || r.id === booking.room_id),
+  );
+  const assign = async (roomId) => {
+    setBusy(true);
+    try {
+      await api.patch(`/staff/bookings/${booking.id}/assign-room`, { room_id: roomId });
+      toast.success("Chambre attribuée");
+      onAssigned();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Attribution impossible");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const clearAssignment = async () => {
+    setBusy(true);
+    try {
+      await api.patch(`/staff/bookings/${booking.id}/assign-room`, { room_id: null });
+      toast.success("Attribution annulée");
+      onAssigned();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Action impossible");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const tierLabel = TIER_LABEL[booking.room_tier] || booking.room_tier_name || booking.room_tier;
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => !busy && onClose()} data-testid="assign-room-modal">
+      <div className="bg-white p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-display-serif text-2xl text-[#0A0A0A] mb-1">Attribuer une chambre</h3>
+        <p className="text-sm text-[#0A0A0A]/65 mb-1">
+          Catégorie : <span className="font-medium text-[#0A0A0A]">{tierLabel}</span>
+        </p>
+        <p className="text-[0.7rem] text-[#0A0A0A]/45 mb-4">
+          {booking.date} → {booking.checkout_date} · {booking.rooms || 1} chambre · {(booking.adults || 0) + (booking.children || 0)} pers.
+        </p>
+        {eligibleRooms.length === 0 ? (
+          <div className="bg-amber-50 border border-amber-300 p-3 text-sm text-amber-900">
+            Aucune chambre {tierLabel} disponible sur la période.
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {eligibleRooms.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => assign(r.id)}
+                disabled={busy}
+                className={`border p-3 text-center transition-colors ${r.id === booking.room_id ? "border-[#B8922A] bg-[#B8922A]/8 text-[#B8922A]" : "border-[#0A0A0A]/15 hover:border-[#B8922A] hover:bg-[#B8922A]/5"} disabled:opacity-50`}
+                data-testid={`assign-pick-${r.id}`}
+              >
+                <div className="font-display-serif text-base">{r.label}</div>
+                {r.id === booking.room_id && (
+                  <div className="text-[0.6rem] uppercase tracking-[0.14em] mt-0.5">Sélectionnée</div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center justify-between mt-5">
+          {booking.room_id ? (
+            <button onClick={clearAssignment} disabled={busy} className="text-[0.65rem] uppercase tracking-[0.22em] text-red-700 hover:text-red-900" data-testid="assign-clear">
+              Retirer l'attribution
+            </button>
+          ) : <span />}
+          <button onClick={onClose} disabled={busy} className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/65 hover:text-[#0A0A0A]" data-testid="assign-cancel">
+            Fermer
+          </button>
+        </div>
       </div>
     </div>
   );
