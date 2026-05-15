@@ -14,9 +14,33 @@ import {
 
 const ROLE_LABEL = {
   admin: "Administrateur",
-  manager: "Manager",
-  receptionist: "Réception",
+  management_general: "Management général (consultation)",
+  manager_pole: "Manager pôle",
+  manager: "Manager (legacy)",
+  hotesse: "Hôtesse",
+  serveur_caisse: "Serveur & caisse",
+  logistique: "Logistique",
+  verification: "Vérification (Scanner QR)",
+  receptionist: "Réception (legacy)",
 };
+
+const ROLE_OPTIONS = [
+  { value: "hotesse", label: "Hôtesse — Toutes les réservations" },
+  { value: "serveur_caisse", label: "Serveur & caisse — Consommation sur place" },
+  { value: "logistique", label: "Logistique — Opérations & scanner" },
+  { value: "verification", label: "Vérification — Scanner QR uniquement" },
+  { value: "manager_pole", label: "Manager pôle — un pôle dédié" },
+  { value: "management_general", label: "Management général — Consultation" },
+  { value: "admin", label: "Administrateur — tout le dashboard" },
+];
+
+const POLE_OPTIONS = [
+  { value: "beach_club", label: "Beach Club" },
+  { value: "hebergement", label: "Hébergement" },
+  { value: "corporate", label: "Corporate" },
+  { value: "activites_events", label: "Activités & Événements" },
+  { value: "le_kaai", label: "Le Kaai" },
+];
 
 export default function StaffConfig() {
   const { user: currentUser } = useStaffAuth();
@@ -25,7 +49,7 @@ export default function StaffConfig() {
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "receptionist" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "hotesse", pole_id: "" });
   const [edits, setEdits] = useState({}); // offer_id -> changes
 
   const refresh = async () => {
@@ -53,10 +77,21 @@ export default function StaffConfig() {
       toast.error("Nom, email et mot de passe (8+ car.) requis");
       return;
     }
+    if (form.role === "manager_pole" && !form.pole_id) {
+      toast.error("Sélectionnez un pôle pour ce manager.");
+      return;
+    }
     try {
-      await api.post("/staff/config/users", form);
+      const payload = {
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        role: form.role,
+      };
+      if (form.role === "manager_pole" && form.pole_id) payload.pole_id = form.pole_id;
+      await api.post("/staff/config/users", payload);
       setShowCreate(false);
-      setForm({ name: "", email: "", password: "", role: "receptionist" });
+      setForm({ name: "", email: "", password: "", role: "hotesse", pole_id: "" });
       refresh();
       toast.success("Utilisateur créé");
     } catch (e) {
@@ -64,11 +99,23 @@ export default function StaffConfig() {
     }
   };
 
-  const updateUserRole = async (id, role) => {
+  const updateUserRole = async (id, role, pole_id) => {
     try {
-      await api.patch(`/staff/config/users/${id}`, { role });
+      const payload = { role };
+      if (role === "manager_pole" && pole_id) payload.pole_id = pole_id;
+      await api.patch(`/staff/config/users/${id}`, payload);
       refresh();
       toast.success("Rôle mis à jour");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Action impossible");
+    }
+  };
+
+  const updateUserPole = async (id, pole_id) => {
+    try {
+      await api.patch(`/staff/config/users/${id}`, { pole_id });
+      refresh();
+      toast.success("Pôle mis à jour");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Action impossible");
     }
@@ -184,21 +231,36 @@ export default function StaffConfig() {
               >
                 <div className="md:col-span-3 text-sm text-[#0A0A0A] w-full">{u.name}</div>
                 <div className="md:col-span-4 text-sm text-[#0A0A0A]/70 break-all w-full">{u.email}</div>
-                <div className="md:col-span-3 w-full md:w-auto">
+                <div className="md:col-span-3 w-full md:w-auto space-y-2">
                   <Select
                     value={u.role}
-                    onValueChange={(v) => updateUserRole(u.id, v)}
+                    onValueChange={(v) => updateUserRole(u.id, v, u.pole_id)}
                     disabled={u.id === currentUser?.id}
                   >
                     <SelectTrigger className="h-9 text-sm" data-testid={`user-role-${u.id}`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="receptionist">Réception</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="admin">Administrateur</SelectItem>
+                      {ROLE_OPTIONS.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
+                  {u.role === "manager_pole" && u.id !== currentUser?.id && (
+                    <Select
+                      value={u.pole_id || ""}
+                      onValueChange={(v) => updateUserPole(u.id, v)}
+                    >
+                      <SelectTrigger className="h-9 text-xs" data-testid={`user-pole-${u.id}`}>
+                        <SelectValue placeholder="Sélectionner le pôle…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {POLE_OPTIONS.map((p) => (
+                          <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="md:col-span-2 md:text-right w-full">
                   {u.id !== currentUser?.id && (
@@ -359,17 +421,32 @@ export default function StaffConfig() {
               </div>
               <div>
                 <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Rôle</label>
-                <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v, pole_id: v === "manager_pole" ? form.pole_id : "" })}>
                   <SelectTrigger className="mt-1 h-10 text-sm" data-testid="new-user-role">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="receptionist">Réception</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="admin">Administrateur</SelectItem>
+                    {ROLE_OPTIONS.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+              {form.role === "manager_pole" && (
+                <div>
+                  <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Pôle attribué</label>
+                  <Select value={form.pole_id} onValueChange={(v) => setForm({ ...form, pole_id: v })}>
+                    <SelectTrigger className="mt-1 h-10 text-sm" data-testid="new-user-pole">
+                      <SelectValue placeholder="Choisir un pôle…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {POLE_OPTIONS.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <button
               onClick={createUser}

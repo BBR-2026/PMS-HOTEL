@@ -1167,7 +1167,10 @@ async def login_staff(body: StaffLogin):
     if not user or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_token({"sub": user["id"], "type": "staff", "role": user["role"]})
-    public = {"id": user["id"], "name": user["name"], "email": user["email"], "role": user["role"]}
+    public = {
+        "id": user["id"], "name": user["name"], "email": user["email"],
+        "role": user["role"], "pole_id": user.get("pole_id"),
+    }
     return TokenResponse(access_token=token, user=public)
 
 
@@ -2470,8 +2473,57 @@ async def _seed_default_bateaux():
 
 
 async def _require_role(staff: dict, allowed: list):
-    if staff.get("role") not in allowed:
-        raise HTTPException(status_code=403, detail="Insufficient privileges")
+    """Authorization gate. Supports legacy roles (receptionist, manager, admin)
+    AND the new 7-role catalog by expanding each role to its equivalence set."""
+    role = staff.get("role", "")
+    if role in allowed:
+        return
+    # Expand via ROLE_INCLUDES so new roles inherit the legacy permissions
+    for equiv in ROLE_INCLUDES.get(role, []):
+        if equiv in allowed:
+            return
+    raise HTTPException(status_code=403, detail="Insufficient privileges")
+
+
+# ============== NEW 7-ROLE CATALOG ==============
+# Each new role lists which LEGACY role permissions it inherits, so existing
+# endpoints (which check legacy roles via _require_role) keep working without
+# touching every callsite.
+ROLE_INCLUDES = {
+    # Hôtesse — full reservations (read + update status). Includes manager so
+    # she can call PATCH /staff/bookings/*/status etc; sidebar restricts UX.
+    "hotesse": ["hotesse", "manager", "receptionist"],
+    # Serveur & caisse — wallet operations including close. Includes manager
+    # to validate payments on the wallet; sidebar shows only /staff/activites.
+    "serveur_caisse": ["serveur_caisse", "manager", "receptionist"],
+    # Logistique — boats / embarquement / traversees / scanner / boat config
+    "logistique": ["logistique", "manager", "receptionist"],
+    # Verification — QR scanner only; needs receptionist to perform check-ins
+    "verification": ["verification", "receptionist"],
+    # Manager pôle — equivalent to legacy manager, but scoped to ONE pole
+    # (sidebar + dedicated pole filter enforce the scope)
+    "manager_pole": ["manager_pole", "manager", "receptionist"],
+    # Management général — read-only consultation. Middleware blocks all writes.
+    "management_general": ["management_general", "manager", "receptionist"],
+    # Administrator — already covers everything via legacy admin
+    "admin": ["admin", "manager", "receptionist"],
+    # Legacy roles still self-cover
+    "receptionist": ["receptionist"],
+    "manager": ["manager", "receptionist"],
+}
+
+# Roles that are read-only (any write request → 403 via middleware)
+READONLY_ROLES = {"management_general"}
+
+# Roles scoped to a single pole (must have staff.pole_id set)
+POLE_SCOPED_ROLES = {"manager_pole"}
+
+
+def _staff_pole_scope(staff: dict) -> Optional[str]:
+    """Return the pole_id the staff is restricted to, or None if no scope."""
+    if staff.get("role") in POLE_SCOPED_ROLES:
+        return staff.get("pole_id") or None
+    return None
 
 
 # ---------- Dashboard KPIs (Module 1) ----------
@@ -6070,14 +6122,26 @@ class StaffUserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str = Field(min_length=8)
-    role: Literal["receptionist", "manager", "admin"]
+    role: Literal[
+        # New 7-role catalog
+        "hotesse", "serveur_caisse", "logistique", "verification",
+        "manager_pole", "management_general", "admin",
+        # Legacy roles still accepted for backward compatibility
+        "receptionist", "manager",
+    ]
+    pole_id: Optional[Literal["beach_club", "hebergement", "corporate", "activites_events", "le_kaai"]] = None
 
 
 class StaffUserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     password: Optional[str] = Field(default=None, min_length=8)
-    role: Optional[Literal["receptionist", "manager", "admin"]] = None
+    role: Optional[Literal[
+        "hotesse", "serveur_caisse", "logistique", "verification",
+        "manager_pole", "management_general", "admin",
+        "receptionist", "manager",
+    ]] = None
+    pole_id: Optional[Literal["beach_club", "hebergement", "corporate", "activites_events", "le_kaai"]] = None
 
 
 @api.get("/staff/config/users")
@@ -6098,6 +6162,7 @@ async def create_staff_user(body: StaffUserCreate, staff=Depends(get_current_sta
         "name": body.name.strip(),
         "email": body.email.lower(),
         "role": body.role,
+        "pole_id": body.pole_id if body.role == "manager_pole" else None,
         "password_hash": hash_password(body.password),
         "created_at": now_iso(),
     }
@@ -6120,6 +6185,11 @@ async def update_staff_user(user_id: str, body: StaffUserUpdate, staff=Depends(g
         update["email"] = body.email.lower()
     if body.role is not None:
         update["role"] = body.role
+        # Reset pole_id when role is no longer manager_pole
+        if body.role != "manager_pole":
+            update["pole_id"] = None
+    if body.pole_id is not None:
+        update["pole_id"] = body.pole_id
     if body.password is not None:
         update["password_hash"] = hash_password(body.password)
     if not update:
@@ -6400,6 +6470,33 @@ async def shutdown_db_client():
 
 
 app.include_router(api)
+
+
+# ----- Read-only role enforcement -----
+@app.middleware("http")
+async def readonly_role_middleware(request, call_next):
+    """Block write operations (POST/PATCH/PUT/DELETE) for management_general
+    role. Login is exempted so they can still authenticate."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return await call_next(request)
+    # Always allow auth endpoints (login, refresh)
+    path = request.url.path or ""
+    if path.startswith("/api/auth/"):
+        return await call_next(request)
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        try:
+            payload = decode_token(auth_header[7:])
+            if payload.get("type") == "staff" and payload.get("role") in READONLY_ROLES:
+                from starlette.responses import JSONResponse
+                return JSONResponse(
+                    {"detail": "Compte consultation : lecture seule, modification interdite."},
+                    status_code=403,
+                )
+        except Exception:
+            pass  # let downstream auth handlers respond with 401
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,

@@ -32,8 +32,13 @@ import StaffPayments from "./pages/staff/StaffPayments";
 import PolePage from "./pages/PolePage";
 import RoleGuard from "./components/RoleGuard";
 
-const MANAGER_PLUS = ["manager", "admin"];
+// Role catalogs — extend MANAGER_PLUS to include the new roles so they get
+// the same routing access as legacy manager (read access; writes are gated by
+// the backend middleware for management_general).
+const MANAGER_PLUS = ["manager", "manager_pole", "management_general", "admin"];
 const ADMIN_ONLY = ["admin"];
+// Roles allowed to access reservation pages
+const RES_ACCESS = [...MANAGER_PLUS, "hotesse", "receptionist"];
 
 function PublicLayout() {
   return (
@@ -78,8 +83,8 @@ function App() {
               <Route path="embarquement" element={<StaffEmbarquement />} />
               <Route path="traversees/historique" element={<StaffTraverseesHistory />} />
               <Route path="activites" element={<StaffActivities />} />
-              <Route path="reservations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffReservations /></RoleGuard>} />
-              <Route path="reservations/nouvelle" element={<RoleGuard allowed={MANAGER_PLUS}><StaffNewBooking /></RoleGuard>} />
+              <Route path="reservations" element={<RoleGuard allowed={RES_ACCESS}><StaffReservations /></RoleGuard>} />
+              <Route path="reservations/nouvelle" element={<RoleGuard allowed={RES_ACCESS}><StaffNewBooking /></RoleGuard>} />
               <Route path="recus" element={<RoleGuard allowed={MANAGER_PLUS}><StaffReceipts /></RoleGuard>} />
               <Route path="embarquements-historique" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCheckinsHistory /></RoleGuard>} />
               <Route path="configuration/activites" element={<RoleGuard allowed={MANAGER_PLUS}><StaffActivitiesConfig /></RoleGuard>} />

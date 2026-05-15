@@ -26,33 +26,64 @@ import {
 // Role-based visibility helper
 const can = (user, allowed) => allowed.includes(user?.role);
 
+// ===== Role visibility matrix =====
+// Each role sees only what it's allowed to. Legacy roles (receptionist /
+// manager / admin) stay valid alongside the new 7-role catalog.
+const R_ADMIN = ["admin", "management_general"]; // full read access
+const R_MGMT = [...R_ADMIN, "manager", "manager_pole"];
+const R_RES = [...R_MGMT, "hotesse", "receptionist"]; // Reservations
+const R_OPS = [...R_MGMT, "logistique", "receptionist"]; // Operations
+const R_SCAN = [...R_MGMT, "verification", "logistique", "hotesse", "receptionist"]; // Scanner
+const R_ACT = [...R_MGMT, "serveur_caisse", "receptionist"]; // Consommation
+const R_DASH = [...R_RES, ...R_OPS, ...R_ACT, "serveur_caisse", "verification"]; // Dashboard — everyone
+const R_ADMIN_ONLY = ["admin"]; // strict admin-only config
+
 const NAV = [
-  { to: "/staff", end: true, icon: LayoutDashboard, label: "Tableau de bord", roles: ["receptionist", "manager", "admin"] },
-  { to: "/staff/scanner", icon: QrCode, label: "Scanner QR", roles: ["receptionist", "manager", "admin"] },
-  { section: "Pôle", roles: ["manager", "admin"] },
-  { to: "/staff/pole/beach_club", icon: Waves, label: "Beach Club", roles: ["manager", "admin"] },
-  { to: "/staff/pole/hebergement", icon: BedDouble, label: "Hébergement", roles: ["manager", "admin"] },
-  { to: "/staff/pole/corporate", icon: Briefcase, label: "Corporate", roles: ["manager", "admin"] },
-  { to: "/staff/pole/activites_events", icon: CalendarHeart, label: "Activités & Événements", roles: ["manager", "admin"] },
-  { to: "/staff/pole/le_kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: ["manager", "admin"] },
-  { section: "Réservations", roles: ["manager", "admin"] },
-  { to: "/staff/reservations", icon: Ticket, label: "Toutes les réservations", roles: ["manager", "admin"] },
-  { to: "/staff/paiements", icon: Wallet, label: "Paiements", roles: ["manager", "admin"] },
-  { to: "/staff/clients", icon: Users, label: "Clients", roles: ["manager", "admin"] },
-  { to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: ["manager", "admin"] },
-  { to: "/staff/recus", icon: ReceiptText, label: "Reçus de paiement", roles: ["manager", "admin"] },
-  { section: "Opérations", roles: ["receptionist", "manager", "admin"] },
-  { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: ["receptionist", "manager", "admin"] },
-  { to: "/staff/embarquements-historique", icon: Anchor, label: "Historique embarquements", roles: ["manager", "admin"] },
-  { to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: ["receptionist", "manager", "admin"] },
-  { to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: ["receptionist", "manager", "admin"] },
-  { section: "Administration", roles: ["admin"] },
-  { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: ["manager", "admin"] },
-  { to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: ["manager", "admin"] },
-  { to: "/staff/config", icon: Settings, label: "Configuration", roles: ["admin"] },
+  { to: "/staff", end: true, icon: LayoutDashboard, label: "Tableau de bord", roles: R_DASH },
+  { to: "/staff/scanner", icon: QrCode, label: "Scanner QR", roles: R_SCAN },
+  { section: "Pôle", roles: R_MGMT },
+  { to: "/staff/pole/beach_club", icon: Waves, label: "Beach Club", roles: R_MGMT, poleId: "beach_club" },
+  { to: "/staff/pole/hebergement", icon: BedDouble, label: "Hébergement", roles: R_MGMT, poleId: "hebergement" },
+  { to: "/staff/pole/corporate", icon: Briefcase, label: "Corporate", roles: R_MGMT, poleId: "corporate" },
+  { to: "/staff/pole/activites_events", icon: CalendarHeart, label: "Activités & Événements", roles: R_MGMT, poleId: "activites_events" },
+  { to: "/staff/pole/le_kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: R_MGMT, poleId: "le_kaai" },
+  { section: "Réservations", roles: R_RES },
+  { to: "/staff/reservations", icon: Ticket, label: "Toutes les réservations", roles: R_RES },
+  { to: "/staff/paiements", icon: Wallet, label: "Paiements", roles: R_MGMT },
+  { to: "/staff/clients", icon: Users, label: "Clients", roles: R_MGMT },
+  { to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: R_MGMT },
+  { to: "/staff/recus", icon: ReceiptText, label: "Reçus de paiement", roles: R_MGMT },
+  { section: "Opérations", roles: R_OPS },
+  { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: R_OPS },
+  { to: "/staff/embarquements-historique", icon: Anchor, label: "Historique embarquements", roles: R_MGMT },
+  { to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: R_OPS },
+  { to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: R_ACT },
+  { section: "Administration", roles: R_ADMIN },
+  { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: R_MGMT },
+  { to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: R_MGMT },
+  { to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },
 ];
 
+const ROLE_LABEL_FR = {
+  admin: "Administrateur",
+  management_general: "Management général",
+  manager: "Manager",
+  manager_pole: "Manager pôle",
+  hotesse: "Hôtesse",
+  serveur_caisse: "Serveur & caisse",
+  logistique: "Logistique",
+  verification: "Vérification",
+  receptionist: "Réception",
+};
+
 function SidebarContent({ user, onNavigate, onLogout }) {
+  // Manager pôle: hide all pole links except the one assigned to the user.
+  const filteredNav = NAV.filter((item) => {
+    if (user?.role === "manager_pole" && item.poleId && item.poleId !== user.pole_id) {
+      return false;
+    }
+    return true;
+  });
   return (
     <>
       <div className="px-4 py-6 border-b border-[#B8922A]/20 flex items-center justify-center">
@@ -64,7 +95,7 @@ function SidebarContent({ user, onNavigate, onLogout }) {
         />
       </div>
       <nav className="flex-1 overflow-y-auto py-4">
-        {NAV.map((item, idx) => {
+        {filteredNav.map((item, idx) => {
           if (item.section) {
             if (!can(user, item.roles)) return null;
             return (
@@ -98,7 +129,14 @@ function SidebarContent({ user, onNavigate, onLogout }) {
       </nav>
       <div className="px-6 py-5 border-t border-[#B8922A]/20">
         <div className="text-sm font-medium text-[#0A0A0A]">{user.name}</div>
-        <div className="text-[0.65rem] uppercase tracking-[0.22em] text-[#B8922A] mt-0.5">{user.role}</div>
+        <div className="text-[0.65rem] uppercase tracking-[0.22em] text-[#B8922A] mt-0.5">
+          {ROLE_LABEL_FR[user.role] || user.role}
+        </div>
+        {user.role === "management_general" && (
+          <div className="mt-1 text-[0.6rem] uppercase tracking-[0.18em] text-amber-700/90" data-testid="readonly-banner">
+            Lecture seule
+          </div>
+        )}
         <button
           onClick={onLogout}
           className="mt-3 inline-flex items-center gap-2 text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 hover:text-[#B8922A] transition-colors"
