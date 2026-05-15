@@ -1,10 +1,13 @@
-import { useEffect, useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { Search, Plus, X, Trash2, Lock, CreditCard, Check, AlertCircle } from "lucide-react";
+import { Search, Plus, X, Trash2, Lock, CreditCard, Check, AlertCircle, Camera, CameraOff, Keyboard, RotateCcw, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
+import { Html5Qrcode } from "html5-qrcode";
+
+const SCAN_REGION_ID = "wallet-qr-scan-region";
 
 const STATUS_LABEL = {
   open: { label: "Ouvert", color: "bg-green-50 text-green-700 border-green-200" },
@@ -23,7 +26,24 @@ const PAYMENT_METHOD_OPTIONS = [
   { id: "mobile_money", label: "Mobile Money", icon: "📱" },
 ];
 
+// Extract the lookup string from a QR payload — handles JSON {type:wallet|ticket, token:…},
+// legacy {guest_token:…}, and raw strings.
+function extractTokenFromQr(raw) {
+  let s = (raw || "").trim();
+  if (!s) return "";
+  if (s.startsWith("{")) {
+    try {
+      const obj = JSON.parse(s);
+      return (obj.token || obj.guest_token || obj.qr_token || "").trim() || s;
+    } catch {
+      /* not JSON */
+    }
+  }
+  return s;
+}
+
 export default function StaffActivities() {
+  const [searchParams] = useSearchParams();
   const { user } = useStaffAuth();
   const canManage = ["manager", "admin"].includes(user?.role);
   const [activities, setActivities] = useState([]);
@@ -33,10 +53,47 @@ export default function StaffActivities() {
   const [busy, setBusy] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const [customForm, setCustomForm] = useState({ label: "", amount: "", quantity: 1, note: "" });
+  // Scanner state
+  const [mode, setMode] = useState("camera"); // 'camera' | 'manual'
+  const [cameraOn, setCameraOn] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const scannerRef = useRef(null);
+  const processingRef = useRef(false);
+  const startingRef = useRef(false);
 
   useEffect(() => {
     api.get("/staff/activities").then((r) => setActivities(r.data.items || [])).catch(() => {});
   }, []);
+
+  // Stop scanner on unmount
+  useEffect(() => {
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Auto start/stop camera when entering 'camera' mode (and no wallet open)
+  useEffect(() => {
+    if (mode === "camera" && !wallet && !cameraOn) {
+      startCamera();
+    }
+    if (mode !== "camera" && cameraOn) {
+      stopCamera();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, wallet]);
+  useEffect(() => {
+    const pre = searchParams.get("token");
+    if (pre) {
+      setTokenInput(pre);
+      setMode("manual");
+      lookup(pre);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const grouped = useMemo(() => {
     // Two-level grouping: category > subcategory. Each leaf is an array of activities.
@@ -68,7 +125,8 @@ export default function StaffActivities() {
   };
 
   const lookup = async (token) => {
-    const t = (token || tokenInput || "").trim();
+    const raw = (token || tokenInput || "").trim();
+    const t = extractTokenFromQr(raw);
     if (!t) return;
     setLoading(true);
     setWallet(null);
@@ -81,6 +139,81 @@ export default function StaffActivities() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Camera scan handlers (mirror StaffScanner.jsx behaviour)
+  const handleScanned = async (decodedText) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    try {
+      await stopCamera();
+      toast.success("QR détecté");
+      await lookup(decodedText);
+    } finally {
+      processingRef.current = false;
+    }
+  };
+
+  const startCamera = async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    setCameraError(null);
+    if (scannerRef.current) {
+      try { await scannerRef.current.stop(); await scannerRef.current.clear(); } catch { /* ignore */ }
+      scannerRef.current = null;
+    }
+    try {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const regionEl = document.getElementById(SCAN_REGION_ID);
+      if (!regionEl) { startingRef.current = false; return; }
+      regionEl.innerHTML = "";
+      const instance = new Html5Qrcode(SCAN_REGION_ID);
+      scannerRef.current = instance;
+      await instance.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
+        (decodedText) => handleScanned(decodedText),
+        () => {},
+      );
+      setCameraOn(true);
+    } catch (e) {
+      setCameraError(
+        e?.message?.includes("permission") || e?.name === "NotAllowedError"
+          ? "Autorisation caméra refusée. Activez l'accès dans votre navigateur."
+          : (e?.message || "Caméra indisponible sur cet appareil."),
+      );
+      setCameraOn(false);
+      scannerRef.current = null;
+    } finally {
+      startingRef.current = false;
+    }
+  };
+
+  const stopCamera = async () => {
+    if (scannerRef.current) {
+      const instance = scannerRef.current;
+      scannerRef.current = null;
+      const timeout = new Promise((resolve) => setTimeout(resolve, 800));
+      try {
+        await Promise.race([
+          (async () => {
+            try { await instance.stop(); } catch { /* ignore */ }
+            try { await instance.clear(); } catch { /* ignore */ }
+          })(),
+          timeout,
+        ]);
+      } catch { /* swallow */ }
+    }
+    setCameraOn(false);
+  };
+
+  const resetScan = async () => {
+    await stopCamera();
+    setWallet(null);
+    setTokenInput("");
+    setCameraError(null);
+    processingRef.current = false;
+    setMode("camera");
   };
 
   const charge = async (payload) => {
@@ -156,33 +289,104 @@ export default function StaffActivities() {
         Scannez la carte du client pour facturer un menu, une privatisation d'espace, une activité loisirs ou une offre sur mesure.
       </p>
 
-      {/* Lookup */}
-      <div className="bg-white border border-[#0A0A0A]/8 p-4 sm:p-5 mb-6">
-        <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">
-          Référence carte (QR token ou code court)
-        </label>
-        <div className="flex flex-col sm:flex-row gap-2 mt-2">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0A0A0A]/40" />
-            <input
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && lookup()}
-              placeholder="Collez le token QR ou le code court (ex: A1B2C3D4)"
-              className="w-full pl-9 pr-3 py-2.5 text-sm border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none"
-              data-testid="wallet-token-input"
-            />
+      {/* Lookup — only shown when no wallet is loaded */}
+      {!wallet && (
+        <div className="bg-white border border-[#0A0A0A]/8 p-4 sm:p-5 mb-6" data-testid="wallet-lookup-card">
+          {/* Mode toggle */}
+          <div className="inline-flex border border-[#0A0A0A]/15 mb-4 text-[0.62rem] uppercase tracking-[0.22em]">
+            <button
+              onClick={() => setMode("camera")}
+              className={`px-3 py-1.5 inline-flex items-center gap-1.5 transition-colors ${mode === "camera" ? "bg-[#B8922A] text-white" : "text-[#0A0A0A]/65 hover:bg-[#FAFAF7]"}`}
+              data-testid="mode-camera-btn"
+            >
+              <Camera size={11} /> Caméra
+            </button>
+            <button
+              onClick={() => setMode("manual")}
+              className={`px-3 py-1.5 inline-flex items-center gap-1.5 border-l border-[#0A0A0A]/15 transition-colors ${mode === "manual" ? "bg-[#B8922A] text-white" : "text-[#0A0A0A]/65 hover:bg-[#FAFAF7]"}`}
+              data-testid="mode-manual-btn"
+            >
+              <Keyboard size={11} /> Saisie manuelle
+            </button>
           </div>
-          <button
-            onClick={() => lookup()}
-            disabled={loading || !tokenInput.trim()}
-            className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.65rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50"
-            data-testid="wallet-lookup-btn"
-          >
-            {loading ? "…" : "Ouvrir la carte"}
-          </button>
+
+          {mode === "camera" ? (
+            <div data-testid="scanner-camera-block">
+              <div
+                id={SCAN_REGION_ID}
+                className="w-full max-w-md mx-auto bg-[#0A0A0A] aspect-square overflow-hidden rounded"
+                style={{ minHeight: 280 }}
+              />
+              {cameraError ? (
+                <div className="mt-3 bg-red-50 border border-red-200 p-3 text-[0.78rem] text-red-800 inline-flex items-start gap-2" data-testid="scanner-camera-error">
+                  <CameraOff size={14} className="mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div>{cameraError}</div>
+                    <button onClick={startCamera} className="mt-1.5 underline text-red-900">Réessayer</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center mt-3 text-[0.7rem] text-[#0A0A0A]/55 inline-flex items-center justify-center gap-2 w-full">
+                  <QrCode size={12} className="text-[#B8922A]" />
+                  {cameraOn ? "Approchez le QR du client (billet ou carte Consommation)" : "Démarrage de la caméra…"}
+                </div>
+              )}
+              <div className="text-center mt-2">
+                <button
+                  onClick={() => setMode("manual")}
+                  className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] hover:underline"
+                  data-testid="scanner-switch-manual"
+                >
+                  Saisir le code manuellement →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">
+                Référence carte (QR token ou code court)
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0A0A0A]/40" />
+                  <input
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && lookup()}
+                    placeholder="Collez le token QR ou le code court (ex: A1B2C3D4)"
+                    className="w-full pl-9 pr-3 py-2.5 text-sm border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none"
+                    data-testid="wallet-token-input"
+                  />
+                </div>
+                <button
+                  onClick={() => lookup()}
+                  disabled={loading || !tokenInput.trim()}
+                  className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.65rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50"
+                  data-testid="wallet-lookup-btn"
+                >
+                  {loading ? "…" : "Ouvrir la carte"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Back / scan-new button — shown when a wallet is loaded */}
+      {wallet && (
+        <div className="mb-5 flex items-center justify-between">
+          <button
+            onClick={resetScan}
+            className="inline-flex items-center gap-2 px-4 py-2 border border-[#0A0A0A]/15 text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/75 hover:border-[#B8922A] hover:text-[#B8922A] transition-colors"
+            data-testid="scanner-back-btn"
+          >
+            <RotateCcw size={12} /> Scanner un autre QR
+          </button>
+          <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45 hidden sm:block">
+            Carte ouverte · {wallet.booking_ref}
+          </div>
+        </div>
+      )}
 
       {wallet && (
         <div className="space-y-5" data-testid="wallet-detail">
