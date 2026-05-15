@@ -57,6 +57,7 @@ const NAV = [
   { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: R_OPS },
   { to: "/staff/embarquements-historique", icon: Anchor, label: "Historique embarquements", roles: R_MGMT },
   { to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: R_OPS },
+  { section: "Consommation sur place", roles: R_ACT },
   { to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: R_ACT },
   { section: "Administration", roles: R_ADMIN },
   { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: R_MGMT },
