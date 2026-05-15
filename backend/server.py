@@ -4591,8 +4591,13 @@ async def _wallet_summary(wallet: dict) -> dict:
 
 @api.get("/staff/wallets/{token}")
 async def get_wallet(token: str, staff=Depends(get_current_staff)):
-    """Look up a wallet by its QR token, short reference (10 hex chars
-    of the wallet token, with or without dashes), or short booking reference."""
+    """Look up a wallet by:
+    - its full wallet UUID token,
+    - its short reference (first 10 hex chars of the wallet token, with or without dashes),
+    - its short booking_ref (8 chars), or
+    - the short/long token of any **ticket QR** attached to the same booking
+      (so staff can scan/type either QR — billet or wallet).
+    """
     await _require_role(staff, ["receptionist", "manager", "admin"])
     wallet = await db.wallets.find_one({"token": token}, {"_id": 0})
     if not wallet:
@@ -4601,12 +4606,28 @@ async def get_wallet(token: str, staff=Depends(get_current_staff)):
         norm = re.sub(r"[^a-z0-9]", "", raw.lower())
         if not norm:
             raise HTTPException(status_code=404, detail="Wallet not found")
+        # 1) Match against wallet_token prefix / booking_ref
         async for w in db.wallets.find({}, {"_id": 0}):
             t_norm = re.sub(r"[^a-z0-9]", "", (w.get("token") or "").lower())
             r_norm = re.sub(r"[^a-z0-9]", "", (w.get("booking_ref") or "").lower())
             if t_norm.startswith(norm) or r_norm == norm:
                 wallet = w
                 break
+        # 2) Fallback: match against any booking.qr_codes[].qr_token (ticket code).
+        #    Returns the wallet linked to that booking — staff can use either QR.
+        if not wallet:
+            async for b in db.bookings.find(
+                {"wallet_token": {"$exists": True, "$ne": None}},
+                {"_id": 0, "id": 1, "wallet_token": 1, "qr_codes": 1},
+            ):
+                qrs = b.get("qr_codes") or []
+                for q in qrs:
+                    q_norm = re.sub(r"[^a-z0-9]", "", (q.get("qr_token") or "").lower())
+                    if q_norm and q_norm.startswith(norm):
+                        wallet = await db.wallets.find_one({"token": b["wallet_token"]}, {"_id": 0})
+                        break
+                if wallet:
+                    break
     if not wallet:
         raise HTTPException(status_code=404, detail="Wallet not found")
     return await _wallet_summary(wallet)
