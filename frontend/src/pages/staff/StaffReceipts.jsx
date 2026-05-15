@@ -24,6 +24,21 @@ const PAYMENT_FR = {
   transfer: "Virement",
 };
 
+const POLE_FR = {
+  beach_club: "Beach Club",
+  hebergement: "Hébergement",
+  corporate: "Corporate",
+  activites_events: "Activités & Événements",
+  le_kaai: "Le Kaai",
+};
+const POLE_COLOR = {
+  beach_club: { txt: "text-[#B8922A]", brd: "border-[#B8922A]/40", bg: "bg-[#B8922A]/8" },
+  hebergement: { txt: "text-blue-700", brd: "border-blue-300", bg: "bg-blue-50" },
+  corporate: { txt: "text-slate-700", brd: "border-slate-300", bg: "bg-slate-50" },
+  activites_events: { txt: "text-rose-700", brd: "border-rose-300", bg: "bg-rose-50" },
+  le_kaai: { txt: "text-purple-700", brd: "border-purple-300", bg: "bg-purple-50" },
+};
+
 const fmtXOF = (n) => `${new Intl.NumberFormat("fr-FR").format(Math.round(n || 0))} FCFA`;
 
 function formatDateTimeFR(iso) {
@@ -41,11 +56,14 @@ function formatDateTimeFR(iso) {
 export default function StaffReceipts() {
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({});
+  const [summaryByPole, setSummaryByPole] = useState({});
+  const [polesList, setPolesList] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState("");
+  const [pole, setPole] = useState("");
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -57,6 +75,7 @@ export default function StaffReceipts() {
     try {
       const params = new URLSearchParams({ page: String(page), page_size: "30" });
       if (source) params.append("source", source);
+      if (pole) params.append("pole", pole);
       if (search) params.append("q", search);
       if (dateFrom) params.append("date_from", dateFrom);
       if (dateTo) params.append("date_to", dateTo);
@@ -65,6 +84,8 @@ export default function StaffReceipts() {
       setTotal(data.total || 0);
       setPages(data.pages || 1);
       setSummary(data.summary_by_source || {});
+      setSummaryByPole(data.summary_by_pole || {});
+      setPolesList(data.poles || []);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erreur de chargement");
     } finally {
@@ -75,7 +96,7 @@ export default function StaffReceipts() {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, source, search, dateFrom, dateTo]);
+  }, [page, source, pole, search, dateFrom, dateTo]);
 
   const downloadPdf = async (receipt) => {
     const token = getStaffToken();
@@ -101,6 +122,7 @@ export default function StaffReceipts() {
 
   const resetFilters = () => {
     setSource("");
+    setPole("");
     setDateFrom("");
     setDateTo("");
     setSearchInput("");
@@ -126,6 +148,43 @@ export default function StaffReceipts() {
         <SummaryCard label="Activités" value={summary.activity?.count || 0} subtitle={fmtXOF(summary.activity?.total || 0)} />
         <SummaryCard label="Réservations" value={summary.booking?.count || 0} subtitle={fmtXOF(summary.booking?.total || 0)} />
         <SummaryCard label="Événements" value={summary.event?.count || 0} subtitle={fmtXOF(summary.event?.total || 0)} />
+      </div>
+
+      {/* Répartition par pôle */}
+      <div className="bg-white border border-[#0A0A0A]/8 p-4 sm:p-5 mb-6" data-testid="receipts-by-pole">
+        <div className="flex items-baseline justify-between mb-3">
+          <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A]">Répartition par pôle</div>
+          {pole && (
+            <button
+              onClick={() => { setPole(""); setPage(1); }}
+              className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 hover:text-[#B8922A]"
+              data-testid="receipts-pole-clear"
+            >
+              Voir tous les pôles ×
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+          {polesList.map((p) => {
+            const stats = summaryByPole[p.id] || { count: 0, total: 0 };
+            const active = pole === p.id;
+            const colors = POLE_COLOR[p.id] || POLE_COLOR.beach_club;
+            return (
+              <button
+                key={p.id}
+                onClick={() => { setPole(active ? "" : p.id); setPage(1); }}
+                className={`text-left border p-3 transition-all ${active ? `${colors.brd} ${colors.bg}` : "border-[#0A0A0A]/10 hover:border-[#B8922A]/40"}`}
+                data-testid={`receipts-pole-tab-${p.id}`}
+              >
+                <div className={`text-[0.58rem] uppercase tracking-[0.22em] ${active ? colors.txt : "text-[#0A0A0A]/55"}`}>
+                  {p.name_fr}
+                </div>
+                <div className="font-display-serif text-2xl text-[#0A0A0A] mt-0.5">{stats.count}</div>
+                <div className="text-[0.65rem] text-[#0A0A0A]/55 mt-0.5 tabular-nums">{fmtXOF(stats.total)}</div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Filters */}
@@ -198,11 +257,12 @@ export default function StaffReceipts() {
 
       {/* Table */}
       <div className="bg-white border border-[#0A0A0A]/8 overflow-x-auto" data-testid="receipts-table">
-        <table className="w-full text-sm min-w-[760px]">
+        <table className="w-full text-sm min-w-[880px]">
           <thead>
             <tr className="text-left text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
               <th className="py-3 px-4">N° reçu</th>
               <th className="py-3 px-4">Date</th>
+              <th className="py-3 px-4">Pôle</th>
               <th className="py-3 px-4">Type</th>
               <th className="py-3 px-4">Client</th>
               <th className="py-3 px-4 text-right">Montant</th>
@@ -212,12 +272,13 @@ export default function StaffReceipts() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="py-10 text-center text-[#0A0A0A]/50">Chargement…</td></tr>
+              <tr><td colSpan={8} className="py-10 text-center text-[#0A0A0A]/50">Chargement…</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={7} className="py-10 text-center text-[#0A0A0A]/50">Aucun reçu pour cette recherche.</td></tr>
+              <tr><td colSpan={8} className="py-10 text-center text-[#0A0A0A]/50">Aucun reçu pour cette recherche.</td></tr>
             ) : (
               items.map((r) => {
                 const srcColor = SOURCES.find((s) => s.id === r.source)?.color || "#0A0A0A";
+                const pColors = POLE_COLOR[r.pole] || null;
                 return (
                   <tr key={r.id} className="border-b border-[#0A0A0A]/5 hover:bg-[#FAFAF7]/60" data-testid={`receipt-row-${r.id}`}>
                     <td className="py-3 px-4">
@@ -230,6 +291,15 @@ export default function StaffReceipts() {
                       </button>
                     </td>
                     <td className="py-3 px-4 text-[0.78rem] text-[#0A0A0A]/75">{formatDateTimeFR(r.issued_at)}</td>
+                    <td className="py-3 px-4">
+                      {r.pole && pColors ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.18em] border rounded-sm whitespace-nowrap ${pColors.txt} ${pColors.brd} ${pColors.bg}`}>
+                          {POLE_FR[r.pole] || r.pole}
+                        </span>
+                      ) : (
+                        <span className="text-[0.7rem] text-[#0A0A0A]/35">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4">
                       <span
                         className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.18em] border rounded-sm"
@@ -302,6 +372,9 @@ export default function StaffReceipts() {
               <button onClick={() => setSelected(null)} className="p-1.5 hover:bg-[#FAFAF7]"><X size={16} /></button>
             </div>
             <div className="p-5 sm:p-7 space-y-4">
+              {selected.pole && (
+                <Field label="Pôle" value={POLE_FR[selected.pole] || selected.pole} />
+              )}
               <Field label="Date d'émission" value={formatDateTimeFR(selected.issued_at)} />
               <Field label="Client" value={selected.customer_name || "—"} />
               {selected.customer_email && <Field label="Email" value={selected.customer_email} />}

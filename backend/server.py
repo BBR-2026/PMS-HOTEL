@@ -5712,6 +5712,7 @@ async def _create_receipt(
 @api.get("/staff/receipts")
 async def list_receipts(
     source: Optional[Literal["activity", "booking", "event"]] = None,
+    pole: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     q: Optional[str] = None,
@@ -5720,7 +5721,11 @@ async def list_receipts(
     page_size: int = 30,
     staff=Depends(get_current_staff),
 ):
-    """List receipts. Manager+admin only."""
+    """List receipts. Manager+admin only. Each receipt is enriched with its
+    derived ``pole`` (from the linked booking when applicable, or
+    'activites_events' for event receipts). A global ``summary_by_pole`` is
+    computed over the current filter (excluding the pole filter itself, so the
+    pole tabs always reflect the full distribution)."""
     await _require_role(staff, ["manager", "admin"])
     filter_q: dict = {"voided": {"$ne": True}}
     if source:
@@ -5735,8 +5740,7 @@ async def list_receipts(
             rng["$lte"] = date_to + "T23:59:59Z"
         filter_q["issued_at"] = rng
     if q:
-        import re as _re
-        rgx = _re.compile(_re.escape(q), _re.IGNORECASE)
+        rgx = re.compile(re.escape(q), re.IGNORECASE)
         filter_q["$or"] = [
             {"receipt_number": rgx},
             {"customer_name": rgx},
@@ -5745,15 +5749,65 @@ async def list_receipts(
         ]
     page = max(1, page)
     page_size = max(1, min(100, page_size))
-    total = await db.receipts.count_documents(filter_q)
-    cursor = (
-        db.receipts.find(filter_q, {"_id": 0})
-        .sort("issued_at", -1)
-        .skip((page - 1) * page_size)
-        .limit(page_size)
-    )
-    items = await cursor.to_list(length=page_size)
-    # Aggregate totals per source for the current filter (informational footer)
+
+    # ----- Helper: build a pole index for the full filtered set -----
+    # We need to map every receipt → pole regardless of pagination, so we run a
+    # light projection first, build a booking_id → pole map (one lookup per
+    # distinct booking), then group / paginate in memory after the pole filter.
+    proj_cursor = db.receipts.find(filter_q, {
+        "_id": 0, "id": 1, "source": 1, "source_id": 1,
+        "metadata": 1, "total": 1,
+    })
+    all_proj = await proj_cursor.to_list(length=5000)
+    booking_ids: set = set()
+    for r in all_proj:
+        if r.get("source") == "booking" and r.get("source_id"):
+            booking_ids.add(r["source_id"])
+        bid = (r.get("metadata") or {}).get("booking_id")
+        if bid:
+            booking_ids.add(bid)
+    pole_by_booking: dict = {}
+    if booking_ids:
+        async for b in db.bookings.find(
+            {"id": {"$in": list(booking_ids)}},
+            {"_id": 0, "id": 1, "pole": 1, "offer_type": 1},
+        ):
+            p = b.get("pole") or _pole_for_offer(b.get("offer_type", "")) or ""
+            if p:
+                pole_by_booking[b["id"]] = p
+
+    def _resolve_pole(r: dict) -> str:
+        if r.get("source") == "event":
+            return "activites_events"
+        bid = r.get("source_id") if r.get("source") == "booking" else (r.get("metadata") or {}).get("booking_id")
+        return pole_by_booking.get(bid or "", "")
+
+    # Apply pole filter (post-resolution) and compute the global pole summary
+    summary_by_pole: dict = {pid: {"count": 0, "total": 0} for pid in POLES}
+    filtered_ids: list = []
+    for r in all_proj:
+        rp = _resolve_pole(r)
+        if rp:
+            summary_by_pole[rp]["count"] += 1
+            summary_by_pole[rp]["total"] += int(r.get("total", 0) or 0)
+        if pole and rp != pole:
+            continue
+        filtered_ids.append(r["id"])
+
+    total = len(filtered_ids)
+    # Paginate the filtered list and fetch full docs in order
+    start = (page - 1) * page_size
+    page_ids = filtered_ids[start:start + page_size] if filtered_ids else []
+    items: list = []
+    if page_ids:
+        docs = await db.receipts.find({"id": {"$in": page_ids}}, {"_id": 0}).to_list(length=page_size)
+        docs.sort(key=lambda x: x.get("issued_at", ""), reverse=True)
+        for d in docs:
+            d["pole"] = _resolve_pole(d)
+            items.append(d)
+
+    # by_source aggregation runs on the original filter_q (without pole),
+    # mirroring summary_by_pole (so both summaries reflect the same period).
     pipeline = [
         {"$match": filter_q},
         {"$group": {"_id": "$source", "count": {"$sum": 1}, "total": {"$sum": "$total"}}},
@@ -5761,13 +5815,19 @@ async def list_receipts(
     by_source = {}
     async for row in db.receipts.aggregate(pipeline):
         by_source[row["_id"]] = {"count": row["count"], "total": int(row["total"])}
+
     return {
         "items": items,
         "total": total,
         "page": page,
         "page_size": page_size,
-        "pages": (total + page_size - 1) // page_size,
+        "pages": (total + page_size - 1) // page_size if total else 1,
         "summary_by_source": by_source,
+        "summary_by_pole": summary_by_pole,
+        "poles": [
+            {"id": pid, "name_fr": p["name_fr"], "sort_order": p["sort_order"]}
+            for pid, p in sorted(POLES.items(), key=lambda kv: kv[1]["sort_order"])
+        ],
     }
 
 
