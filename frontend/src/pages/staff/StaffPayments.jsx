@@ -225,6 +225,41 @@ function ActionDrawer({ booking, onClose, onChanged }) {
               >
                 <CheckCircle2 size={14} /> Confirmer le paiement
               </button>
+              <button
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const isDeposit = booking.payment_method === "deposit" || (booking.deposit_pct && (booking.balance_due || 0) > 0);
+                    const intent = isDeposit ? "deposit" : "booking";
+                    const payload = { booking_id: booking.id, intent };
+                    if (isDeposit) {
+                      payload.amount = booking.balance_due || ((booking.total_amount || 0) - (booking.paid_amount || 0));
+                    }
+                    const { data } = await api.post(`/payments/fineo/checkout`, payload);
+                    if (data?.checkout_url) {
+                      try {
+                        await navigator.clipboard.writeText(data.checkout_url);
+                        toast.success("Lien FineoPay copié dans le presse-papier");
+                      } catch {
+                        toast.success("Lien FineoPay généré");
+                      }
+                      window.open(data.checkout_url, "_blank", "noopener,noreferrer");
+                    }
+                  } catch (e) {
+                    toast.error(e.response?.data?.detail || "FineoPay indisponible");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy}
+                className="w-full mt-2 py-2.5 border border-[#0A0A0A] bg-[#0A0A0A] text-white text-[0.65rem] uppercase tracking-[0.22em] hover:bg-[#0A0A0A]/85 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                data-testid="fineo-checkout-btn"
+              >
+                <ArrowDownToLine size={12} /> Générer un lien FineoPay
+              </button>
+              <p className="text-[0.6rem] text-[#0A0A0A]/45 mt-1.5 leading-snug">
+                Crée un lien de paiement sécurisé à envoyer au client (carte / Orange Money / MTN / Moov / Wave). Le statut sera mis à jour automatiquement après paiement.
+              </p>
             </div>
           )}
 

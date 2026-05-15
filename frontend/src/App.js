@@ -6,6 +6,7 @@ import { StaffAuthProvider } from "./context/StaffAuthContext";
 import Header from "./components/Header";
 import LandingPage from "./pages/LandingPage";
 import BookingTunnel from "./pages/BookingTunnel";
+import FineoResult from "./pages/FineoResult";
 import EventPrivatization from "./pages/EventPrivatization";
 import StaffLogin from "./pages/staff/StaffLogin";
 import StaffLayout from "./pages/staff/StaffLayout";
@@ -73,6 +74,7 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/pole/:poleId" element={<PolePage />} />
               <Route path="/booking/:offerId" element={<BookingTunnel />} />
+              <Route path="/payment/fineo/result" element={<FineoResult />} />
               <Route path="/booking/special-event/:eventId" element={<BookingTunnel />} />
               <Route path="/events" element={<EventPrivatization />} />
             </Route>

@@ -255,8 +255,30 @@ export default function BookingTunnel() {
     if (!bookingResp) return;
     const trackKey = method === "deposit" && extra.deposit_pct ? `deposit-${extra.deposit_pct}` : method;
     setPaying(trackKey);
-    if (method === "fineo" || method === "deposit") {
-      await new Promise((r) => setTimeout(r, 1400)); // FINEO simulation
+
+    // Real FineoPay flow: ask the backend for a hosted checkout link and
+    // redirect the customer. The booking will be marked paid via webhook.
+    if (method === "fineo") {
+      try {
+        const { data } = await api.post(`/payments/fineo/checkout`, {
+          booking_id: bookingResp.id,
+          intent: "booking",
+        });
+        if (data?.checkout_url) {
+          window.location.href = data.checkout_url;
+          return;
+        }
+        throw new Error("Aucune URL FineoPay reçue");
+      } catch (e) {
+        const detail = e.response?.data?.detail || e.message || "FineoPay indisponible";
+        toast.error(`Paiement FineoPay : ${detail}`);
+        setPaying(null);
+        return;
+      }
+    }
+
+    if (method === "deposit") {
+      await new Promise((r) => setTimeout(r, 1200)); // brief UX latency
     }
     try {
       const { data } = await api.post(`/bookings/${bookingResp.id}/pay`, {

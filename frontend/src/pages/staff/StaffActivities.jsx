@@ -18,6 +18,7 @@ const PAYMENT_METHOD_FR = {
   cash: "Espèces",
   card: "Carte bancaire",
   mobile_money: "Mobile Money",
+  fineo: "FineoPay",
 };
 
 const PAYMENT_METHOD_OPTIONS = [
@@ -649,6 +650,40 @@ export default function StaffActivities() {
                   <Check size={14} className="text-[#B8922A]" />
                 </button>
               ))}
+              <div className="pt-2">
+                <button
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      const { data } = await api.post(`/payments/fineo/checkout`, {
+                        booking_id: wallet.booking_id,
+                        intent: "wallet",
+                      });
+                      if (data?.checkout_url) {
+                        window.open(data.checkout_url, "_blank", "noopener,noreferrer");
+                        toast.success("Lien FineoPay ouvert. Le wallet sera soldé après confirmation.");
+                        setShowCloseModal(false);
+                      }
+                    } catch (e) {
+                      toast.error(e.response?.data?.detail || "FineoPay indisponible");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  disabled={busy}
+                  className="w-full inline-flex items-center justify-between gap-3 border border-[#0A0A0A]/15 bg-[#0A0A0A] text-white hover:bg-[#0A0A0A]/85 px-4 py-3 text-left text-sm transition-colors disabled:opacity-50"
+                  data-testid="close-payment-fineo"
+                >
+                  <span className="inline-flex items-center gap-3">
+                    <span className="text-xl leading-none">⚡</span>
+                    <span>Payer via FineoPay (lien sécurisé)</span>
+                  </span>
+                  <Check size={14} />
+                </button>
+                <p className="text-[0.62rem] text-[#0A0A0A]/45 mt-1 leading-snug">
+                  Génère un lien de paiement FineoPay (carte / Orange Money / MTN / Moov / Wave). Le wallet sera automatiquement soldé une fois le paiement confirmé.
+                </p>
+              </div>
             </div>
             <button
               onClick={() => setShowCloseModal(false)}
