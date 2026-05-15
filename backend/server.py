@@ -4720,16 +4720,70 @@ async def void_wallet_charge(token: str, tx_id: str, staff=Depends(get_current_s
     return await _wallet_summary(fresh)
 
 
+class WalletCloseBody(BaseModel):
+    payment_method: Literal["cash", "card", "mobile_money"]
+
+
 @api.post("/staff/wallets/{token}/close")
-async def close_wallet(token: str, staff=Depends(get_current_staff)):
-    """Mark the wallet as settled (paid at check-out)."""
+async def close_wallet(token: str, body: WalletCloseBody, staff=Depends(get_current_staff)):
+    """Mark the wallet as settled (paid at check-out). The staff must select the
+    payment method actually used by the customer (cash / card / mobile money) —
+    validating this is the proof the customer has paid on site."""
     await _require_role(staff, ["manager", "admin"])
-    res = await db.wallets.update_one(
-        {"token": token},
-        {"$set": {"status": "closed", "closed_at": now_iso(), "closed_by": staff.get("name")}},
-    )
-    if res.matched_count == 0:
+    wallet = await db.wallets.find_one({"token": token}, {"_id": 0})
+    if not wallet:
         raise HTTPException(status_code=404, detail="Wallet not found")
+    if wallet.get("status") == "closed":
+        raise HTTPException(status_code=400, detail="Wallet already closed")
+    if int(wallet.get("total_charged", 0) or 0) <= 0:
+        raise HTTPException(status_code=400, detail="Aucune prestation à encaisser")
+
+    paid_amount = int(wallet.get("total_charged", 0) or 0)
+    closed_at = now_iso()
+    await db.wallets.update_one(
+        {"token": token},
+        {
+            "$set": {
+                "status": "closed",
+                "closed_at": closed_at,
+                "closed_by": staff.get("name"),
+                "payment_method": body.payment_method,
+                "paid_amount": paid_amount,
+                "paid_at": closed_at,
+            }
+        },
+    )
+    # Emit a consolidated fiscal receipt for the on-site settlement
+    try:
+        active_lines = [
+            {
+                "description": t.get("label") or "Prestation",
+                "quantity": int(t.get("quantity", 1) or 1),
+                "unit_price": int(t.get("unit_price", t.get("amount", 0)) or 0),
+                "total": int(t.get("amount", 0) or 0),
+            }
+            for t in (wallet.get("transactions") or [])
+            if t.get("status") != "voided"
+        ]
+        if active_lines:
+            await _create_receipt(
+                source="wallet_settlement",
+                source_id=token,
+                customer_name=wallet.get("customer_name", "") or wallet.get("owner_name", ""),
+                customer_email=wallet.get("customer_email", ""),
+                customer_phone=wallet.get("customer_phone", ""),
+                lines=active_lines,
+                payment_method=body.payment_method,
+                issued_by=staff.get("name") or "",
+                issued_by_role=staff.get("role") or "",
+                metadata={
+                    "booking_id": wallet.get("booking_id"),
+                    "wallet_token": token,
+                },
+            )
+    except Exception as ex:
+        logging.exception("Failed to create settlement receipt: %s", ex)
+
     fresh = await db.wallets.find_one({"token": token}, {"_id": 0})
     return await _wallet_summary(fresh)
 

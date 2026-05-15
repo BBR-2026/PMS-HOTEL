@@ -11,6 +11,18 @@ const STATUS_LABEL = {
   closed: { label: "Soldé", color: "bg-[#FAFAF7] text-[#0A0A0A]/55 border-[#0A0A0A]/15" },
 };
 
+const PAYMENT_METHOD_FR = {
+  cash: "Espèces",
+  card: "Carte bancaire",
+  mobile_money: "Mobile Money",
+};
+
+const PAYMENT_METHOD_OPTIONS = [
+  { id: "cash", label: "Espèces", icon: "💵" },
+  { id: "card", label: "Carte bancaire", icon: "💳" },
+  { id: "mobile_money", label: "Mobile Money", icon: "📱" },
+];
+
 export default function StaffActivities() {
   const { user } = useStaffAuth();
   const canManage = ["manager", "admin"].includes(user?.role);
@@ -100,14 +112,16 @@ export default function StaffActivities() {
     }
   };
 
-  const close = async () => {
+  const [showCloseModal, setShowCloseModal] = useState(false);
+
+  const close = async (method) => {
     if (!wallet) return;
-    if (!window.confirm(`Solder la carte (${formatXOF(wallet.total_charged)}) ?`)) return;
     setBusy(true);
     try {
-      const { data } = await api.post(`/staff/wallets/${wallet.token}/close`);
+      const { data } = await api.post(`/staff/wallets/${wallet.token}/close`, { payment_method: method });
       setWallet(data);
-      toast.success("Carte soldée");
+      toast.success(`Paiement validé · ${PAYMENT_METHOD_FR[method] || method}`);
+      setShowCloseModal(false);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Action impossible");
     } finally {
@@ -356,25 +370,91 @@ export default function StaffActivities() {
           {!closed && wallet.total_charged > 0 && canManage && (
             <div className="text-right">
               <button
-                onClick={close}
+                onClick={() => setShowCloseModal(true)}
                 disabled={busy}
                 className="inline-flex items-center gap-2 bg-[#0A0A0A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#0A0A0A]/85 disabled:opacity-50"
                 data-testid="close-wallet-btn"
               >
-                <CreditCard size={13} /> Solder la carte ({formatXOF(wallet.total_charged)})
+                <CreditCard size={13} /> Valider le paiement ({formatXOF(wallet.total_charged)})
               </button>
             </div>
           )}
           {!closed && wallet.total_charged > 0 && !canManage && (
             <div className="text-right text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45 italic">
-              Soldeur réservé au manager
+              Validation du paiement réservée au manager
             </div>
           )}
           {closed && (
-            <div className="flex items-center gap-2 text-sm text-[#0A0A0A]/55 justify-end">
-              <Lock size={13} /> Carte soldée le {(wallet.closed_at || "").slice(0, 16).replace("T", " ")}
+            <div className="bg-green-50/60 border border-green-200 p-4 text-sm" data-testid="wallet-paid-summary">
+              <div className="flex items-center gap-2 text-green-800 mb-2">
+                <Lock size={14} />
+                <span className="font-medium">Carte soldée — paiement encaissé</span>
+              </div>
+              <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[0.78rem] text-green-900">
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-green-700/80">Méthode</dt>
+                  <dd className="font-medium mt-0.5">{PAYMENT_METHOD_FR[wallet.payment_method] || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-green-700/80">Montant</dt>
+                  <dd className="font-medium mt-0.5 tabular-nums">{formatXOF(wallet.paid_amount || wallet.total_charged)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-green-700/80">Encaissé le</dt>
+                  <dd className="font-medium mt-0.5 tabular-nums">{(wallet.paid_at || wallet.closed_at || "").slice(0, 16).replace("T", " ")}</dd>
+                </div>
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-green-700/80">Encaissé par</dt>
+                  <dd className="font-medium mt-0.5">{wallet.closed_by || "—"}</dd>
+                </div>
+              </dl>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Close (validate payment) modal */}
+      {showCloseModal && wallet && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => !busy && setShowCloseModal(false)} data-testid="close-wallet-modal">
+          <div className="bg-white p-7 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-display-serif text-2xl text-[#0A0A0A]">Valider le paiement</h3>
+              <button onClick={() => !busy && setShowCloseModal(false)} className="text-[#0A0A0A]/50 hover:text-[#0A0A0A]">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-[#0A0A0A]/60">
+              Le client règle <span className="font-medium text-[#B8922A] tabular-nums">{formatXOF(wallet.total_charged)}</span> pour {active_txs.length} prestation{active_txs.length > 1 ? "s" : ""}.
+            </p>
+            <p className="text-[0.7rem] text-[#0A0A0A]/45 mt-1 mb-5">
+              Sélectionnez la méthode de paiement utilisée par le client. Cette sélection vaut preuve d'encaissement.
+            </p>
+            <div className="space-y-2">
+              {PAYMENT_METHOD_OPTIONS.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => close(m.id)}
+                  disabled={busy}
+                  className="w-full inline-flex items-center justify-between gap-3 border border-[#B8922A]/40 hover:bg-[#B8922A]/5 hover:border-[#B8922A] px-4 py-3 text-left text-sm transition-colors disabled:opacity-50"
+                  data-testid={`close-payment-${m.id}`}
+                >
+                  <span className="inline-flex items-center gap-3">
+                    <span className="text-xl leading-none">{m.icon}</span>
+                    <span className="text-[#0A0A0A]">{m.label}</span>
+                  </span>
+                  <Check size={14} className="text-[#B8922A]" />
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowCloseModal(false)}
+              disabled={busy}
+              className="w-full mt-4 py-2 text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 hover:text-[#0A0A0A]"
+              data-testid="close-modal-cancel"
+            >
+              Annuler
+            </button>
+          </div>
         </div>
       )}
 
