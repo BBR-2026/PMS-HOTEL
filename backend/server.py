@@ -2,6 +2,7 @@
 import os
 import io
 import json
+import re
 import uuid
 import base64
 import logging
@@ -4590,14 +4591,20 @@ async def _wallet_summary(wallet: dict) -> dict:
 
 @api.get("/staff/wallets/{token}")
 async def get_wallet(token: str, staff=Depends(get_current_staff)):
-    """Look up a wallet by its QR token (scanner) or short reference."""
+    """Look up a wallet by its QR token, short reference (10 hex chars
+    of the wallet token, with or without dashes), or short booking reference."""
     await _require_role(staff, ["receptionist", "manager", "admin"])
     wallet = await db.wallets.find_one({"token": token}, {"_id": 0})
     if not wallet:
-        # Try short token (first 10 chars uppercase) as fallback
-        short = token.strip().lower()
+        # Normalise: strip whitespace, dashes, dots → compare alnum only, lowercased
+        raw = (token or "").strip()
+        norm = re.sub(r"[^a-z0-9]", "", raw.lower())
+        if not norm:
+            raise HTTPException(status_code=404, detail="Wallet not found")
         async for w in db.wallets.find({}, {"_id": 0}):
-            if w["token"].lower().startswith(short) or w.get("booking_ref", "").lower() == short:
+            t_norm = re.sub(r"[^a-z0-9]", "", (w.get("token") or "").lower())
+            r_norm = re.sub(r"[^a-z0-9]", "", (w.get("booking_ref") or "").lower())
+            if t_norm.startswith(norm) or r_norm == norm:
                 wallet = w
                 break
     if not wallet:
