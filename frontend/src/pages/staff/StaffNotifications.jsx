@@ -51,11 +51,20 @@ export default function StaffNotifications() {
     setBusy(true);
     try {
       const { data } = await api.post(`/staff/notifications/test`, { phone, body, trial_safe: trialSafe });
-      const ok = data.whatsapp || data.sms;
-      if (ok) {
-        toast.success(`Envoyé via ${data.whatsapp ? "WhatsApp" : "SMS"} (${(data.whatsapp || data.sms).sid.slice(0, 10)}…)`);
+      const wa = data.whatsapp;
+      const sm = data.sms;
+      const errs = data.errors || [];
+      const okFinal = (wa && ["queued", "sent", "delivered", "read", "accepted"].includes(wa.status) && !wa.error_code)
+        || (sm && ["queued", "sent", "delivered", "accepted"].includes(sm.status) && !sm.error_code);
+      if (okFinal) {
+        const ch = wa && !wa.error_code ? "WhatsApp" : "SMS";
+        const usedSid = (wa && !wa.error_code ? wa.sid : sm?.sid) || "";
+        toast.success(`Envoyé via ${ch} (${usedSid.slice(0, 10)}…) — statut : ${(wa && !wa.error_code ? wa.status : sm?.status)}`);
+      } else if (errs.length) {
+        // Show the first detailed error in a long-lived toast
+        toast.error(errs[0], { duration: 12000 });
       } else {
-        toast.error(`Échec : ${(data.errors || ["?"]).join(" / ")}`);
+        toast.error("Échec inconnu — vérifiez l'historique");
       }
       refresh();
     } catch (e) {

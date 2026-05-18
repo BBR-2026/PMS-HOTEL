@@ -48,16 +48,27 @@ def get_client() -> Optional[TwilioClient]:
 def _normalise_phone(phone: str) -> str:
     """Force E.164 format. Accepts '0704600600', '+2250704600600',
     '+225 0704 60 06 00' etc. Defaults to Côte d'Ivoire (+225) when no
-    international prefix is present."""
+    international prefix is present.
+
+    Côte d'Ivoire mobile numbers are 10 digits starting with 0 (07/05/01).
+    The leading 0 is part of the national number and MUST be preserved
+    when prefixing with +225 (full international form: +225 0X XX XX XX XX,
+    13 chars total).
+    """
     if not phone:
         return ""
     s = "".join(c for c in str(phone) if c.isdigit() or c == "+")
     if s.startswith("00"):
         s = "+" + s[2:]
-    if not s.startswith("+"):
-        # Local CI numbers (8 or 10 digits → assume CI)
-        s = "+225" + s.lstrip("0")
-    return s
+    if s.startswith("+"):
+        return s
+    # Local form (no international prefix). CI numbers since 2021 are 10
+    # digits and the leading 0 is significant — keep it.
+    digits = s
+    if digits.startswith("225"):
+        # User typed "2250708..." without "+" — add it.
+        return "+" + digits
+    return "+225" + digits
 
 
 # ============== TEMPLATES (French — Resort luxe) ==============

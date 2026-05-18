@@ -7090,7 +7090,12 @@ class TwilioTestBody(BaseModel):
 
 @api.post("/staff/notifications/test")
 async def admin_twilio_test(body: TwilioTestBody, staff=Depends(get_current_staff)):
-    """Send a test message to verify Twilio config. Admin-only."""
+    """Send a test message to verify Twilio config. Admin-only.
+
+    Performs a *synchronous* status re-fetch ~3s after sending so the admin
+    sees the real final status (Twilio WhatsApp Sandbox returns ``queued``
+    initially and then ``failed`` if the destination has not opted in)."""
+    import asyncio
     await _require_role(staff, ["admin"])
     if not twilio_service.TWILIO_ENABLED:
         raise HTTPException(status_code=503, detail="Twilio non configuré.")
@@ -7098,6 +7103,41 @@ async def admin_twilio_test(body: TwilioTestBody, staff=Depends(get_current_staf
         db, phone=body.phone, body=body.body, purpose="admin_test",
         trial_safe=body.trial_safe,
     )
+
+    # Re-fetch final status from Twilio so the UI shows the truth.
+    cli = twilio_service.get_client()
+    if cli:
+        await asyncio.sleep(3)
+        for channel in ("whatsapp", "sms"):
+            sent = res.get(channel)
+            if not sent or not sent.get("sid"):
+                continue
+            try:
+                m = cli.messages(sent["sid"]).fetch()
+                sent["status"] = m.status
+                sent["error_code"] = m.error_code
+                sent["error_message"] = m.error_message
+                # Persist update in our log
+                await db.twilio_messages.update_one(
+                    {"sid": sent["sid"]},
+                    {"$set": {"status": m.status, "error_code": m.error_code,
+                              "error_message": m.error_message}},
+                )
+                # Map Twilio sandbox opt-in error → human readable explanation
+                if m.error_code in (63007, 63015, 63016, 63018):
+                    res["errors"].append(
+                        f"{channel}:{m.error_code}: Le numéro {sent['to']} n'a pas fait l'opt-in WhatsApp Sandbox. "
+                        f"Demandez au destinataire d'envoyer 'join <code>' au +14155238886 depuis WhatsApp."
+                    )
+                elif m.error_code == 21704:
+                    res["errors"].append(
+                        f"{channel}:21704: Aucun numéro émetteur configuré dans votre Messaging Service Twilio. "
+                        f"Achetez un numéro Twilio SMS ou ajoutez un sender à votre Messaging Service."
+                    )
+                elif m.status in ("failed", "undelivered"):
+                    res["errors"].append(f"{channel}:{m.error_code or '?'}:{m.status}")
+            except Exception as e:
+                res["errors"].append(f"{channel}:status-check-failed:{e}")
     return res
 
 
