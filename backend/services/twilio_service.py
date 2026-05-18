@@ -29,6 +29,7 @@ TWILIO_MESSAGING_SERVICE_SID = os.environ.get("TWILIO_MESSAGING_SERVICE_SID", ""
 TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "")
 TWILIO_SMS_FROM = os.environ.get("TWILIO_SMS_FROM", "")
 TWILIO_TEST_RECIPIENT = os.environ.get("TWILIO_TEST_RECIPIENT", "")  # trial-only safety net
+TWILIO_TRIAL_SAFE_DEFAULT = os.environ.get("TWILIO_TRIAL_SAFE", "false").lower() in ("1", "true", "yes")
 
 TWILIO_ENABLED = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN)
 
@@ -143,9 +144,16 @@ async def send_notification(db, *, phone: str, body: str,
                             media_url: Optional[str] = None,
                             purpose: str = "generic",
                             booking_id: Optional[str] = None,
-                            trial_safe: bool = True) -> dict:
+                            trial_safe: Optional[bool] = None) -> dict:
     """Send via WhatsApp with SMS fallback. Returns dict with sent channels &
-    SIDs. NEVER raises — failures are logged in twilio_messages."""
+    SIDs. NEVER raises — failures are logged in twilio_messages.
+
+    ``trial_safe`` (None = use TWILIO_TRIAL_SAFE env default). When True,
+    redirects outbound to TWILIO_TEST_RECIPIENT (useful only on Twilio Trial
+    accounts where unverified numbers cannot receive). On paid accounts this
+    MUST be False so messages reach the real recipient."""
+    if trial_safe is None:
+        trial_safe = TWILIO_TRIAL_SAFE_DEFAULT
     result = {"whatsapp": None, "sms": None, "errors": []}
     if not TWILIO_ENABLED:
         result["errors"].append("Twilio désactivé (env vars manquantes)")

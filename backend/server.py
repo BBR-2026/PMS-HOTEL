@@ -7085,6 +7085,7 @@ class TwilioTestBody(BaseModel):
     phone: str
     body: str = "Test depuis Boulay Beach Resort \u2728"
     channel: Literal["auto", "sms", "whatsapp"] = "auto"
+    trial_safe: Optional[bool] = None  # None = use env default; True = reroute to TWILIO_TEST_RECIPIENT
 
 
 @api.post("/staff/notifications/test")
@@ -7094,7 +7095,8 @@ async def admin_twilio_test(body: TwilioTestBody, staff=Depends(get_current_staf
     if not twilio_service.TWILIO_ENABLED:
         raise HTTPException(status_code=503, detail="Twilio non configuré.")
     res = await twilio_service.send_notification(
-        db, phone=body.phone, body=body.body, purpose="admin_test", trial_safe=True,
+        db, phone=body.phone, body=body.body, purpose="admin_test",
+        trial_safe=body.trial_safe,
     )
     return res
 

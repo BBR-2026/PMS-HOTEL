@@ -29,6 +29,7 @@ export default function StaffNotifications() {
   const [phone, setPhone] = useState("+2250704600600");
   const [body, setBody] = useState("Bonjour, ceci est un test de notification depuis le Back-office BBR ✨");
   const [busy, setBusy] = useState(false);
+  const [trialSafe, setTrialSafe] = useState(false);
 
   const refresh = async () => {
     setLoading(true);
@@ -49,7 +50,7 @@ export default function StaffNotifications() {
     if (!phone) return;
     setBusy(true);
     try {
-      const { data } = await api.post(`/staff/notifications/test`, { phone, body });
+      const { data } = await api.post(`/staff/notifications/test`, { phone, body, trial_safe: trialSafe });
       const ok = data.whatsapp || data.sms;
       if (ok) {
         toast.success(`Envoyé via ${data.whatsapp ? "WhatsApp" : "SMS"} (${(data.whatsapp || data.sms).sid.slice(0, 10)}…)`);
@@ -133,9 +134,26 @@ export default function StaffNotifications() {
             >
               <Send size={12} /> Envoyer (WhatsApp puis SMS si nécessaire)
             </button>
-            <p className="text-[0.62rem] text-[#0A0A0A]/45 leading-snug">
-              En compte Twilio Trial, l'envoi n'est possible que vers les numéros vérifiés et limité à 5 messages/jour. Passez le compte en payant pour lever ces limites.
-            </p>
+            <label className="flex items-start gap-2 text-[0.7rem] text-[#0A0A0A]/70 cursor-pointer select-none" data-testid="notif-trial-safe-toggle">
+              <input
+                type="checkbox"
+                checked={trialSafe}
+                onChange={(e) => setTrialSafe(e.target.checked)}
+                className="mt-0.5 accent-[#B8922A]"
+              />
+              <span>
+                <span className="font-medium">Mode trial-safe</span> — rerouter ce test vers le numéro vérifié <span className="tabular-nums">+225 0704600600</span> (utile uniquement en compte Twilio Trial).
+              </span>
+            </label>
+            <div className="bg-[#FAFAF7] border border-[#0A0A0A]/10 p-3 text-[0.65rem] leading-relaxed text-[#0A0A0A]/70 space-y-1.5">
+              <div className="font-medium text-[#0A0A0A]/85 uppercase tracking-[0.18em] text-[0.58rem] text-[#B8922A]">WhatsApp Sandbox — Opt-in obligatoire</div>
+              <p>
+                Pour recevoir des messages WhatsApp depuis le numéro Twilio Sandbox <span className="tabular-nums font-medium">+1 415 523 8886</span>, le destinataire doit d'abord lui envoyer un code <span className="font-medium">"join &lt;votre-code&gt;"</span> depuis WhatsApp.
+              </p>
+              <p>
+                Sans cet opt-in, le message part avec un statut "queued" puis tombe en "undelivered" (erreur 63007 / 63015). En SMS, ce n'est pas requis.
+              </p>
+            </div>
           </div>
         </div>
 
