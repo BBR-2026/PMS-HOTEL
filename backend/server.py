@@ -26,6 +26,9 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
+# Imported after load_dotenv so env vars are populated when the module reads them.
+from services import twilio_service  # noqa: E402
+
 # ----- Config -----
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
@@ -2174,6 +2177,19 @@ async def pay_booking(booking_id: str, body: PayBooking):
             )
         except Exception as ex:
             logging.exception("Failed to create booking receipt: %s", ex)
+
+    # Outbound Twilio notification — never blocks. The QR ticket PNG is
+    # embedded as a data URI so WhatsApp can render it as a media message.
+    try:
+        first_qr = (qr_codes or [{}])[0]
+        qr_url = first_qr.get("ticket_image", "")
+        if qr_url and not qr_url.startswith(("http://", "https://")):
+            # Encode in URL fragment-friendly form for WhatsApp media: we host
+            # via the public booking endpoint so Twilio can fetch the PNG.
+            qr_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking['reference_token']}"
+        await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
+    except Exception as ex:
+        logging.warning("Twilio booking_paid notification failed: %s", ex)
     return booking
 
 
@@ -2185,6 +2201,23 @@ async def get_booking(booking_id: str, ref: str):
     if booking.get("reference_token") != ref:
         raise HTTPException(status_code=403, detail="Invalid reference token")
     return booking
+
+
+@api.get("/bookings/{booking_id}/ticket.png")
+async def get_booking_ticket_image(booking_id: str, ref: str):
+    """Public PNG of the first ticket — used by Twilio WhatsApp media."""
+    from base64 import b64decode
+    from fastapi.responses import Response
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking or booking.get("reference_token") != ref:
+        raise HTTPException(status_code=404, detail="Not found")
+    qrs = booking.get("qr_codes") or []
+    img_data = (qrs[0] if qrs else {}).get("ticket_image", "")
+    if not img_data:
+        raise HTTPException(status_code=404, detail="No ticket")
+    if img_data.startswith("data:"):
+        img_data = img_data.split(",", 1)[1]
+    return Response(content=b64decode(img_data), media_type="image/png")
 
 
 # =================================================================
@@ -6677,6 +6710,76 @@ async def shutdown_db_client():
 
 
 # ============================================================
+# Scheduled notifications (J-1 reminders, J+1 review requests)
+# Runs every hour. Idempotent via twilio_messages.purpose+booking_id.
+# ============================================================
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # noqa: E402
+
+scheduler = AsyncIOScheduler(timezone="UTC")
+
+
+async def _sent_already(purpose: str, booking_id: str) -> bool:
+    found = await db.twilio_messages.find_one(
+        {"purpose": purpose, "booking_id": booking_id, "status": {"$in": ["sent", "queued", "delivered", "read"]}},
+    )
+    return found is not None
+
+
+async def _run_j_minus_1():
+    if not twilio_service.TWILIO_ENABLED:
+        return
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat()
+    cursor = db.bookings.find(
+        {"date": tomorrow, "paid_at": {"$exists": True}, "status": {"$ne": "cancelled"}},
+        {"_id": 0},
+    )
+    bookings = await cursor.to_list(length=500)
+    for b in bookings:
+        try:
+            if await _sent_already("j_minus_1", b["id"]):
+                continue
+            await twilio_service.notify_j_minus_1(db, b)
+        except Exception as ex:
+            logging.warning("J-1 notification failed for %s: %s", b.get("id"), ex)
+
+
+async def _run_j_plus_1():
+    if not twilio_service.TWILIO_ENABLED:
+        return
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+    cursor = db.bookings.find(
+        {"date": yesterday, "paid_at": {"$exists": True}, "status": {"$ne": "cancelled"}},
+        {"_id": 0},
+    )
+    bookings = await cursor.to_list(length=500)
+    for b in bookings:
+        try:
+            if await _sent_already("j_plus_1", b["id"]):
+                continue
+            await twilio_service.notify_j_plus_1(db, b)
+        except Exception as ex:
+            logging.warning("J+1 notification failed for %s: %s", b.get("id"), ex)
+
+
+@app.on_event("startup")
+async def start_scheduler():
+    # J-1 reminders every day at 17:00 UTC (≈18h Abidjan)
+    scheduler.add_job(_run_j_minus_1, "cron", hour=17, minute=0, id="j_minus_1", replace_existing=True)
+    # J+1 review request every day at 10:00 UTC (≈11h Abidjan)
+    scheduler.add_job(_run_j_plus_1, "cron", hour=10, minute=0, id="j_plus_1", replace_existing=True)
+    scheduler.start()
+    logging.info("APScheduler started: J-1 @17:00 UTC, J+1 @10:00 UTC")
+
+
+@app.on_event("shutdown")
+async def stop_scheduler():
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception:
+        pass
+
+
+# ============================================================
 # FineoPay integration (real payment gateway, replaces mock)
 # ============================================================
 class FineoCheckoutBody(BaseModel):
@@ -6887,6 +6990,15 @@ async def _settle_payment(booking_id: str, intent: str, sync_ref: str, fineo_ref
                 )
             except Exception as ex:
                 logging.exception("Booking receipt creation failed: %s", ex)
+            # Twilio notification — never blocks
+            try:
+                qrs = booking.get("qr_codes") or []
+                qr_url = (qrs[0] if qrs else {}).get("ticket_image", "")
+                if qr_url and not qr_url.startswith(("http://", "https://")):
+                    qr_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking.get('reference_token','')}"
+                await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
+            except Exception as ex:
+                logging.warning("Twilio fineo-paid notification failed: %s", ex)
     elif intent == "wallet":
         wallet = await db.wallets.find_one({"booking_id": booking_id}, {"_id": 0})
         if wallet and wallet.get("status") != "closed":
@@ -6964,6 +7076,64 @@ async def fineo_webhook(request: Request):
             logging.exception("Fineo settle_payment failed: %s", ex)
 
     return {"received": True, "status": new_status}
+
+
+# ============================================================
+# Twilio notifications — admin endpoints
+# ============================================================
+class TwilioTestBody(BaseModel):
+    phone: str
+    body: str = "Test depuis Boulay Beach Resort \u2728"
+    channel: Literal["auto", "sms", "whatsapp"] = "auto"
+
+
+@api.post("/staff/notifications/test")
+async def admin_twilio_test(body: TwilioTestBody, staff=Depends(get_current_staff)):
+    """Send a test message to verify Twilio config. Admin-only."""
+    await _require_role(staff, ["admin"])
+    if not twilio_service.TWILIO_ENABLED:
+        raise HTTPException(status_code=503, detail="Twilio non configuré.")
+    res = await twilio_service.send_notification(
+        db, phone=body.phone, body=body.body, purpose="admin_test", trial_safe=True,
+    )
+    return res
+
+
+@api.get("/staff/notifications/outbound")
+async def list_outbound_notifications(limit: int = 50, staff=Depends(get_current_staff)):
+    """Last N Twilio outbound messages with delivery status."""
+    await _require_role(staff, ["manager", "admin"])
+    items = await db.twilio_messages.find({}, {"_id": 0}).sort("created_at", -1).limit(min(200, max(1, limit))).to_list(length=200)
+    return {"items": items, "count": len(items), "twilio_enabled": twilio_service.TWILIO_ENABLED}
+
+
+class StaffAlertBody(BaseModel):
+    phone: str
+    title: str
+    detail: str
+
+
+@api.post("/staff/notifications/staff-alert")
+async def admin_send_staff_alert(body: StaffAlertBody, staff=Depends(get_current_staff)):
+    """Manually broadcast a staff alert (Manager+admin)."""
+    await _require_role(staff, ["manager", "admin"])
+    return await twilio_service.notify_staff(db, recipient_phone=body.phone, title=body.title, detail=body.detail)
+
+
+@api.post("/staff/notifications/run-j-minus-1")
+async def admin_trigger_j_minus_1(staff=Depends(get_current_staff)):
+    """Manually trigger the J-1 reminder job (admin)."""
+    await _require_role(staff, ["admin"])
+    await _run_j_minus_1()
+    return {"triggered": "j_minus_1"}
+
+
+@api.post("/staff/notifications/run-j-plus-1")
+async def admin_trigger_j_plus_1(staff=Depends(get_current_staff)):
+    """Manually trigger the J+1 review job (admin)."""
+    await _require_role(staff, ["admin"])
+    await _run_j_plus_1()
+    return {"triggered": "j_plus_1"}
 
 
 app.include_router(api)

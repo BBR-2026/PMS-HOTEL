@@ -7,6 +7,7 @@ import Header from "./components/Header";
 import LandingPage from "./pages/LandingPage";
 import BookingTunnel from "./pages/BookingTunnel";
 import FineoResult from "./pages/FineoResult";
+import StaffNotifications from "./pages/staff/StaffNotifications";
 import EventPrivatization from "./pages/EventPrivatization";
 import StaffLogin from "./pages/staff/StaffLogin";
 import StaffLayout from "./pages/staff/StaffLayout";
@@ -99,6 +100,7 @@ function App() {
               <Route path="kaai" element={<RoleGuard allowed={MANAGER_PLUS}><StaffKaai /></RoleGuard>} />
               <Route path="revenue" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRevenue /></RoleGuard>} />
               <Route path="config" element={<RoleGuard allowed={ADMIN_ONLY}><StaffConfig /></RoleGuard>} />
+              <Route path="notifications" element={<RoleGuard allowed={MANAGER_PLUS}><StaffNotifications /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>
