@@ -7178,6 +7178,127 @@ async def admin_trigger_j_plus_1(staff=Depends(get_current_staff)):
     return {"triggered": "j_plus_1"}
 
 
+# ============================================================
+# Integrations — connectivity tests (admin only)
+# ============================================================
+
+@api.get("/staff/integrations/status")
+async def admin_integrations_status(staff=Depends(get_current_staff)):
+    """Return high-level config status of every 3rd-party integration."""
+    await _require_role(staff, ["admin"])
+    return {
+        "twilio": {
+            "enabled": twilio_service.TWILIO_ENABLED,
+            "whatsapp_from": twilio_service.TWILIO_WHATSAPP_FROM or None,
+            "sms_from": twilio_service.TWILIO_SMS_FROM or None,
+            "messaging_service_sid": (twilio_service.TWILIO_MESSAGING_SERVICE_SID or "")[:8] + "…"
+                if twilio_service.TWILIO_MESSAGING_SERVICE_SID else None,
+            "trial_safe_default": twilio_service.TWILIO_TRIAL_SAFE_DEFAULT,
+        },
+        "fineo": {
+            "enabled": FINEO_ENABLED,
+            "base_url": FINEO_BASE_URL,
+            "business_code": FINEO_BUSINESS_CODE or None,
+            "api_key_prefix": (FINEO_API_KEY[:14] + "…") if FINEO_API_KEY else None,
+            "public_base_url": FINEO_PUBLIC_BASE_URL or None,
+        },
+    }
+
+
+@api.post("/staff/integrations/fineo/test")
+async def admin_fineo_test(staff=Depends(get_current_staff)):
+    """Probe FineoPay connectivity using a tiny checkout-link request.
+
+    The probe always uses a 100 FCFA dummy amount and a unique syncRef so
+    nothing in production is affected. Returns the raw Fineo response so the
+    admin can see exactly what the gateway said.
+    """
+    await _require_role(staff, ["admin"])
+    if not FINEO_ENABLED:
+        return {
+            "ok": False,
+            "stage": "config",
+            "message": "FineoPay non configuré : vérifiez FINEO_BUSINESS_CODE / FINEO_API_KEY / FINEO_PUBLIC_BASE_URL.",
+            "config": {
+                "base_url": FINEO_BASE_URL,
+                "business_code_set": bool(FINEO_BUSINESS_CODE),
+                "api_key_set": bool(FINEO_API_KEY),
+                "public_base_url_set": bool(FINEO_PUBLIC_BASE_URL),
+            },
+        }
+    sync_ref = f"BBR-PROBE-{uuid.uuid4().hex[:10]}"
+    probe_payload = {
+        "title": "Test connectivité BBR ↔ FineoPay",
+        "amount": 100,
+        "callbackUrl": _fineo_callback_url(),
+        "returnUrl": _fineo_return_url("probe", "booking"),
+        "syncRef": sync_ref,
+        "inputs": [
+            {"label": "Type", "value": "Probe connectivité (admin)"},
+        ],
+    }
+    client_ = FineoClient()
+    try:
+        async with httpx.AsyncClient(timeout=client_.timeout) as cli:
+            r = await cli.post(f"{client_.base_url}checkout-link", json=probe_payload, headers=client_.headers)
+    except httpx.HTTPError as e:
+        return {
+            "ok": False,
+            "stage": "network",
+            "message": f"FineoPay injoignable : {type(e).__name__}",
+            "detail": str(e),
+            "request": {"url": f"{client_.base_url}checkout-link", "businessCode": FINEO_BUSINESS_CODE,
+                        "api_key_prefix": FINEO_API_KEY[:14] + "…"},
+        }
+    try:
+        body_json = r.json()
+    except Exception:
+        body_json = {"raw": r.text[:500]}
+
+    if r.status_code == 200 and body_json.get("success") and "checkoutLink" in (body_json.get("data") or {}):
+        # Success — we got a checkout URL.
+        checkout_url = body_json["data"]["checkoutLink"]
+        return {
+            "ok": True,
+            "stage": "checkout_created",
+            "message": "Connexion OK — FineoPay a généré un lien de paiement.",
+            "checkout_url": checkout_url,
+            "sync_ref": sync_ref,
+            "amount": 100,
+            "raw": body_json,
+        }
+
+    # Map known Fineo errors to actionable French messages.
+    msg_fineo = (body_json or {}).get("message", "")
+    actionable = msg_fineo
+    if msg_fineo == "Compte marchand inexistant":
+        actionable = (
+            "FineoPay ne reconnaît pas votre businessCode dans cet environnement. "
+            "Contactez FineoPay pour vérifier que le compte marchand est bien provisionné "
+            "sur le sandbox /dev/ et que la clé API est rattachée à ce businessCode."
+        )
+    elif msg_fineo == "Identifiants requis mais non fourni":
+        actionable = "Headers d'authentification absents (businessCode + apiKey)."
+    elif "title" in msg_fineo:
+        actionable = f"Champ requis manquant côté backend BBR : {msg_fineo}"
+
+    return {
+        "ok": False,
+        "stage": "fineo_rejected",
+        "http_status": r.status_code,
+        "message": actionable,
+        "fineo_message": msg_fineo,
+        "raw": body_json,
+        "request": {
+            "url": f"{client_.base_url}checkout-link",
+            "businessCode": FINEO_BUSINESS_CODE,
+            "api_key_prefix": FINEO_API_KEY[:14] + "…",
+            "amount": 100,
+            "syncRef": sync_ref,
+        },
+    }
+
+
 app.include_router(api)
 
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { Settings, UserPlus, Trash2, Save, X } from "lucide-react";
+import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 import {
@@ -200,6 +200,15 @@ export default function StaffConfig() {
         >
           Offres & Tarifs ({offers.length})
         </button>
+        <button
+          onClick={() => setTab("integrations")}
+          className={`px-4 sm:px-5 py-3 text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.22em] border-b-2 transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${
+            tab === "integrations" ? "border-[#B8922A] text-[#B8922A]" : "border-transparent text-[#0A0A0A]/60 hover:text-[#0A0A0A]"
+          }`}
+          data-testid="tab-integrations"
+        >
+          <Plug size={11} /> Intégrations
+        </button>
       </div>
 
       {loading ? (
@@ -214,9 +223,7 @@ export default function StaffConfig() {
             >
               <UserPlus size={13} /> Nouvel utilisateur
             </button>
-          </div>
-
-          <div className="bg-white border border-[#0A0A0A]/8">
+          </div>          <div className="bg-white border border-[#0A0A0A]/8">
             <div className="hidden md:grid grid-cols-12 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 px-5 py-3 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
               <div className="col-span-3">Nom</div>
               <div className="col-span-4">Email</div>
@@ -277,7 +284,7 @@ export default function StaffConfig() {
             ))}
           </div>
         </>
-      ) : (
+      ) : tab === "offers" ? (
         <div className="space-y-5">
           {offers.map((o) => {
             const e = edits[o.id] || {};
@@ -377,7 +384,9 @@ export default function StaffConfig() {
             );
           })}
         </div>
-      )}
+      ) : tab === "integrations" ? (
+        <IntegrationsPanel />
+      ) : null}
 
       {/* Create user modal */}
       {showCreate && (
@@ -458,6 +467,198 @@ export default function StaffConfig() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ============================================================
+// INTEGRATIONS PANEL — admin connectivity test for Fineo & Twilio
+// ============================================================
+function IntegrationsPanel() {
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [fineoResult, setFineoResult] = useState(null);
+  const [fineoBusy, setFineoBusy] = useState(false);
+
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get(`/staff/integrations/status`);
+      setStatus(data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur de chargement");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { refresh(); }, []);
+
+  const testFineo = async () => {
+    setFineoBusy(true);
+    setFineoResult(null);
+    try {
+      const { data } = await api.post(`/staff/integrations/fineo/test`);
+      setFineoResult(data);
+      if (data.ok) toast.success("Connexion FineoPay OK");
+      else toast.error("FineoPay : test échoué — voir détails ci-dessous", { duration: 8000 });
+    } catch (e) {
+      const detail = e.response?.data?.detail || e.message;
+      setFineoResult({ ok: false, stage: "http", message: detail });
+      toast.error(detail);
+    } finally {
+      setFineoBusy(false);
+    }
+  };
+
+  if (loading || !status) return <div className="text-sm text-[#0A0A0A]/50">Chargement…</div>;
+
+  return (
+    <div className="space-y-6" data-testid="integrations-panel">
+      <p className="text-sm text-[#0A0A0A]/55 max-w-3xl">
+        Vérifiez l'état de chaque intégration tierce et lancez un test de connectivité réel.
+        Les valeurs sensibles (clés API) sont masquées.
+      </p>
+
+      {/* ============ FINEOPAY ============ */}
+      <div className="bg-white border border-[#0A0A0A]/8 p-5 sm:p-6" data-testid="integ-fineo">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">Paiement en ligne</div>
+            <h3 className="font-display-serif text-xl sm:text-2xl text-[#0A0A0A]">FineoPay</h3>
+            <p className="text-[0.75rem] text-[#0A0A0A]/55 mt-1 max-w-2xl">
+              Passerelle de paiement (carte bancaire, Mobile Money) — hosted-checkout.
+            </p>
+          </div>
+          <StatusBadge ok={status.fineo.enabled} okLabel="Configuré" koLabel="Non configuré" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+          <ConfigRow label="Base URL" value={status.fineo.base_url} mono />
+          <ConfigRow label="Business code" value={status.fineo.business_code} mono />
+          <ConfigRow label="Clé API" value={status.fineo.api_key_prefix} mono />
+          <ConfigRow label="URL publique callback" value={status.fineo.public_base_url} mono small />
+        </div>
+
+        <button
+          onClick={testFineo}
+          disabled={fineoBusy || !status.fineo.enabled}
+          className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center gap-2"
+          data-testid="fineo-test-btn"
+        >
+          {fineoBusy ? <RefreshCw size={12} className="animate-spin" /> : <Plug size={12} />}
+          Tester la connexion FineoPay
+        </button>
+
+        {fineoResult && (
+          <div className={`mt-5 border p-4 text-sm ${fineoResult.ok ? "border-emerald-300 bg-emerald-50/60" : "border-rose-300 bg-rose-50/60"}`} data-testid="fineo-test-result">
+            <div className="flex items-start gap-2 mb-2">
+              {fineoResult.ok
+                ? <CheckCircle2 size={16} className="mt-0.5 text-emerald-700 flex-shrink-0" />
+                : <AlertTriangle size={16} className="mt-0.5 text-rose-700 flex-shrink-0" />}
+              <div className={`font-medium ${fineoResult.ok ? "text-emerald-900" : "text-rose-900"}`}>
+                {fineoResult.message || (fineoResult.ok ? "OK" : "Échec")}
+              </div>
+            </div>
+            {fineoResult.ok && fineoResult.checkout_url && (
+              <a
+                href={fineoResult.checkout_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[0.7rem] uppercase tracking-[0.22em] text-emerald-800 hover:underline mt-1"
+              >
+                <ExternalLink size={11} /> Ouvrir le lien de paiement test
+              </a>
+            )}
+            {!fineoResult.ok && (
+              <div className="text-[0.72rem] text-[#0A0A0A]/65 space-y-0.5 mt-2 pl-6">
+                {fineoResult.fineo_message && (
+                  <div>
+                    <span className="font-medium text-[#0A0A0A]/80">Réponse FineoPay :</span>{" "}
+                    <span className="font-mono">{fineoResult.fineo_message}</span>
+                  </div>
+                )}
+                {fineoResult.http_status && (
+                  <div><span className="font-medium text-[#0A0A0A]/80">HTTP :</span> {fineoResult.http_status}</div>
+                )}
+                {fineoResult.stage && (
+                  <div><span className="font-medium text-[#0A0A0A]/80">Étape :</span> {fineoResult.stage}</div>
+                )}
+                {fineoResult.request?.url && (
+                  <div className="break-all">
+                    <span className="font-medium text-[#0A0A0A]/80">URL appelée :</span>{" "}
+                    <span className="font-mono text-[0.68rem]">{fineoResult.request.url}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ============ TWILIO ============ */}
+      <div className="bg-white border border-[#0A0A0A]/8 p-5 sm:p-6" data-testid="integ-twilio">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">Notifications</div>
+            <h3 className="font-display-serif text-xl sm:text-2xl text-[#0A0A0A]">Twilio (SMS + WhatsApp)</h3>
+            <p className="text-[0.75rem] text-[#0A0A0A]/55 mt-1 max-w-2xl">
+              Envois transactionnels : confirmation paiement (J), rappel J-1, demande d'avis J+1.
+              Pour tester un envoi réel, utilisez la page "Notifications SMS & WhatsApp".
+            </p>
+          </div>
+          <StatusBadge ok={status.twilio.enabled} okLabel="Configuré" koLabel="Non configuré" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <ConfigRow label="WhatsApp From" value={status.twilio.whatsapp_from} mono />
+          <ConfigRow label="SMS From" value={status.twilio.sms_from} mono />
+          <ConfigRow label="Messaging Service SID" value={status.twilio.messaging_service_sid} mono />
+          <ConfigRow label="Mode trial-safe (défaut)" value={status.twilio.trial_safe_default ? "Activé (test only)" : "Désactivé (production)"} />
+        </div>
+
+        {status.twilio.whatsapp_from === "whatsapp:+14155238886" && (
+          <div className="mt-4 bg-amber-50 border border-amber-300 p-3 text-[0.72rem] text-amber-900 inline-flex items-start gap-2">
+            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+            <span>
+              Vous utilisez le <strong>Sandbox WhatsApp</strong> (+1 415 523 8886). Chaque destinataire doit
+              faire un opt-in (envoyer "join &lt;code&gt;") avant de recevoir des messages.
+              Pour la production, demandez un WhatsApp Business Sender approuvé via la console Twilio.
+            </span>
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={refresh}
+        className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] hover:underline inline-flex items-center gap-1.5"
+        data-testid="integ-refresh"
+      >
+        <RefreshCw size={11} /> Rafraîchir l'état
+      </button>
+    </div>
+  );
+}
+
+function StatusBadge({ ok, okLabel, koLabel }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[0.6rem] uppercase tracking-[0.22em] border ${
+      ok ? "border-emerald-400 bg-emerald-50 text-emerald-800" : "border-rose-400 bg-rose-50 text-rose-800"
+    }`}>
+      {ok ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />}
+      {ok ? okLabel : koLabel}
+    </span>
+  );
+}
+
+function ConfigRow({ label, value, mono, small }) {
+  return (
+    <div className="bg-[#FAFAF7] border border-[#0A0A0A]/8 px-3 py-2">
+      <div className="text-[0.55rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-0.5">{label}</div>
+      <div className={`${mono ? "font-mono" : ""} ${small ? "text-[0.72rem]" : "text-[0.8rem]"} text-[#0A0A0A] break-all`}>
+        {value || <span className="text-[#0A0A0A]/40">—</span>}
+      </div>
     </div>
   );
 }
