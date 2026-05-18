@@ -79,31 +79,32 @@ export default function StaffNotifications() {
   };
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      <div>
-        <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1 inline-flex items-center gap-2">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-notifications">
+      <div className="mb-6 sm:mb-8">
+        <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1.5 inline-flex items-center gap-2">
           <Bell size={12} /> Notifications transactionnelles
         </div>
-        <h1 className="font-display-serif text-3xl text-[#0A0A0A]">SMS & WhatsApp</h1>
-        <p className="text-sm text-[#0A0A0A]/60 mt-1">
+        <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A]">SMS & WhatsApp</h1>
+        <p className="text-sm text-[#0A0A0A]/55 mt-1.5 max-w-2xl">
           Envois automatiques : confirmation de paiement · rappel J-1 (17h UTC) · demande d'avis J+1 (10h UTC) · alertes staff.
         </p>
       </div>
 
       {!twilioEnabled && (
-        <div className="bg-amber-50 border border-amber-300 p-4 inline-flex items-start gap-2 text-[0.8rem] text-amber-900" data-testid="twilio-disabled-banner">
+        <div className="mb-6 bg-amber-50 border border-amber-300 p-4 inline-flex items-start gap-2 text-[0.8rem] text-amber-900" data-testid="twilio-disabled-banner">
           <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
           Twilio n'est pas configuré sur cette instance. Vérifiez les variables d'environnement.
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 mb-6 sm:mb-8">
         {/* Manual test send */}
         <div className="lg:col-span-2 bg-white border border-[#0A0A0A]/8 p-5">
-          <h2 className="font-display-serif text-lg text-[#0A0A0A] mb-3 inline-flex items-center gap-2">
+          <h2 className="font-display-serif text-lg text-[#0A0A0A] mb-1 inline-flex items-center gap-2">
             <Send size={14} className="text-[#B8922A]" /> Envoi test
           </h2>
-          <div className="space-y-3">
+          <p className="text-[0.7rem] text-[#0A0A0A]/55 mb-4">Vérifiez votre configuration WhatsApp / SMS.</p>
+          <div className="space-y-3.5">
             <div>
               <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] inline-flex items-center gap-1.5">
                 <Phone size={11} /> Destinataire
@@ -159,12 +160,15 @@ export default function StaffNotifications() {
 
         {/* Manual job triggers */}
         <div className="bg-white border border-[#0A0A0A]/8 p-5">
-          <h2 className="font-display-serif text-lg text-[#0A0A0A] mb-3">Jobs planifiés</h2>
+          <h2 className="font-display-serif text-lg text-[#0A0A0A] mb-1 inline-flex items-center gap-2">
+            <Bell size={13} className="text-[#B8922A]" /> Jobs planifiés
+          </h2>
+          <p className="text-[0.7rem] text-[#0A0A0A]/55 mb-4">Exécution manuelle hors-cron.</p>
           <div className="space-y-2">
             <button
               onClick={() => runJob("j-minus-1")}
               disabled={busy}
-              className="w-full px-4 py-2.5 border border-[#0A0A0A]/15 text-left text-sm hover:bg-[#FAFAF7] disabled:opacity-50"
+              className="w-full px-4 py-3 border border-[#0A0A0A]/15 text-left text-sm hover:border-[#B8922A] hover:bg-[#FAFAF7] disabled:opacity-50 transition-colors"
               data-testid="run-j-minus-1"
             >
               <div className="font-medium text-[#0A0A0A]">Lancer J-1 maintenant</div>
@@ -173,7 +177,7 @@ export default function StaffNotifications() {
             <button
               onClick={() => runJob("j-plus-1")}
               disabled={busy}
-              className="w-full px-4 py-2.5 border border-[#0A0A0A]/15 text-left text-sm hover:bg-[#FAFAF7] disabled:opacity-50"
+              className="w-full px-4 py-3 border border-[#0A0A0A]/15 text-left text-sm hover:border-[#B8922A] hover:bg-[#FAFAF7] disabled:opacity-50 transition-colors"
               data-testid="run-j-plus-1"
             >
               <div className="font-medium text-[#0A0A0A]">Lancer J+1 maintenant</div>
