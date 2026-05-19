@@ -7179,6 +7179,30 @@ async def admin_trigger_j_plus_1(staff=Depends(get_current_staff)):
 
 
 # ============================================================
+# Documentation — full app guide PDF (admin/management only)
+# ============================================================
+
+@api.get("/staff/docs/guide.pdf")
+async def admin_download_guide_pdf(staff=Depends(get_current_staff)):
+    """Generate and stream the complete app guide PDF.
+
+    Includes features list, RBAC roles, pôles, data models, security,
+    integrations, business flows and improvement roadmap. Accessible to
+    admin and management_general (read-only audience).
+    """
+    await _require_role(staff, ["admin", "management_general"])
+    from services.guide_pdf import build_guide_pdf
+    from starlette.responses import Response
+    pdf_bytes = build_guide_pdf()
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="bbr-guide-{today}.pdf"'},
+    )
+
+
+# ============================================================
 # Integrations — connectivity tests (admin only)
 # ============================================================
 
