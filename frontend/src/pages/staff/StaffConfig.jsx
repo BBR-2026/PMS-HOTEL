@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import api, { getStaffToken } from "../../lib/api";
+import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink, FileDown } from "lucide-react";
+import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 import {
@@ -521,19 +521,6 @@ function IntegrationsPanel() {
         Les valeurs sensibles (clés API) sont masquées.
       </p>
 
-      {/* ============ DOCUMENTATION ============ */}
-      <div className="bg-white border border-[#0A0A0A]/8 p-5 sm:p-6 flex flex-wrap items-center justify-between gap-3" data-testid="integ-guide">
-        <div className="flex-1 min-w-[260px]">
-          <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">Documentation</div>
-          <h3 className="font-display-serif text-xl sm:text-2xl text-[#0A0A0A]">Guide complet de l'application</h3>
-          <p className="text-[0.75rem] text-[#0A0A0A]/55 mt-1 max-w-2xl">
-            Fonctionnalités, structure, sécurité, intégrations, flux métier, feuille de route et annexes —
-            document PDF interne réservé à la direction et à l'administration.
-          </p>
-        </div>
-        <DownloadGuideButton />
-      </div>
-
       {/* ============ FINEOPAY ============ */}
       <div className="bg-white border border-[#0A0A0A]/8 p-5 sm:p-6" data-testid="integ-fineo">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -675,41 +662,3 @@ function ConfigRow({ label, value, mono, small }) {
     </div>
   );
 }
-
-function DownloadGuideButton() {
-  const [busy, setBusy] = useState(false);
-  const download = async () => {
-    setBusy(true);
-    try {
-      const token = getStaffToken();
-      const url = `${process.env.REACT_APP_BACKEND_URL}/api/staff/docs/guide.pdf`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      const today = new Date().toISOString().slice(0, 10).replaceAll("-", "");
-      a.download = `bbr-guide-${today}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      toast.success("Guide PDF téléchargé");
-    } catch (e) {
-      toast.error("Téléchargement impossible : " + (e.message || "erreur"));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <button
-      onClick={download}
-      disabled={busy}
-      className="inline-flex items-center gap-2 bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50"
-      data-testid="guide-download-btn"
-    >
-      {busy ? <RefreshCw size={13} className="animate-spin" /> : <FileDown size={13} />}
-      Télécharger le guide PDF
-    </button>
-  );
-}
-
