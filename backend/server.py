@@ -123,17 +123,20 @@ OFFERS = {
                 "price": 445000,
                 "inventory": 6,
             },
-            {
-                "id": "lounge",
-                "name_fr": "Lounge",
-                "name_en": "Lounge",
-                "description_fr": "Espace lounge intimiste face à la lagune, pensé pour les longues escales et les retrouvailles. Salon privé, ambiance feutrée et service signature à la demande.",
-                "description_en": "Intimate lounge facing the lagoon, designed for long stopovers and reunions. Private lounge, refined atmosphere and signature service on demand.",
-                "price": 0,
-                "price_on_request": True,
-                "inventory": 4,
-            },
         ],
+    },
+    "lounge": {
+        "id": "lounge",
+        "name_fr": "Lounge",
+        "name_en": "Lounge",
+        "schedule_fr": "Tous les jours · Sur demande",
+        "schedule_en": "Every day · On request",
+        "tagline_fr": "Espace lounge intimiste face à la lagune, pensé pour les longues escales et les retrouvailles. Salon privé, ambiance feutrée et service signature à la demande.",
+        "tagline_en": "Intimate lounge facing the lagoon, designed for long stopovers and reunions. Private lounge, refined atmosphere and signature service on demand.",
+        "price_adult": 0,
+        "price_child": 0,
+        "max_capacity": 30,
+        "price_on_request": True,
     },
     "spa_wellness": {
         "id": "spa_wellness",
@@ -200,11 +203,6 @@ HEBERGEMENT_ROOMS = [
     {"id": "SUITE_MAUPITI", "label": "Maupiti", "tier": "suite"},
     {"id": "SUITE_NZURI", "label": "N'Zuri", "tier": "suite"},
     {"id": "SUITE_MANDA", "label": "Manda", "tier": "suite"},
-    # Lounge — 4 espaces signature lagune
-    {"id": "LOUNGE_HORIZON", "label": "Horizon", "tier": "lounge"},
-    {"id": "LOUNGE_LAGUNE", "label": "Lagune", "tier": "lounge"},
-    {"id": "LOUNGE_PALMIER", "label": "Palmier", "tier": "lounge"},
-    {"id": "LOUNGE_SOLEIL", "label": "Soleil", "tier": "lounge"},
 ]
 HEBERGEMENT_ROOMS_BY_ID = {r["id"]: r for r in HEBERGEMENT_ROOMS}
 HEBERGEMENT_DEFAULT_CHECKIN = "14:00"   # 2pm hotel-wide check-in
@@ -227,7 +225,7 @@ POLES = {
         "name_en": "Accommodation",
         "tagline_fr": "Suites signature et soins bien-être au cœur de la lagune.",
         "tagline_en": "Signature suites and wellness treatments at the heart of the lagoon.",
-        "offers": ["hebergement", "spa_wellness"],
+        "offers": ["hebergement", "spa_wellness", "lounge"],
         "sort_order": 2,
     },
     "corporate": {
@@ -270,7 +268,7 @@ def _pole_for_offer(offer_id: str) -> str:
 
 OfferType = Literal[
     "pass_day", "sunset", "brunch", "le_kaai", "hebergement", "special_event",
-    "spa_wellness", "seminaire", "team_building", "offres_loisirs",
+    "spa_wellness", "seminaire", "team_building", "offres_loisirs", "lounge",
 ]
 BookingStatus = Literal["pending", "confirmed", "arrived", "completed", "cancelled"]
 
@@ -284,6 +282,7 @@ BOAT_TIMES_BY_OFFER = {
     "sunset": BOAT_TIMES_WEEKEND,
     "brunch": BOAT_TIMES_WEEKEND,
     "spa_wellness": ["10H", "12H", "14H", "16H", "18H"],
+    "lounge": ["10H", "12H", "14H", "16H", "18H", "20H"],
     "seminaire": ["8H", "9H", "10H"],
     "team_building": ["8H", "9H", "10H"],
     "offres_loisirs": ["10H", "12H", "14H", "16H"],
@@ -298,6 +297,7 @@ ALLOWED_WEEKDAYS_BY_OFFER = {
     "le_kaai": [0, 1, 2, 3, 4, 5, 6],  # Every day
     "hebergement": [0, 1, 2, 3, 4, 5, 6],  # Every day
     "spa_wellness": [0, 1, 2, 3, 4, 5, 6],  # Every day
+    "lounge": [0, 1, 2, 3, 4, 5, 6],  # Every day
     "seminaire": [0, 1, 2, 3, 4],          # Mon-Fri
     "team_building": [0, 1, 2, 3, 4],      # Mon-Fri
     "offres_loisirs": [0, 1, 2, 3, 4, 5, 6],  # Every day
@@ -6862,6 +6862,7 @@ async def fineo_create_checkout(body: FineoCheckoutBody):
         "kaai": "Le Kaai",
         "le_kaai": "Le Kaai",
         "hebergement": "Hébergement",
+        "lounge": "Lounge",
         "corporate": "Séminaire",
         "activites_events": "Activité",
         "special_event": "Événement spécial",

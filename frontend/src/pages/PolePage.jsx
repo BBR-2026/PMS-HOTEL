@@ -26,6 +26,7 @@ function SubOfferCard({ offer, index }) {
   const tagline = lang === "fr" ? offer.tagline_fr : offer.tagline_en;
   const hasTiers = (offer.room_tiers || []).length > 0;
   const isReservationOnly = !hasTiers && (offer.price_adult || 0) <= 0;
+  const priceOnRequest = !!offer.price_on_request;
   return (
     <motion.div
       initial={{ opacity: 0, y: 28 }}
@@ -73,7 +74,11 @@ function SubOfferCard({ offer, index }) {
             ))}
           </div>
         ) : isReservationOnly ? (
-          <div className="text-sm text-[#0A0A0A]/70 italic mb-5">Réservation uniquement</div>
+          <div className="text-sm text-[#0A0A0A]/70 italic mb-5">
+            {priceOnRequest
+              ? (lang === "fr" ? "Sur demande" : "On request")
+              : (lang === "fr" ? "Réservation uniquement" : "Reservation only")}
+          </div>
         ) : (
           <div className="space-y-1.5 mb-5">
             <div className="flex items-baseline justify-between gap-3 text-sm">
