@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { CheckCircle2, XCircle, Loader2, RefreshCw, Home } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, RefreshCw, Home, CreditCard } from "lucide-react";
 import api from "../lib/api";
+import { toast } from "sonner";
 
 const POLL_INTERVAL_MS = 2500;
 const POLL_MAX = 24; // ≈ 60 s
@@ -14,7 +15,25 @@ export default function FineoResult() {
   const [reference, setReference] = useState(null);
   const [amount, setAmount] = useState(null);
   const [polls, setPolls] = useState(0);
+  const [resumeBusy, setResumeBusy] = useState(false);
   const tickRef = useRef(null);
+
+  const resumeCheckout = async () => {
+    if (!bookingId) return;
+    setResumeBusy(true);
+    try {
+      const { data } = await api.post(`/payments/fineo/checkout`, { booking_id: bookingId, intent });
+      if (data?.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      }
+      toast.error("Lien de paiement indisponible");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Impossible de reprendre le paiement");
+    } finally {
+      setResumeBusy(false);
+    }
+  };
 
   const poll = async () => {
     try {
@@ -82,25 +101,58 @@ export default function FineoResult() {
           <>
             <Loader2 className="mx-auto text-[#B8922A] animate-spin mb-4" size={48} />
             <h1 className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A] mb-2">Paiement en cours…</h1>
-            <p className="text-sm text-[#0A0A0A]/65 mb-6">Nous attendons la confirmation de FineoPay. Cela prend quelques secondes.</p>
-            <div className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45">Référence : {bookingId.slice(0, 8).toUpperCase()}</div>
+            <p className="text-sm text-[#0A0A0A]/65 mb-4">
+              Nous attendons la confirmation de FineoPay. Cela prend quelques secondes après votre validation.
+            </p>
+            <p className="text-[0.72rem] text-[#0A0A0A]/55 mb-6">
+              Si vous êtes revenu sur cette page <strong>sans avoir finalisé</strong> votre paiement sur FineoPay,
+              vous pouvez le reprendre ci-dessous.
+            </p>
+            <button
+              onClick={resumeCheckout}
+              disabled={resumeBusy}
+              className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center gap-2 mb-3"
+              data-testid="fineo-resume-btn"
+            >
+              {resumeBusy ? <Loader2 size={12} className="animate-spin" /> : <CreditCard size={12} />}
+              Reprendre le paiement
+            </button>
+            <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/40 mt-3">
+              Réf. réservation : {bookingId.slice(0, 8).toUpperCase()}
+            </div>
           </>
         )}
 
         {status === "pending" && polls >= POLL_MAX && (
           <>
             <RefreshCw className="mx-auto text-amber-600 mb-4" size={48} />
-            <h1 className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A] mb-2">Confirmation différée</h1>
-            <p className="text-sm text-[#0A0A0A]/65 mb-6">
-              Le paiement n'a pas encore été confirmé par FineoPay. Si vous avez bien validé sur leur page, vous recevrez votre billet par email dès la confirmation.
+            <h1 className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A] mb-2">Paiement non finalisé</h1>
+            <p className="text-sm text-[#0A0A0A]/65 mb-3">
+              Nous n'avons reçu aucune confirmation de paiement de FineoPay après 60&nbsp;secondes.
+            </p>
+            <p className="text-[0.78rem] text-[#0A0A0A]/55 mb-6 leading-relaxed">
+              Cela arrive si vous êtes revenu sur cette page sans avoir validé le paiement sur FineoPay
+              (annulation, retour navigateur ou fermeture de l'onglet). Aucun montant n'a été prélevé.
+              Vous pouvez relancer le paiement ci-dessous.
             </p>
             <button
-              onClick={() => { setPolls(0); poll(); }}
-              className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23]"
-              data-testid="fineo-retry-btn"
+              onClick={resumeCheckout}
+              disabled={resumeBusy}
+              className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center gap-2 mb-3"
+              data-testid="fineo-resume-btn-late"
             >
-              Vérifier à nouveau
+              {resumeBusy ? <Loader2 size={12} className="animate-spin" /> : <CreditCard size={12} />}
+              Reprendre le paiement
             </button>
+            <div className="mt-3">
+              <button
+                onClick={() => { setPolls(0); poll(); }}
+                className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 hover:text-[#B8922A]"
+                data-testid="fineo-retry-btn"
+              >
+                Vérifier à nouveau le statut
+              </button>
+            </div>
           </>
         )}
 
@@ -135,16 +187,27 @@ export default function FineoResult() {
             </h1>
             <p className="text-sm text-[#0A0A0A]/65 mb-6">
               {status === "expired"
-                ? "Votre session de paiement a expiré. Recommencez depuis le tunnel de réservation."
+                ? "Votre session de paiement a expiré. Vous pouvez en relancer une nouvelle."
                 : "FineoPay nous a indiqué que le paiement a échoué ou a été annulé. Aucun montant n'a été prélevé."}
             </p>
-            <Link
-              to="/"
-              className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] inline-block"
-              data-testid="fineo-back-btn"
+            <button
+              onClick={resumeCheckout}
+              disabled={resumeBusy}
+              className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center gap-2 mb-3"
+              data-testid="fineo-retry-payment-btn"
             >
-              Retour à l'accueil
-            </Link>
+              {resumeBusy ? <Loader2 size={12} className="animate-spin" /> : <CreditCard size={12} />}
+              Relancer le paiement
+            </button>
+            <div className="mt-3">
+              <Link
+                to="/"
+                className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 hover:text-[#B8922A]"
+                data-testid="fineo-back-btn"
+              >
+                Retour à l'accueil
+              </Link>
+            </div>
           </>
         )}
       </div>
