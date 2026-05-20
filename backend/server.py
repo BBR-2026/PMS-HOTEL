@@ -123,6 +123,16 @@ OFFERS = {
                 "price": 445000,
                 "inventory": 6,
             },
+            {
+                "id": "lounge",
+                "name_fr": "Lounge",
+                "name_en": "Lounge",
+                "description_fr": "Espace lounge intimiste face à la lagune, pensé pour les longues escales et les retrouvailles. Salon privé, ambiance feutrée et service signature à la demande.",
+                "description_en": "Intimate lounge facing the lagoon, designed for long stopovers and reunions. Private lounge, refined atmosphere and signature service on demand.",
+                "price": 0,
+                "price_on_request": True,
+                "inventory": 4,
+            },
         ],
     },
     "spa_wellness": {
@@ -190,6 +200,11 @@ HEBERGEMENT_ROOMS = [
     {"id": "SUITE_MAUPITI", "label": "Maupiti", "tier": "suite"},
     {"id": "SUITE_NZURI", "label": "N'Zuri", "tier": "suite"},
     {"id": "SUITE_MANDA", "label": "Manda", "tier": "suite"},
+    # Lounge — 4 espaces signature lagune
+    {"id": "LOUNGE_HORIZON", "label": "Horizon", "tier": "lounge"},
+    {"id": "LOUNGE_LAGUNE", "label": "Lagune", "tier": "lounge"},
+    {"id": "LOUNGE_PALMIER", "label": "Palmier", "tier": "lounge"},
+    {"id": "LOUNGE_SOLEIL", "label": "Soleil", "tier": "lounge"},
 ]
 HEBERGEMENT_ROOMS_BY_ID = {r["id"]: r for r in HEBERGEMENT_ROOMS}
 HEBERGEMENT_DEFAULT_CHECKIN = "14:00"   # 2pm hotel-wide check-in

@@ -475,12 +475,23 @@ export default function BookingTunnel() {
                             <div className="font-display-serif text-lg text-[#0A0A0A] mb-2 leading-tight">
                               {lang === "fr" ? tier.name_fr : tier.name_en}
                             </div>
-                            <div className="text-[#B8922A] font-medium">
-                              {formatXOF(tier.price)}
-                              <span className="text-[0.7rem] text-[#0A0A0A]/50 ml-1">
-                                {t.offers.perNight}
-                              </span>
-                            </div>
+                            {tier.price_on_request ? (
+                              <div className="text-[#B8922A] font-medium text-[0.85rem]">
+                                {lang === "fr" ? "Sur demande" : "On request"}
+                              </div>
+                            ) : (
+                              <div className="text-[#B8922A] font-medium">
+                                {formatXOF(tier.price)}
+                                <span className="text-[0.7rem] text-[#0A0A0A]/50 ml-1">
+                                  {t.offers.perNight}
+                                </span>
+                              </div>
+                            )}
+                            {(lang === "fr" ? tier.description_fr : tier.description_en) && (
+                              <p className="text-[0.7rem] text-[#0A0A0A]/55 mt-2 leading-snug">
+                                {lang === "fr" ? tier.description_fr : tier.description_en}
+                              </p>
+                            )}
                           </button>
                         );
                       })}
@@ -550,7 +561,11 @@ export default function BookingTunnel() {
                   <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50">
                     {t.booking.total}
                   </span>
-                  <span className="font-display-serif text-3xl text-[#B8922A]">{formatXOF(total)}</span>
+                  <span className="font-display-serif text-3xl text-[#B8922A]">
+                    {selectedTier?.price_on_request
+                      ? (lang === "fr" ? "Sur demande" : "On request")
+                      : formatXOF(total)}
+                  </span>
                 </div>
               </div>
             )}
@@ -784,7 +799,11 @@ export default function BookingTunnel() {
                       />
                       <SummaryRow
                         label={t.booking.roomType}
-                        value={`${lang === "fr" ? selectedTier.name_fr : selectedTier.name_en} · ${formatXOF(selectedTier.price)} ${t.offers.perNight}${rooms > 1 ? ` × ${rooms}` : ""} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`}
+                        value={
+                          selectedTier.price_on_request
+                            ? `${lang === "fr" ? selectedTier.name_fr : selectedTier.name_en} · ${lang === "fr" ? "Sur demande" : "On request"}`
+                            : `${lang === "fr" ? selectedTier.name_fr : selectedTier.name_en} · ${formatXOF(selectedTier.price)} ${t.offers.perNight}${rooms > 1 ? ` × ${rooms}` : ""} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`
+                        }
                       />
                     </>
                   )}
