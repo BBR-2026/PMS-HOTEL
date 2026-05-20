@@ -16,6 +16,7 @@ export default function FineoResult() {
   const [amount, setAmount] = useState(null);
   const [polls, setPolls] = useState(0);
   const [resumeBusy, setResumeBusy] = useState(false);
+  const [refToken, setRefToken] = useState(null);
   const tickRef = useRef(null);
 
   const resumeCheckout = async () => {
@@ -41,6 +42,7 @@ export default function FineoResult() {
       setStatus(data.status || "pending");
       setReference(data.reference || null);
       setAmount(data.amount || null);
+      if (data.reference_token) setRefToken(data.reference_token);
       if (["paid", "failed", "expired"].includes(data.status)) {
         clearInterval(tickRef.current);
       }
@@ -167,15 +169,28 @@ export default function FineoResult() {
               <div className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45 mb-6">Réf. FineoPay : {reference}</div>
             )}
             <div className="border border-[#B8922A]/30 bg-[#B8922A]/5 p-4 text-[0.78rem] text-[#0A0A0A]/75 mb-6">
-              Votre billet QR vous a été envoyé par email. Conservez-le pour l'embarquement.
+              Votre billet QR vous a été envoyé par email et WhatsApp. Conservez-le pour l'embarquement.
             </div>
-            <Link
-              to="/"
-              className="inline-flex items-center gap-2 bg-[#0A0A0A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#0A0A0A]/85"
-              data-testid="fineo-home-btn"
-            >
-              Retour à l'accueil
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {refToken && (
+                <a
+                  href={`${process.env.REACT_APP_BACKEND_URL}/api/bookings/${bookingId}/ticket.png?ref=${refToken}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23]"
+                  data-testid="fineo-view-ticket-btn"
+                >
+                  Voir mon billet QR
+                </a>
+              )}
+              <Link
+                to="/"
+                className="inline-flex items-center gap-2 bg-[#0A0A0A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#0A0A0A]/85"
+                data-testid="fineo-home-btn"
+              >
+                Retour à l'accueil
+              </Link>
+            </div>
           </>
         )}
 

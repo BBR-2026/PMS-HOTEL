@@ -6839,20 +6839,38 @@ async def fineo_create_checkout(body: FineoCheckoutBody):
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
+    # Human-friendly offer label (shown in the FineoPay title).
+    _OFFER_LABELS = {
+        "pass_day": "Day Pass",
+        "sunset": "Sunset Experience",
+        "brunch": "Brunch Boulay",
+        "kaai": "Le Kaai",
+        "le_kaai": "Le Kaai",
+        "hebergement": "Hébergement",
+        "corporate": "Séminaire",
+        "activites_events": "Activité",
+        "special_event": "Événement spécial",
+    }
+    short_ref = (booking.get('id', '') or '')[:8].upper()
+    offer_label = _OFFER_LABELS.get(booking.get("offer_type", ""), (booking.get("offer_type") or "Réservation").replace("_", " ").title())
+
+    def _fmt_xof(n: int) -> str:
+        return f"{n:,}".replace(",", " ") + " FCFA"
+
     if body.intent == "booking":
         amount = int(booking.get("total_amount", 0) or 0)
-        title = f"Réservation {booking.get('id', '')[:8].upper()} — {booking.get('offer_type', '')}"
+        title = f"BBR — {offer_label} — {_fmt_xof(amount)}"
     elif body.intent == "wallet":
         wallet = await db.wallets.find_one({"booking_id": body.booking_id}, {"_id": 0})
         if not wallet:
             raise HTTPException(status_code=404, detail="Wallet not found")
         amount = int(wallet.get("total_charged", 0) or 0)
-        title = f"Consommation sur place — {booking.get('id', '')[:8].upper()}"
+        title = f"BBR — Consommation sur place — {_fmt_xof(amount)}"
     elif body.intent == "deposit":
         if not body.amount or body.amount <= 0:
             raise HTTPException(status_code=400, detail="Montant d'acompte requis (> 0).")
         amount = int(body.amount)
-        title = f"Acompte hébergement — {booking.get('id', '')[:8].upper()}"
+        title = f"BBR — Acompte hébergement — {_fmt_xof(amount)}"
     else:
         raise HTTPException(status_code=400, detail="Intent invalide")
 
@@ -6882,7 +6900,10 @@ async def fineo_create_checkout(body: FineoCheckoutBody):
         "returnUrl": _fineo_return_url(body.booking_id, body.intent),
         "syncRef": sync_ref,
         "inputs": [
-            {"label": "Nom du client", "value": (booking.get("name") or "").strip() or "Client BBR"},
+            {"label": "Référence réservation", "value": short_ref},
+            {"label": "Offre", "value": offer_label},
+            {"label": "Montant à régler", "value": _fmt_xof(amount)},
+            {"label": "Client", "value": (booking.get("name") or "").strip() or "Client BBR"},
             {"label": "Téléphone", "value": booking.get("phone") or ""},
             {"label": "Email", "value": booking.get("email") or ""},
         ],
@@ -6936,8 +6957,17 @@ async def fineo_payment_status(booking_id: str, intent: str = "booking"):
     received yet."""
     sync_ref = f"BBR-{intent.upper()}-{booking_id}"
     pay = await db.fineo_payments.find_one({"sync_ref": sync_ref}, {"_id": 0})
+    # Include booking reference_token so the frontend can deep-link the ticket PNG
+    booking_lite = await db.bookings.find_one(
+        {"id": booking_id}, {"_id": 0, "reference_token": 1, "qr_codes": 1, "status": 1}
+    )
+    booking_meta = {
+        "reference_token": (booking_lite or {}).get("reference_token"),
+        "qr_count": len(((booking_lite or {}).get("qr_codes") or [])),
+        "booking_status": (booking_lite or {}).get("status"),
+    }
     if not pay:
-        return {"status": "unknown", "sync_ref": sync_ref}
+        return {"status": "unknown", "sync_ref": sync_ref, **booking_meta}
     # If callback already settled it: return immediately.
     if pay.get("status") in ("paid", "failed", "expired"):
         return {
@@ -6946,16 +6976,17 @@ async def fineo_payment_status(booking_id: str, intent: str = "booking"):
             "amount": pay.get("amount"),
             "reference": pay.get("reference"),
             "settled_at": pay.get("settled_at"),
+            **booking_meta,
         }
     # Live status from Fineo (best-effort)
     if FINEO_ENABLED and pay.get("reference"):
         try:
             tx = await FineoClient().get_transaction(pay["reference"])
             status = (tx.get("data", {}) or {}).get("status") or pay["status"]
-            return {"status": status, "sync_ref": sync_ref, "amount": pay.get("amount"), "reference": pay.get("reference")}
+            return {"status": status, "sync_ref": sync_ref, "amount": pay.get("amount"), "reference": pay.get("reference"), **booking_meta}
         except Exception:
             pass
-    return {"status": pay.get("status", "pending"), "sync_ref": sync_ref, "amount": pay.get("amount")}
+    return {"status": pay.get("status", "pending"), "sync_ref": sync_ref, "amount": pay.get("amount"), **booking_meta}
 
 
 async def _settle_payment(booking_id: str, intent: str, sync_ref: str, fineo_ref: str, amount: int) -> None:

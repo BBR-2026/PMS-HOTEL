@@ -1012,12 +1012,12 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
               {t.booking.fineoDisclaimer}
             </p>
             <button
-              onClick={() => onPay("card")}
+              onClick={() => onPay("fineo")}
               disabled={!!paying}
               className="btn-gold w-full"
-              data-testid="pay-card-btn"
+              data-testid="pay-fineo-btn"
             >
-              {paying === "card" ? t.booking.payProcessing : t.booking.payNow}
+              {paying === "fineo" ? t.booking.payProcessing : t.booking.payNow}
             </button>
           </div>
 
