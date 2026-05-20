@@ -29,8 +29,30 @@ export default function StaffLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center p-6" data-testid="staff-login-page">
-      <div className="w-full max-w-md bg-white border border-[#B8922A]/30 p-10 md:p-12">
+    <div
+      className="min-h-screen relative flex items-center justify-center p-6 bg-[#0A0A0A]"
+      data-testid="staff-login-page"
+      style={{
+        backgroundImage: "url(/login-bg.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
+      {/* Gold gradient overlay for luxury feel + readability */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.35) 50%, rgba(184,146,42,0.25) 100%)",
+        }}
+        aria-hidden="true"
+      />
+
+      <div
+        className="relative w-full max-w-md bg-white/95 backdrop-blur-xl border border-[#B8922A]/40 p-10 md:p-12 shadow-2xl"
+        style={{ boxShadow: "0 25px 80px -20px rgba(0,0,0,0.5)" }}
+      >
         <div className="text-center mb-10">
           <img
             src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/5jjvd8zn_LOGO_BBr_VF_Plan_de_travail_1-removebg-preview.png"
