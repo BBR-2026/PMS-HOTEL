@@ -16,12 +16,12 @@ export default function Header() {
       data-testid="site-header"
       className="absolute top-0 left-0 right-0 z-50 bg-transparent"
     >
-      <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16 py-3 md:py-4 flex items-center justify-between">
+      <div className="relative max-w-7xl mx-auto px-6 md:px-12 lg:px-16 py-3 md:py-4 flex items-center justify-center md:justify-between">
         <Link to="/" data-testid="logo-link" className="flex items-center gap-3">
           <img
             src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
             alt="Boulay Beach Resort"
-            className="h-20 md:h-24 w-auto object-contain"
+            className="h-[100px] md:h-[120px] w-auto object-contain"
             style={{ filter: "brightness(0.9)" }}
           />
         </Link>
@@ -46,7 +46,7 @@ export default function Header() {
         <button
           data-testid="language-toggle"
           onClick={toggle}
-          className="text-[0.72rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
+          className="absolute right-6 top-1/2 -translate-y-1/2 md:static md:translate-y-0 text-[0.72rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] transition-colors"
         >
           <span className={lang === "fr" ? "text-[#B8922A]" : ""}>FR</span>
           <span className="mx-1.5 text-[#0A0A0A]/30">/</span>

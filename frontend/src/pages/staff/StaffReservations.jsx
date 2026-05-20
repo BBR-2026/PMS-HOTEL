@@ -8,8 +8,6 @@ import {
   List as ListIcon,
   Search,
   X,
-  CheckCircle2,
-  XCircle,
   Ticket as TicketIcon,
   ChevronLeft,
   ChevronRight,
@@ -227,9 +225,8 @@ function BookingsCalendar({ month, onChangeMonth, byDate, onOpen }) {
 }
 
 // ------------------ Detail drawer ------------------
-function BookingDrawer({ id, onClose, onUpdated }) {
+function BookingDrawer({ id, onClose }) {
   const [b, setB] = useState(null);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -241,20 +238,6 @@ function BookingDrawer({ id, onClose, onUpdated }) {
       });
   }, [id, onClose]);
 
-  const setStatus = async (status) => {
-    setBusy(true);
-    try {
-      await api.patch(`/staff/bookings/${id}/status`, { status });
-      toast.success(`Statut → ${STATUS_FR[status]}`);
-      const { data } = await api.get(`/staff/bookings/${id}`);
-      setB(data);
-      onUpdated?.();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Erreur");
-    } finally {
-      setBusy(false);
-    }
-  };
   if (!id) return null;
   return (
     <div className="fixed inset-0 z-40" data-testid="booking-drawer">
@@ -341,25 +324,13 @@ function BookingDrawer({ id, onClose, onUpdated }) {
               </div>
             )}
 
-            {/* Actions */}
+            {/* Read-only — actions like confirm/cancel/complete are disabled
+                on this page for ALL roles. Modifications happen in dedicated
+                pôle modules (Hébergement, Loisirs…) or in Paiements. */}
             <div className="pt-2 border-t border-[#0A0A0A]/10 space-y-3">
-              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-1">Actions</div>
-              <div className="grid grid-cols-2 gap-2">
-                {b.status === "pending" && (
-                  <button onClick={() => setStatus("confirmed")} disabled={busy} className="px-4 py-2 bg-[#B8922A] hover:bg-[#9c7c1f] text-white text-xs uppercase tracking-[0.18em] inline-flex items-center justify-center gap-2" data-testid="action-confirm">
-                    <CheckCircle2 size={13} /> Confirmer
-                  </button>
-                )}
-                {b.status !== "completed" && b.status !== "cancelled" && (
-                  <button onClick={() => setStatus("completed")} disabled={busy} className="px-4 py-2 border border-[#0A0A0A]/15 text-xs uppercase tracking-[0.18em] hover:border-[#B8922A]" data-testid="action-complete">
-                    Terminer
-                  </button>
-                )}
-                {b.status !== "cancelled" && (
-                  <button onClick={() => setStatus("cancelled")} disabled={busy} className="px-4 py-2 border border-red-200 text-red-700 hover:bg-red-50 text-xs uppercase tracking-[0.18em] inline-flex items-center justify-center gap-2" data-testid="action-cancel">
-                    <XCircle size={13} /> Annuler
-                  </button>
-                )}
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-1">Mode consultation</div>
+              <div className="border border-[#B8922A]/30 bg-[#FAFAF7] p-3 text-[0.78rem] text-[#0A0A0A]/75" data-testid="reservation-readonly-banner">
+                Cette vue est en <strong>lecture seule</strong>. Pour modifier le statut ou gérer un encaissement, utilisez les modules dédiés (Paiements, Hébergement, Loisirs).
               </div>
               {!b.paid_at && b.total_amount > 0 && (
                 <div className="border border-red-200 bg-red-50/60 p-3 text-[0.78rem] text-red-800" data-testid="payment-readonly-unpaid">
@@ -525,7 +496,7 @@ export default function StaffReservations() {
         )}
       </div>
 
-      <BookingDrawer id={openId} onClose={() => setOpenId(null)} onUpdated={refresh} />
+      <BookingDrawer id={openId} onClose={() => setOpenId(null)} />
     </div>
   );
 }
