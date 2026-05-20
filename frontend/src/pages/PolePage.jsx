@@ -60,8 +60,14 @@ function SubOfferCard({ offer, index }) {
                   {lang === "fr" ? tier.name_fr : tier.name_en}
                 </span>
                 <span className="font-medium text-[#0A0A0A] whitespace-nowrap">
-                  {formatXOF(tier.price)}
-                  <span className="text-[0.65rem] text-[#0A0A0A]/45 ml-1">/nuit</span>
+                  {tier.price_on_request ? (
+                    <span className="italic text-[#B8922A]">{lang === "fr" ? "Sur demande" : "On request"}</span>
+                  ) : (
+                    <>
+                      {formatXOF(tier.price)}
+                      <span className="text-[0.65rem] text-[#0A0A0A]/45 ml-1">/nuit</span>
+                    </>
+                  )}
                 </span>
               </div>
             ))}
