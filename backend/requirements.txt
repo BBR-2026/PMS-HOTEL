@@ -126,3 +126,4 @@ yarl==1.23.0
 zipp==3.23.1
 twilio==9.10.9
 apscheduler==3.11.2
+sendgrid==6.12.5

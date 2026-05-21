@@ -28,6 +28,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 # Imported after load_dotenv so env vars are populated when the module reads them.
 from services import twilio_service  # noqa: E402
+from services import email_service  # noqa: E402
 
 # ----- Config -----
 MONGO_URL = os.environ["MONGO_URL"]
@@ -2207,6 +2208,12 @@ async def pay_booking(booking_id: str, body: PayBooking):
         await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
     except Exception as ex:
         logging.warning("Twilio booking_paid notification failed: %s", ex)
+
+    # SendGrid email — sent in parallel with WhatsApp/SMS, attaches the QR PNG.
+    try:
+        await _send_booking_confirmation_email(booking)
+    except Exception as ex:
+        logging.warning("SendGrid booking_paid email failed: %s", ex)
     return booking
 
 
@@ -6742,8 +6749,107 @@ async def _sent_already(purpose: str, booking_id: str) -> bool:
     return found is not None
 
 
+async def _email_sent_already(purpose: str, booking_id: str) -> bool:
+    found = await db.email_messages.find_one(
+        {"purpose": purpose, "booking_id": booking_id, "status": "accepted"},
+    )
+    return found is not None
+
+
+def _fmt_xof(n) -> str:
+    try:
+        return f"{int(n):,}".replace(",", " ") + " FCFA"
+    except Exception:
+        return "—"
+
+
+def _fmt_date_fr(iso_date: str) -> str:
+    months_fr = ["", "janvier", "février", "mars", "avril", "mai", "juin",
+                 "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+    try:
+        y, m, d = iso_date.split("-")
+        return f"{int(d)} {months_fr[int(m)]} {y}"
+    except Exception:
+        return iso_date or "—"
+
+
+def _offer_label_fr(offer_type: str) -> str:
+    return {
+        "pass_day": "Day Pass",
+        "sunset": "Sunset Experience",
+        "brunch": "Brunch Boulay",
+        "le_kaai": "Le Kaai",
+        "hebergement": "Hébergement",
+        "lounge": "Lounge",
+        "spa_wellness": "Spa & Wellness",
+        "special_event": "Événement spécial",
+        "seminaire": "Séminaire",
+        "team_building": "Team Building",
+        "offres_loisirs": "Activité",
+    }.get(offer_type, (offer_type or "Réservation").replace("_", " ").title())
+
+
+async def _send_booking_confirmation_email(booking: dict) -> None:
+    """Send the post-payment confirmation email with QR PNG attached."""
+    if not email_service.SENDGRID_ENABLED:
+        return
+    if not booking or not booking.get("email"):
+        return
+    if await _email_sent_already("booking_paid", booking.get("id", "")):
+        return
+    name = (booking.get("name") or "").strip() or "Cher client"
+    ref = (booking.get("id", "") or "")[:8].upper()
+    offer_label = _offer_label_fr(booking.get("offer_type", ""))
+    date_str = _fmt_date_fr(booking.get("date", ""))
+    boat = booking.get("boat_time")
+    amount_label = _fmt_xof(booking.get("total_amount", 0))
+    ticket_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking['id']}/ticket.png?ref={booking.get('reference_token', '')}"
+
+    tpl = email_service.render_booking_confirmation(
+        name=name, ref=ref, offer_label=offer_label, date_str=date_str,
+        boat_time=boat, amount_label=amount_label, ticket_url=ticket_url,
+    )
+
+    # Attach the QR ticket PNG by fetching it from our own endpoint (avoids
+    # external dependency). Best-effort — email is sent without attachment if fail.
+    attachments = []
+    try:
+        png_bytes = await _build_ticket_png(booking)
+        if png_bytes:
+            attachments.append({
+                "content": png_bytes,
+                "filename": f"BBR-billet-{ref}.png",
+                "mime": "image/png",
+                "disposition": "attachment",
+            })
+    except Exception as ex:
+        logging.warning("Could not attach ticket PNG to email: %s", ex)
+
+    await email_service.send_email(
+        db, to_email=booking["email"], to_name=name,
+        subject=tpl["subject"], html=tpl["html"], plain=tpl["plain"],
+        purpose="booking_paid", booking_id=booking.get("id"),
+        attachments=attachments,
+    )
+
+
+async def _build_ticket_png(booking: dict) -> Optional[bytes]:
+    """Return the QR ticket PNG bytes already stored in the booking document."""
+    try:
+        qrs = booking.get("qr_codes") or []
+        img_data = (qrs[0] if qrs else {}).get("ticket_image", "")
+        if not img_data:
+            return None
+        if img_data.startswith("data:"):
+            img_data = img_data.split(",", 1)[1]
+        from base64 import b64decode
+        return b64decode(img_data)
+    except Exception:
+        return None
+
+
 async def _run_j_minus_1():
-    if not twilio_service.TWILIO_ENABLED:
+    if not (twilio_service.TWILIO_ENABLED or email_service.SENDGRID_ENABLED):
         return
     tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat()
     cursor = db.bookings.find(
@@ -6753,15 +6859,31 @@ async def _run_j_minus_1():
     bookings = await cursor.to_list(length=500)
     for b in bookings:
         try:
-            if await _sent_already("j_minus_1", b["id"]):
-                continue
-            await twilio_service.notify_j_minus_1(db, b)
+            if not await _sent_already("j_minus_1", b["id"]):
+                await twilio_service.notify_j_minus_1(db, b)
         except Exception as ex:
-            logging.warning("J-1 notification failed for %s: %s", b.get("id"), ex)
+            logging.warning("J-1 Twilio failed for %s: %s", b.get("id"), ex)
+        try:
+            if email_service.SENDGRID_ENABLED and b.get("email") \
+                    and not await _email_sent_already("j_minus_1", b["id"]):
+                tpl = email_service.render_j_minus_1(
+                    name=(b.get("name") or "").strip() or "Cher client",
+                    ref=(b.get("id", "") or "")[:8].upper(),
+                    offer_label=_offer_label_fr(b.get("offer_type", "")),
+                    date_str=_fmt_date_fr(b.get("date", "")),
+                    boat_time=b.get("boat_time"),
+                )
+                await email_service.send_email(
+                    db, to_email=b["email"], to_name=b.get("name"),
+                    subject=tpl["subject"], html=tpl["html"], plain=tpl["plain"],
+                    purpose="j_minus_1", booking_id=b.get("id"),
+                )
+        except Exception as ex:
+            logging.warning("J-1 email failed for %s: %s", b.get("id"), ex)
 
 
 async def _run_j_plus_1():
-    if not twilio_service.TWILIO_ENABLED:
+    if not (twilio_service.TWILIO_ENABLED or email_service.SENDGRID_ENABLED):
         return
     yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
     cursor = db.bookings.find(
@@ -6771,11 +6893,24 @@ async def _run_j_plus_1():
     bookings = await cursor.to_list(length=500)
     for b in bookings:
         try:
-            if await _sent_already("j_plus_1", b["id"]):
-                continue
-            await twilio_service.notify_j_plus_1(db, b)
+            if not await _sent_already("j_plus_1", b["id"]):
+                await twilio_service.notify_j_plus_1(db, b)
         except Exception as ex:
-            logging.warning("J+1 notification failed for %s: %s", b.get("id"), ex)
+            logging.warning("J+1 Twilio failed for %s: %s", b.get("id"), ex)
+        try:
+            if email_service.SENDGRID_ENABLED and b.get("email") \
+                    and not await _email_sent_already("j_plus_1", b["id"]):
+                tpl = email_service.render_j_plus_1(
+                    name=(b.get("name") or "").strip() or "Cher client",
+                    review_url=None,
+                )
+                await email_service.send_email(
+                    db, to_email=b["email"], to_name=b.get("name"),
+                    subject=tpl["subject"], html=tpl["html"], plain=tpl["plain"],
+                    purpose="j_plus_1", booking_id=b.get("id"),
+                )
+        except Exception as ex:
+            logging.warning("J+1 email failed for %s: %s", b.get("id"), ex)
 
 
 @app.on_event("startup")
@@ -7268,6 +7403,12 @@ async def admin_integrations_status(staff=Depends(get_current_staff)):
                 if twilio_service.TWILIO_MESSAGING_SERVICE_SID else None,
             "trial_safe_default": twilio_service.TWILIO_TRIAL_SAFE_DEFAULT,
         },
+        "sendgrid": {
+            "enabled": email_service.SENDGRID_ENABLED,
+            "from_email": email_service.SENDGRID_FROM_EMAIL or None,
+            "from_name": email_service.SENDGRID_FROM_NAME or None,
+            "api_key_prefix": (email_service.SENDGRID_API_KEY[:8] + "…") if email_service.SENDGRID_API_KEY else None,
+        },
         "fineo": {
             "enabled": FINEO_ENABLED,
             "base_url": FINEO_BASE_URL,
@@ -7372,7 +7513,34 @@ async def admin_fineo_test(staff=Depends(get_current_staff)):
     }
 
 
+@api.post("/staff/integrations/sendgrid/test")
+async def admin_sendgrid_test(body: dict, staff=Depends(get_current_staff)):
+    """Send a probe email to verify SendGrid configuration (admin only)."""
+    await _require_role(staff, ["admin"])
+    if not email_service.SENDGRID_ENABLED:
+        return {"ok": False, "message": "SendGrid non configuré (SENDGRID_API_KEY / SENDGRID_FROM_EMAIL absents)."}
+    to_email = (body.get("to_email") or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="to_email requis")
+    html_body = (
+        "<p>Bonjour,</p><p>Ceci est un test de connectivité depuis le back-office "
+        "Boulay Beach Resort. Si vous recevez ce message, la chaîne SendGrid fonctionne. ✨</p>"
+        "<p style='font-size:12px;color:#888;margin-top:18px;'>Envoyé via SendGrid · "
+        f"{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}</p>"
+    )
+    res = await email_service.send_email(
+        db, to_email=to_email, subject="Test BBR ↔ SendGrid",
+        html=email_service._wrap_html(html_body, preheader="Test de configuration"),
+        plain="Test SendGrid BBR — si vous recevez ce message, la configuration fonctionne.",
+        purpose="admin_test",
+    )
+    return res
+
+
 app.include_router(api)
+
+
+
 
 
 # ----- Read-only role enforcement -----

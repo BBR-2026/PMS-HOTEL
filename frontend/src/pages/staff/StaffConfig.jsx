@@ -480,6 +480,9 @@ function IntegrationsPanel() {
   const [loading, setLoading] = useState(true);
   const [fineoResult, setFineoResult] = useState(null);
   const [fineoBusy, setFineoBusy] = useState(false);
+  const [sgResult, setSgResult] = useState(null);
+  const [sgBusy, setSgBusy] = useState(false);
+  const [sgTo, setSgTo] = useState("");
 
   const refresh = async () => {
     setLoading(true);
@@ -509,6 +512,24 @@ function IntegrationsPanel() {
       toast.error(detail);
     } finally {
       setFineoBusy(false);
+    }
+  };
+
+  const testSendGrid = async () => {
+    if (!sgTo) { toast.error("Saisissez une adresse email"); return; }
+    setSgBusy(true);
+    setSgResult(null);
+    try {
+      const { data } = await api.post(`/staff/integrations/sendgrid/test`, { to_email: sgTo });
+      setSgResult(data);
+      if (data.ok) toast.success(`Email envoyé à ${sgTo}`);
+      else toast.error(data.message || data.error || "Échec", { duration: 8000 });
+    } catch (e) {
+      const detail = e.response?.data?.detail || e.message;
+      setSgResult({ ok: false, error: detail });
+      toast.error(detail);
+    } finally {
+      setSgBusy(false);
     }
   };
 
@@ -593,6 +614,61 @@ function IntegrationsPanel() {
                 )}
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ============ SENDGRID ============ */}
+      <div className="bg-white border border-[#0A0A0A]/8 p-5 sm:p-6" data-testid="integ-sendgrid">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">Email transactionnel</div>
+            <h3 className="font-display-serif text-xl sm:text-2xl text-[#0A0A0A]">SendGrid (Twilio Email)</h3>
+            <p className="text-[0.75rem] text-[#0A0A0A]/55 mt-1 max-w-2xl">
+              Confirmations de paiement (avec QR PNG), rappels J-1, demandes d'avis J+1 — envoyés en parallèle de WhatsApp/SMS.
+            </p>
+          </div>
+          <StatusBadge ok={status.sendgrid?.enabled} okLabel="Configuré" koLabel="Non configuré" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <ConfigRow label="From email" value={status.sendgrid?.from_email} mono />
+          <ConfigRow label="From name" value={status.sendgrid?.from_name} />
+          <ConfigRow label="Clé API" value={status.sendgrid?.api_key_prefix} mono />
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 mb-1">Email destinataire de test</label>
+            <input
+              type="email"
+              value={sgTo}
+              onChange={(e) => setSgTo(e.target.value)}
+              placeholder="vous@exemple.com"
+              className="w-full border border-[#0A0A0A]/15 px-3 py-2.5 text-sm focus:outline-none focus:border-[#B8922A]"
+              data-testid="sg-test-to"
+            />
+          </div>
+          <button
+            onClick={testSendGrid}
+            disabled={sgBusy || !status.sendgrid?.enabled || !sgTo}
+            className="bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center gap-2"
+            data-testid="sg-test-btn"
+          >
+            {sgBusy ? <RefreshCw size={12} className="animate-spin" /> : <Plug size={12} />}
+            Envoyer un email test
+          </button>
+        </div>
+        {sgResult && (
+          <div className={`mt-4 border p-3 text-sm ${sgResult.ok ? "border-emerald-300 bg-emerald-50/60" : "border-rose-300 bg-rose-50/60"}`}>
+            <div className="flex items-start gap-2">
+              {sgResult.ok
+                ? <CheckCircle2 size={15} className="mt-0.5 text-emerald-700 flex-shrink-0" />
+                : <AlertTriangle size={15} className="mt-0.5 text-rose-700 flex-shrink-0" />}
+              <div className={`${sgResult.ok ? "text-emerald-900" : "text-rose-900"}`}>
+                {sgResult.ok
+                  ? <>Email accepté par SendGrid (HTTP {sgResult.status}) · ID : <span className="font-mono">{sgResult.message_id?.slice(0, 14)}…</span></>
+                  : (sgResult.message || sgResult.error || "Échec")}
+              </div>
+            </div>
           </div>
         )}
       </div>
