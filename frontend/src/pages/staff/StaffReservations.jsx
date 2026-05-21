@@ -9,6 +9,7 @@ import {
   Search,
   X,
   Ticket as TicketIcon,
+  Mail,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -328,7 +329,8 @@ function BookingDrawer({ id, onClose }) {
                 on this page for ALL roles. Modifications happen in dedicated
                 pôle modules (Hébergement, Loisirs…) or in Paiements. */}
             <div className="pt-2 border-t border-[#0A0A0A]/10 space-y-3">
-              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-1">Mode consultation</div>
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-1">Actions disponibles</div>
+              <ResendTicketEmailButton bookingId={id} email={b.email} status={b.status} />
               <div className="border border-[#B8922A]/30 bg-[#FAFAF7] p-3 text-[0.78rem] text-[#0A0A0A]/75" data-testid="reservation-readonly-banner">
                 Cette vue est en <strong>lecture seule</strong>. Pour modifier le statut ou gérer un encaissement, utilisez les modules dédiés (Paiements, Hébergement, Loisirs).
               </div>
@@ -498,5 +500,45 @@ export default function StaffReservations() {
 
       <BookingDrawer id={openId} onClose={() => setOpenId(null)} />
     </div>
+  );
+}
+
+
+function ResendTicketEmailButton({ bookingId, email, status }) {
+  const [busy, setBusy] = useState(false);
+  const canSend = !!email && ["paid", "completed", "confirmed"].includes(status);
+  const send = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/staff/bookings/${bookingId}/resend-ticket-email`);
+      if (data?.ok) {
+        toast.success(`Email envoyé à ${email}`);
+      } else {
+        toast.error(data?.message || data?.error || "Échec de l'envoi");
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Envoi impossible");
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!canSend) {
+    return (
+      <div className="text-[0.7rem] text-[#0A0A0A]/45 italic">
+        {!email
+          ? "Aucune adresse email — envoi impossible."
+          : "Le billet ne peut être renvoyé que pour les réservations payées."}
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={send}
+      disabled={busy}
+      className="w-full px-4 py-2.5 bg-[#B8922A] hover:bg-[#9c7c1f] text-white text-xs uppercase tracking-[0.18em] inline-flex items-center justify-center gap-2 disabled:opacity-50"
+      data-testid="resend-ticket-email-btn"
+    >
+      <Mail size={13} /> {busy ? "Envoi…" : `Renvoyer le billet par email à ${email}`}
+    </button>
   );
 }

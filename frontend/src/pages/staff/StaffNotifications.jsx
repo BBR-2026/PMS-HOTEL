@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Send, Bell, RefreshCw, MessageSquare, MessageCircle, Phone, AlertTriangle } from "lucide-react";
+import { Send, Bell, RefreshCw, MessageSquare, MessageCircle, Phone, AlertTriangle, Mail } from "lucide-react";
 import { toast } from "sonner";
 import api from "../../lib/api";
 
@@ -7,14 +7,19 @@ const STATUS_COLOR = {
   queued: "bg-amber-50 text-amber-800 border-amber-300",
   sending: "bg-amber-50 text-amber-800 border-amber-300",
   sent: "bg-sky-50 text-sky-800 border-sky-300",
+  accepted: "bg-sky-50 text-sky-800 border-sky-300",
   delivered: "bg-emerald-50 text-emerald-800 border-emerald-300",
   read: "bg-emerald-50 text-emerald-800 border-emerald-300",
   undelivered: "bg-rose-50 text-rose-800 border-rose-300",
   failed: "bg-rose-50 text-rose-800 border-rose-300",
+  error: "bg-rose-50 text-rose-800 border-rose-300",
+  invalid_email: "bg-rose-50 text-rose-800 border-rose-300",
+  disabled: "bg-stone-50 text-stone-700 border-stone-300",
 };
 
 const PURPOSE_LABEL = {
   booking_paid: "Réservation payée",
+  booking_resend: "Renvoi billet (staff)",
   j_minus_1: "Rappel J-1",
   j_plus_1: "Demande d'avis J+1",
   staff_alert: "Alerte staff",
@@ -23,8 +28,11 @@ const PURPOSE_LABEL = {
 };
 
 export default function StaffNotifications() {
+  const [tab, setTab] = useState("messages"); // messages | emails
   const [items, setItems] = useState([]);
+  const [emails, setEmails] = useState([]);
   const [twilioEnabled, setTwilioEnabled] = useState(false);
+  const [sgEnabled, setSgEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [phone, setPhone] = useState("+2250704600600");
   const [body, setBody] = useState("Bonjour, ceci est un test de notification depuis le Back-office BBR ✨");
@@ -34,9 +42,14 @@ export default function StaffNotifications() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get(`/staff/notifications/outbound?limit=50`);
-      setItems(data.items || []);
-      setTwilioEnabled(data.twilio_enabled);
+      const [msgRes, emailRes] = await Promise.all([
+        api.get(`/staff/notifications/outbound?limit=50`),
+        api.get(`/staff/notifications/emails?limit=50`).catch(() => ({ data: { items: [], sendgrid_enabled: false } })),
+      ]);
+      setItems(msgRes.data.items || []);
+      setTwilioEnabled(msgRes.data.twilio_enabled);
+      setEmails(emailRes.data.items || []);
+      setSgEnabled(emailRes.data.sendgrid_enabled);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erreur de chargement");
     } finally {
@@ -196,20 +209,45 @@ export default function StaffNotifications() {
         </div>
       </div>
 
-      {/* Outbound log */}
+      {/* Outbound log with tabs (Messages WhatsApp/SMS · Emails) */}
       <div className="bg-white border border-[#0A0A0A]/8 p-5">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="font-display-serif text-lg text-[#0A0A0A]">Historique des envois</h2>
           <button onClick={refresh} className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] hover:underline inline-flex items-center gap-1.5">
             <RefreshCw size={11} /> Rafraîchir
           </button>
         </div>
-        {loading ? (
-          <div className="py-10 text-center text-[#0A0A0A]/50 text-sm">Chargement…</div>
-        ) : items.length === 0 ? (
-          <div className="py-10 text-center text-[#0A0A0A]/50 text-sm">Aucun envoi récent.</div>
-        ) : (
-          <div className="overflow-x-auto">
+
+        {/* Tabs */}
+        <div className="flex border-b border-[#0A0A0A]/10 mb-4 -mx-1 overflow-x-auto">
+          <button
+            onClick={() => setTab("messages")}
+            className={`px-4 py-2 text-[0.65rem] uppercase tracking-[0.22em] border-b-2 transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${
+              tab === "messages" ? "border-[#B8922A] text-[#B8922A]" : "border-transparent text-[#0A0A0A]/60 hover:text-[#0A0A0A]"
+            }`}
+            data-testid="notif-tab-messages"
+          >
+            <MessageCircle size={12} /> WhatsApp & SMS ({items.length})
+          </button>
+          <button
+            onClick={() => setTab("emails")}
+            className={`px-4 py-2 text-[0.65rem] uppercase tracking-[0.22em] border-b-2 transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${
+              tab === "emails" ? "border-[#B8922A] text-[#B8922A]" : "border-transparent text-[#0A0A0A]/60 hover:text-[#0A0A0A]"
+            }`}
+            data-testid="notif-tab-emails"
+          >
+            <Mail size={12} /> Emails ({emails.length})
+            {!sgEnabled && <span className="ml-1 text-[0.55rem] text-rose-700 normal-case">(non configuré)</span>}
+          </button>
+        </div>
+
+        {tab === "messages" && (
+          loading ? (
+            <div className="py-10 text-center text-[#0A0A0A]/50 text-sm">Chargement…</div>
+          ) : items.length === 0 ? (
+            <div className="py-10 text-center text-[#0A0A0A]/50 text-sm">Aucun envoi récent.</div>
+          ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[760px]" data-testid="notif-outbound-table">
               <thead>
                 <tr className="text-left text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/10">
@@ -248,6 +286,53 @@ export default function StaffNotifications() {
               </tbody>
             </table>
           </div>
+          )
+        )}
+
+        {tab === "emails" && (
+          loading ? (
+            <div className="py-10 text-center text-[#0A0A0A]/50 text-sm">Chargement…</div>
+          ) : !sgEnabled ? (
+            <div className="py-10 text-center text-[#0A0A0A]/55 text-sm">
+              SendGrid n'est pas configuré sur cette instance.
+              <div className="text-[0.7rem] text-[#0A0A0A]/45 mt-1">Vérifiez SENDGRID_API_KEY et SENDGRID_FROM_EMAIL.</div>
+            </div>
+          ) : emails.length === 0 ? (
+            <div className="py-10 text-center text-[#0A0A0A]/50 text-sm">Aucun email envoyé pour l'instant.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[760px]" data-testid="notif-emails-table">
+                <thead>
+                  <tr className="text-left text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/10">
+                    <th className="py-2 px-3">Date</th>
+                    <th className="py-2 px-3">Statut</th>
+                    <th className="py-2 px-3">Type</th>
+                    <th className="py-2 px-3">Destinataire</th>
+                    <th className="py-2 px-3">Sujet</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emails.map((it, idx) => (
+                    <tr key={it.message_id || `${it.created_at}-${idx}`} className="border-b border-[#0A0A0A]/5">
+                      <td className="py-2 px-3 text-[0.72rem] text-[#0A0A0A]/65 tabular-nums">
+                        {(it.created_at || "").slice(0, 16).replace("T", " ")}
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className={`inline-block px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.14em] border ${STATUS_COLOR[it.status] || "border-[#0A0A0A]/15"}`}>
+                          {it.status}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-[0.72rem] text-[#0A0A0A]/75">{PURPOSE_LABEL[it.purpose] || it.purpose}</td>
+                      <td className="py-2 px-3 text-[0.72rem] text-[#0A0A0A]/65">{it.to}</td>
+                      <td className="py-2 px-3 text-[0.72rem] text-[#0A0A0A]/55 max-w-md truncate" title={it.subject}>
+                        {it.subject}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
       </div>
     </div>

@@ -7333,6 +7333,62 @@ async def list_outbound_notifications(limit: int = 50, staff=Depends(get_current
     return {"items": items, "count": len(items), "twilio_enabled": twilio_service.TWILIO_ENABLED}
 
 
+@api.get("/staff/notifications/emails")
+async def list_email_notifications(limit: int = 50, purpose: Optional[str] = None,
+                                   staff=Depends(get_current_staff)):
+    """Last N SendGrid email sends with delivery status."""
+    await _require_role(staff, ["manager", "admin"])
+    q = {}
+    if purpose:
+        q["purpose"] = purpose
+    items = await db.email_messages.find(q, {"_id": 0}).sort("created_at", -1).limit(min(200, max(1, limit))).to_list(length=200)
+    return {"items": items, "count": len(items), "sendgrid_enabled": email_service.SENDGRID_ENABLED}
+
+
+@api.post("/staff/bookings/{booking_id}/resend-ticket-email")
+async def resend_ticket_email(booking_id: str, staff=Depends(get_current_staff)):
+    """Resend the booking confirmation email (with QR PNG attached) — staff action."""
+    await _require_role(staff, ["manager", "admin", "hotesse", "receptionist"])
+    if not email_service.SENDGRID_ENABLED:
+        raise HTTPException(status_code=503, detail="SendGrid non configuré.")
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Réservation introuvable.")
+    if not booking.get("email"):
+        raise HTTPException(status_code=400, detail="Aucune adresse email sur cette réservation.")
+    # Build the email payload using shared helpers (do not skip on idempotency
+    # check — staff explicitly clicked "resend").
+    name = (booking.get("name") or "").strip() or "Cher client"
+    ref = (booking.get("id", "") or "")[:8].upper()
+    offer_label = _offer_label_fr(booking.get("offer_type", ""))
+    date_str = _fmt_date_fr(booking.get("date", ""))
+    amount_label = _fmt_xof(booking.get("total_amount", 0))
+    ticket_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking.get('reference_token', '')}"
+    tpl = email_service.render_booking_confirmation(
+        name=name, ref=ref, offer_label=offer_label, date_str=date_str,
+        boat_time=booking.get("boat_time"), amount_label=amount_label,
+        ticket_url=ticket_url,
+    )
+    attachments = []
+    try:
+        png_bytes = await _build_ticket_png(booking)
+        if png_bytes:
+            attachments.append({
+                "content": png_bytes,
+                "filename": f"BBR-billet-{ref}.png",
+                "mime": "image/png",
+                "disposition": "attachment",
+            })
+    except Exception:
+        pass
+    return await email_service.send_email(
+        db, to_email=booking["email"], to_name=name,
+        subject=tpl["subject"], html=tpl["html"], plain=tpl["plain"],
+        purpose="booking_resend", booking_id=booking_id,
+        attachments=attachments,
+    )
+
+
 class StaffAlertBody(BaseModel):
     phone: str
     title: str
