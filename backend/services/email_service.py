@@ -40,7 +40,8 @@ SENDGRID_ENABLED = bool(SENDGRID_API_KEY and SENDGRID_FROM_EMAIL)
 # Brand colors (matches the template artwork)
 DARK = "#2A1A0E"        # dark espresso brown (footer + buttons)
 GOLD = "#B8922A"
-CREAM = "#F8EFE7"        # warm cream (background + content panels)
+CREAM = "#F8EFE7"        # warm cream (content panels only)
+WHITE = "#FFFFFF"        # outer background — pure white
 PAGE_BG = "#E6E1DC"      # light grey/beige for hero placeholders
 TEXT = "#2A1A0E"
 TEXT_MUTED = "#6B5B4F"
@@ -60,6 +61,22 @@ BBR_INSTAGRAM_URL = "https://instagram.com/boulaybeachresort"
 BBR_WEBSITE_LABEL = "boulaybeachresort.com"
 BBR_WEBSITE_URL = "https://workflow-boulaybeachresort.com"
 BBR_BOOKLET_URL = f"{PUBLIC_BASE_URL}/livret-bbr.pdf"
+
+
+def _boat_icon_b64() -> str:
+    """Return base64-encoded boat PNG (inlined in emails so it doesn't depend
+    on the production deployment being live). Falls back to an empty string
+    if the file is missing."""
+    import base64 as _b64
+    path = "/app/frontend/public/email-assets/boat.png"
+    try:
+        with open(path, "rb") as f:
+            return _b64.b64encode(f.read()).decode("ascii")
+    except Exception:
+        return ""
+
+
+_BOAT_DATA_URI = "data:image/png;base64," + _boat_icon_b64() if _boat_icon_b64() else ""
 BBR_LOGO_URL = (
     "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/"
     "6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
@@ -123,23 +140,29 @@ def _render_template(
 ) -> str:
     """Render the master luxury template matching the BBr mailing artwork.
 
-    All inline styles are kept email-client safe (table-based layout, no flexbox).
+    All inline styles are kept email-client safe (table-based layout, no flexbox,
+    no SVG — Outlook strips SVG). Line breaks rely on ``<br>`` because Outlook
+    ignores ``white-space:pre-line``.
     """
+    # Convert any "\n" inside a paragraph into <br> so multi-line blocks
+    # (e.g. "Référence : X\nDate : Y") actually break in Outlook.
     paragraphs_html = "".join(
-        f'<p style="margin:0 0 18px;font-family:Georgia,\'Playfair Display\',serif;'
-        f'font-size:16px;line-height:1.55;color:{TEXT};text-align:center;'
-        f'white-space:pre-line;">{p}</p>' for p in paragraphs if p
+        '<p style="margin:0 0 20px;font-family:Georgia,\'Playfair Display\',serif;'
+        f'font-size:16px;line-height:1.6;color:{TEXT};text-align:center;">'
+        + p.replace("\n", "<br/>")
+        + "</p>"
+        for p in paragraphs if p
     )
 
     inline_cta = ""
     if cta_label and cta_url:
         inline_cta = f"""
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:18px auto 8px;">
-          <tr><td style="background:{DARK};">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:24px auto 8px;border-collapse:collapse;">
+          <tr><td align="center" bgcolor="{DARK}" style="background:{DARK};padding:0;">
             <a href="{cta_url}" target="_blank"
-               style="display:inline-block;padding:14px 56px;color:{CREAM};
+               style="display:inline-block;padding:16px 72px;color:{CREAM};
                font-family:Georgia,'Playfair Display',serif;font-size:18px;
-               text-decoration:none;letter-spacing:0.02em;">{cta_label}</a>
+               text-decoration:none;letter-spacing:0.02em;mso-padding-alt:16px 72px;">{cta_label}</a>
           </td></tr>
         </table>"""
 
@@ -147,27 +170,17 @@ def _render_template(
     if cta_label and cta_url:
         footer_cta_bar = f"""
         <tr>
-          <td style="background:{DARK};padding:22px 28px 24px;text-align:center;">
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
-              <tr><td style="background:{CREAM};">
+          <td bgcolor="{DARK}" style="background:{DARK};padding:26px 28px 28px;text-align:center;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:collapse;">
+              <tr><td align="center" bgcolor="{CREAM}" style="background:{CREAM};">
                 <a href="{cta_url}" target="_blank"
-                   style="display:inline-block;padding:12px 64px;color:{DARK};
+                   style="display:inline-block;padding:14px 80px;color:{DARK};
                    font-family:Georgia,'Playfair Display',serif;font-size:18px;
-                   text-decoration:none;">{cta_label}</a>
+                   text-decoration:none;mso-padding-alt:14px 80px;">{cta_label}</a>
               </td></tr>
             </table>
           </td>
         </tr>"""
-
-    # Inline SVG boat icon (cream stroke on dark background)
-    boat_svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="56" height="32" '
-        'viewBox="0 0 64 36" fill="none" style="display:block;">'
-        f'<path d="M4 26 L60 26 L52 32 L12 32 Z" fill="{CREAM}" opacity="0.95"/>'
-        f'<path d="M14 26 L14 14 L34 14 L34 26" stroke="{CREAM}" stroke-width="1.5" fill="none"/>'
-        f'<path d="M34 26 L34 10 L50 22" stroke="{CREAM}" stroke-width="1.5" fill="none"/>'
-        '</svg>'
-    )
 
     return f"""\
 <!doctype html>
@@ -177,17 +190,17 @@ def _render_template(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Boulay Beach Resort</title>
 </head>
-<body style="margin:0;padding:0;background:{CREAM};font-family:Helvetica,Arial,sans-serif;color:{TEXT};">
+<body style="margin:0;padding:0;background:{WHITE};font-family:Helvetica,Arial,sans-serif;color:{TEXT};">
   <span style="display:none!important;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{preheader}</span>
 
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:{CREAM};">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="{WHITE}" style="background:{WHITE};">
     <tr>
-      <td align="center" style="padding:0;">
-        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" style="background:{CREAM};max-width:640px;width:100%;">
+      <td align="center" style="padding:0;background:{WHITE};">
+        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" bgcolor="{WHITE}" style="background:{WHITE};max-width:640px;width:100%;">
 
-          <!-- ===== Top: BBr logo on cream ===== -->
+          <!-- ===== Top: BBr logo on white ===== -->
           <tr>
-            <td style="background:{CREAM};padding:28px 28px 24px;text-align:center;">
+            <td bgcolor="{WHITE}" style="background:{WHITE};padding:32px 28px 24px;text-align:center;">
               <img src="{BBR_LOGO_URL}" alt="Boulay Beach Resort"
                    width="120" style="display:inline-block;height:auto;border:0;outline:none;text-decoration:none;" />
             </td>
@@ -195,15 +208,15 @@ def _render_template(
 
           <!-- ===== Hero image #1 ===== -->
           <tr>
-            <td style="background:{PAGE_BG};padding:0;line-height:0;">
+            <td bgcolor="{PAGE_BG}" style="background:{PAGE_BG};padding:0;line-height:0;font-size:0;">
               <img src="{hero_image}" alt="" width="640"
                    style="display:block;width:100%;height:auto;max-height:380px;object-fit:cover;border:0;" />
             </td>
           </tr>
 
-          <!-- ===== Content panel ===== -->
+          <!-- ===== Content panel (cream) ===== -->
           <tr>
-            <td style="background:{CREAM};padding:46px 48px 40px;text-align:center;">
+            <td bgcolor="{CREAM}" style="background:{CREAM};padding:46px 48px 40px;text-align:center;">
               <h1 style="margin:0 0 26px;font-family:Georgia,'Playfair Display',serif;
                   font-size:32px;line-height:1.18;color:{DARK};font-weight:700;
                   letter-spacing:-0.005em;">
@@ -214,42 +227,43 @@ def _render_template(
             </td>
           </tr>
 
-          <!-- ===== Hero image #2 (same as #1) ===== -->
+          <!-- ===== Hero image #2 ===== -->
           <tr>
-            <td style="background:{PAGE_BG};padding:0;line-height:0;">
+            <td bgcolor="{PAGE_BG}" style="background:{PAGE_BG};padding:0;line-height:0;font-size:0;">
               <img src="{hero_image}" alt="" width="640"
                    style="display:block;width:100%;height:auto;max-height:340px;object-fit:cover;border:0;" />
             </td>
           </tr>
 
-          <!-- ===== Dark CTA bar (Réserver / Voir mon billet) ===== -->
+          <!-- ===== Dark CTA bar ===== -->
           {footer_cta_bar}
 
-          <!-- ===== Footer dark ===== -->
+          <!-- ===== Footer ===== -->
           <tr>
-            <td style="background:{DARK};padding:30px 32px 32px;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;">
+            <td bgcolor="{DARK}" style="background:{DARK};padding:34px 36px 36px;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <!-- Left column: brand + contacts -->
-                  <td valign="top" style="color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.7;">
-                    <div style="font-weight:700;margin-bottom:6px;letter-spacing:0.02em;">Life Is Here</div>
-                    <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;display:block;">{BBR_PHONE_1}</a>
-                    <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;display:block;">{BBR_PHONE_2}</a>
-                    <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;display:block;">{BBR_INSTAGRAM_HANDLE}</a>
-                    <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;display:block;">{BBR_WEBSITE_LABEL}</a>
+                  <td valign="top" width="55%" style="color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13.5px;line-height:1.75;">
+                    <div style="font-weight:700;margin-bottom:8px;letter-spacing:0.02em;font-size:14px;">Life Is Here</div>
+                    <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
+                    <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_2}</a><br/>
+                    <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;">{BBR_INSTAGRAM_HANDLE}</a><br/>
+                    <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;">{BBR_WEBSITE_LABEL}</a>
                   </td>
                   <!-- Right column: livret button + embarquement -->
-                  <td valign="top" align="right" style="text-align:right;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.55;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 12px;">
-                      <tr><td style="background:{CREAM};">
+                  <td valign="top" width="45%" align="right" style="text-align:right;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.55;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 18px;border-collapse:collapse;">
+                      <tr><td align="center" bgcolor="{CREAM}" style="background:{CREAM};">
                         <a href="{BBR_BOOKLET_URL}" target="_blank"
-                           style="display:inline-block;padding:9px 20px;color:{DARK};
+                           style="display:inline-block;padding:10px 22px;color:{DARK};
                            font-family:Helvetica,Arial,sans-serif;font-size:12.5px;font-weight:700;
-                           text-decoration:none;letter-spacing:0.02em;">Télécharger notre livret</a>
+                           text-decoration:none;letter-spacing:0.02em;mso-padding-alt:10px 22px;">Télécharger notre livret</a>
                       </td></tr>
                     </table>
-                    <div style="margin-top:6px;">{boat_svg}</div>
-                    <div style="color:{CREAM};font-size:12.5px;line-height:1.5;margin-top:4px;">
+                    <br/>
+                    <img src="{_BOAT_DATA_URI}" alt="" width="80" style="display:inline-block;height:auto;border:0;margin-bottom:6px;" />
+                    <div style="color:{CREAM};font-size:12.5px;line-height:1.55;margin-top:2px;">
                       Embarquement dès 11H<br/>Départ toutes les heures
                     </div>
                   </td>
