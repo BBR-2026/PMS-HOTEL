@@ -6858,6 +6858,7 @@ async def _send_booking_confirmation_email(booking: dict) -> None:
     tpl = email_service.render_booking_confirmation(
         name=name, ref=ref, offer_label=offer_label, date_str=date_str,
         boat_time=boat, amount_label=amount_label, ticket_url=ticket_url,
+        offer_type=booking.get("offer_type", ""),
     )
 
     # Attach the QR ticket PNG by fetching it from our own endpoint (avoids
@@ -6922,6 +6923,7 @@ async def _run_j_minus_1():
                     offer_label=_offer_label_fr(b.get("offer_type", "")),
                     date_str=_fmt_date_fr(b.get("date", "")),
                     boat_time=b.get("boat_time"),
+                    offer_type=b.get("offer_type", ""),
                 )
                 await email_service.send_email(
                     db, to_email=b["email"], to_name=b.get("name"),
@@ -6953,6 +6955,8 @@ async def _run_j_plus_1():
                 tpl = email_service.render_j_plus_1(
                     name=(b.get("name") or "").strip() or "Cher client",
                     review_url=None,
+                    offer_type=b.get("offer_type", ""),
+                    offer_label=_offer_label_fr(b.get("offer_type", "")),
                 )
                 await email_service.send_email(
                     db, to_email=b["email"], to_name=b.get("name"),
@@ -7621,23 +7625,31 @@ async def admin_fineo_test(staff=Depends(get_current_staff)):
 
 @api.post("/staff/integrations/sendgrid/test")
 async def admin_sendgrid_test(body: dict, staff=Depends(get_current_staff)):
-    """Send a probe email to verify SendGrid configuration (admin only)."""
+    """Send a probe email to verify SendGrid configuration (admin only).
+
+    Renders the full luxury booking-confirmation template so the admin
+    previews exactly what a real client receives (image swap, footer,
+    clickable CTAs, etc.)."""
     await _require_role(staff, ["admin"])
     if not email_service.SENDGRID_ENABLED:
         return {"ok": False, "message": "SendGrid non configuré (SENDGRID_API_KEY / SENDGRID_FROM_EMAIL absents)."}
     to_email = (body.get("to_email") or "").strip()
     if not to_email:
         raise HTTPException(status_code=400, detail="to_email requis")
-    html_body = (
-        "<p>Bonjour,</p><p>Ceci est un test de connectivité depuis le back-office "
-        "Boulay Beach Resort. Si vous recevez ce message, la chaîne SendGrid fonctionne. ✨</p>"
-        "<p style='font-size:12px;color:#888;margin-top:18px;'>Envoyé via SendGrid · "
-        f"{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}</p>"
+    offer_type = (body.get("offer_type") or "pass_day").strip()
+    tpl = email_service.render_booking_confirmation(
+        name=(body.get("name") or "Cher client"),
+        ref="TEST" + datetime.now(timezone.utc).strftime("%H%M%S"),
+        offer_label=_offer_label_fr(offer_type),
+        date_str=_fmt_date_fr(datetime.now(timezone.utc).date().isoformat()),
+        boat_time="10H",
+        amount_label=_fmt_xof(50000),
+        ticket_url=f"{FINEO_PUBLIC_BASE_URL}/",
+        offer_type=offer_type,
     )
     res = await email_service.send_email(
-        db, to_email=to_email, subject="Test BBR ↔ SendGrid",
-        html=email_service._wrap_html(html_body, preheader="Test de configuration"),
-        plain="Test SendGrid BBR — si vous recevez ce message, la configuration fonctionne.",
+        db, to_email=to_email, subject="[TEST] " + tpl["subject"],
+        html=tpl["html"], plain=tpl["plain"],
         purpose="admin_test",
     )
     return res

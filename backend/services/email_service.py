@@ -1,13 +1,17 @@
-"""Boulay Beach Resort — SendGrid email service.
+"""Boulay Beach Resort — SendGrid email service (v2 luxury template).
 
-Mirrors the `twilio_service` shape so that the calling code can dispatch a
-notification to WhatsApp + SMS + Email in a uniform way. Every send is
-logged in MongoDB collection ``email_messages`` so the admin can audit
-deliveries from the back-office, even when the SendGrid event webhook isn't
-configured yet.
+Sends transactional emails matching the new BBr luxury identity:
+- Cream/white top with centered BBr logo
+- Hero image (dynamic per offer)
+- Title + personalized paragraphs (uses customer first name + booking info)
+- Inline CTA button (dark brown)
+- Secondary hero image
+- Dark CTA bar
+- Dark footer: "Life Is Here", clickable phones, Instagram, website,
+  "Télécharger notre livret" button (links to /bbr-presentation.pdf) and
+  "Embarquement dès 11H · Départ toutes les heures" with boat icon.
 
-Templates are rendered with simple ``str.format`` so we don't take a new
-dependency on Jinja2 just for transactional emails.
+Every send is logged in MongoDB collection ``email_messages``.
 """
 from __future__ import annotations
 
@@ -33,9 +37,53 @@ SENDGRID_BCC = os.environ.get("SENDGRID_BCC", "")  # optional internal copy
 
 SENDGRID_ENABLED = bool(SENDGRID_API_KEY and SENDGRID_FROM_EMAIL)
 
+# Brand colors (matches the template artwork)
+DARK = "#2A1A0E"        # dark espresso brown (footer + buttons)
 GOLD = "#B8922A"
-DARK = "#0A0A0A"
-CREAM = "#FAFAF7"
+CREAM = "#F8EFE7"        # warm cream (background + content panels)
+PAGE_BG = "#E6E1DC"      # light grey/beige for hero placeholders
+TEXT = "#2A1A0E"
+TEXT_MUTED = "#6B5B4F"
+
+PUBLIC_BASE_URL = (
+    os.environ.get("FINEO_PUBLIC_BASE_URL")
+    or os.environ.get("PUBLIC_BASE_URL")
+    or "https://workflow-boulaybeachresort.com"
+).rstrip("/")
+
+# BBr official contact information (used in the email footer).
+BBR_PHONE_1 = "+225 07 17 400 400"
+BBR_PHONE_2 = "+225 07 04 600 600"
+BBR_PHONE_1_E164 = "+22507174000400".replace(" ", "")  # actually 10 nat digits + 225
+BBR_INSTAGRAM_HANDLE = "@BoulayBeachResort"
+BBR_INSTAGRAM_URL = "https://instagram.com/boulaybeachresort"
+BBR_WEBSITE_LABEL = "boulaybeachresort.com"
+BBR_WEBSITE_URL = "https://workflow-boulaybeachresort.com"
+BBR_BOOKLET_URL = f"{PUBLIC_BASE_URL}/bbr-presentation.pdf"
+BBR_LOGO_URL = (
+    "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/"
+    "6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
+)
+
+# Hero image per offer (mirrors the public site SUB_OFFER_IMAGES).
+OFFER_HERO_IMAGES = {
+    "pass_day":   "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4kr4z5g1_DAY%20PASS.jpeg",
+    "sunset":     "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/3g3onmkg_THE%20SUNSET.jpeg",
+    "brunch":     "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/1txrnqdp_B%20BRUNCH.jpeg",
+    "le_kaai":    "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/v2f73qqm_KAAI.png",
+    "hebergement":"https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/7bgj0mje_HEBERGEMENT%202.png",
+    "spa_wellness":"https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/rhjncq2g_SPA.png",
+    "lounge":     "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/rg0ibzao_LOUNGE.png",
+    "seminaire":  "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/oy7zzngs_SEMINAIRE.png",
+    "team_building":"https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1600&q=80",
+    "journee_etude":"https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=1600&q=80",
+    "dejeuner_diner_entreprise":"https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=80",
+    "formule_personnalisee":"https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1600&q=80",
+    "offres_loisirs":"https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/66jfvevy_OFFRE%20LOISIRS.png",
+    "special_event":"https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/3g3onmkg_THE%20SUNSET.jpeg",
+}
+DEFAULT_HERO = OFFER_HERO_IMAGES["pass_day"]
+
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -50,10 +98,77 @@ def _is_valid_email(s: Optional[str]) -> bool:
     return bool(s and _EMAIL_RE.match(s.strip()))
 
 
-# ---------- BBR-branded HTML wrapper ----------
+def _first_name(full_name: Optional[str]) -> str:
+    if not full_name:
+        return "cher client"
+    parts = full_name.strip().split()
+    return parts[0] if parts else "cher client"
 
-def _wrap_html(content_html: str, *, preheader: str = "") -> str:
-    """Wrap email content in a luxury BBR-branded HTML envelope."""
+
+def _tel_href(phone_with_spaces: str) -> str:
+    """+225 07 17 400 400 → tel:+22507174000400."""
+    return "tel:" + "".join(c for c in phone_with_spaces if c.isdigit() or c == "+")
+
+
+# ----------- Master template -----------
+
+def _render_template(
+    *,
+    hero_image: str,
+    title: str,
+    paragraphs: List[str],
+    cta_label: Optional[str] = None,
+    cta_url: Optional[str] = None,
+    preheader: str = "",
+) -> str:
+    """Render the master luxury template matching the BBr mailing artwork.
+
+    All inline styles are kept email-client safe (table-based layout, no flexbox).
+    """
+    paragraphs_html = "".join(
+        f'<p style="margin:0 0 18px;font-family:Georgia,\'Playfair Display\',serif;'
+        f'font-size:16px;line-height:1.55;color:{TEXT};text-align:center;'
+        f'white-space:pre-line;">{p}</p>' for p in paragraphs if p
+    )
+
+    inline_cta = ""
+    if cta_label and cta_url:
+        inline_cta = f"""
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:18px auto 8px;">
+          <tr><td style="background:{DARK};">
+            <a href="{cta_url}" target="_blank"
+               style="display:inline-block;padding:14px 56px;color:{CREAM};
+               font-family:Georgia,'Playfair Display',serif;font-size:18px;
+               text-decoration:none;letter-spacing:0.02em;">{cta_label}</a>
+          </td></tr>
+        </table>"""
+
+    footer_cta_bar = ""
+    if cta_label and cta_url:
+        footer_cta_bar = f"""
+        <tr>
+          <td style="background:{DARK};padding:22px 28px 24px;text-align:center;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
+              <tr><td style="background:{CREAM};">
+                <a href="{cta_url}" target="_blank"
+                   style="display:inline-block;padding:12px 64px;color:{DARK};
+                   font-family:Georgia,'Playfair Display',serif;font-size:18px;
+                   text-decoration:none;">{cta_label}</a>
+              </td></tr>
+            </table>
+          </td>
+        </tr>"""
+
+    # Inline SVG boat icon (cream stroke on dark background)
+    boat_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="56" height="32" '
+        'viewBox="0 0 64 36" fill="none" style="display:block;">'
+        f'<path d="M4 26 L60 26 L52 32 L12 32 Z" fill="{CREAM}" opacity="0.95"/>'
+        f'<path d="M14 26 L14 14 L34 14 L34 26" stroke="{CREAM}" stroke-width="1.5" fill="none"/>'
+        f'<path d="M34 26 L34 10 L50 22" stroke="{CREAM}" stroke-width="1.5" fill="none"/>'
+        '</svg>'
+    )
+
     return f"""\
 <!doctype html>
 <html lang="fr">
@@ -62,35 +177,88 @@ def _wrap_html(content_html: str, *, preheader: str = "") -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Boulay Beach Resort</title>
 </head>
-<body style="margin:0;padding:0;background:{CREAM};font-family:'Helvetica Neue',Arial,sans-serif;color:{DARK};">
+<body style="margin:0;padding:0;background:{CREAM};font-family:Helvetica,Arial,sans-serif;color:{TEXT};">
   <span style="display:none!important;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{preheader}</span>
+
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:{CREAM};">
     <tr>
-      <td align="center" style="padding:32px 16px;">
-        <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;max-width:600px;border:1px solid rgba(10,10,10,0.08);">
-          <!-- Header gold bar -->
+      <td align="center" style="padding:0;">
+        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" style="background:{CREAM};max-width:640px;width:100%;">
+
+          <!-- ===== Top: BBr logo on cream ===== -->
           <tr>
-            <td style="background:{DARK};padding:22px 28px;text-align:center;">
-              <div style="font-family:Georgia,'Playfair Display',serif;color:#ffffff;font-size:22px;letter-spacing:0.18em;">BOULAY · BEACH · RESORT</div>
-              <div style="height:2px;width:60px;background:{GOLD};margin:10px auto 0;"></div>
+            <td style="background:{CREAM};padding:28px 28px 24px;text-align:center;">
+              <img src="{BBR_LOGO_URL}" alt="Boulay Beach Resort"
+                   width="120" style="display:inline-block;height:auto;border:0;outline:none;text-decoration:none;" />
             </td>
           </tr>
-          <!-- Content -->
+
+          <!-- ===== Hero image #1 ===== -->
           <tr>
-            <td style="padding:34px 32px 26px;color:{DARK};font-size:15px;line-height:1.6;">
-              {content_html}
+            <td style="background:{PAGE_BG};padding:0;line-height:0;">
+              <img src="{hero_image}" alt="" width="640"
+                   style="display:block;width:100%;height:auto;max-height:380px;object-fit:cover;border:0;" />
             </td>
           </tr>
-          <!-- Footer -->
+
+          <!-- ===== Content panel ===== -->
           <tr>
-            <td style="background:{CREAM};padding:22px 28px;border-top:1px solid rgba(10,10,10,0.08);font-size:11px;color:rgba(10,10,10,0.55);text-align:center;letter-spacing:0.06em;">
-              Boulay Beach Resort · Île de Boulay · Abidjan, Côte d'Ivoire<br/>
-              <a href="https://workflow-boulaybeachresort.com" style="color:{GOLD};text-decoration:none;">workflow-boulaybeachresort.com</a> ·
-              <a href="mailto:reservations@boulaybeachresort.com" style="color:{GOLD};text-decoration:none;">reservations@boulaybeachresort.com</a>
+            <td style="background:{CREAM};padding:46px 48px 40px;text-align:center;">
+              <h1 style="margin:0 0 26px;font-family:Georgia,'Playfair Display',serif;
+                  font-size:32px;line-height:1.18;color:{DARK};font-weight:700;
+                  letter-spacing:-0.005em;">
+                {title}
+              </h1>
+              {paragraphs_html}
+              {inline_cta}
             </td>
           </tr>
+
+          <!-- ===== Hero image #2 (same as #1) ===== -->
+          <tr>
+            <td style="background:{PAGE_BG};padding:0;line-height:0;">
+              <img src="{hero_image}" alt="" width="640"
+                   style="display:block;width:100%;height:auto;max-height:340px;object-fit:cover;border:0;" />
+            </td>
+          </tr>
+
+          <!-- ===== Dark CTA bar (Réserver / Voir mon billet) ===== -->
+          {footer_cta_bar}
+
+          <!-- ===== Footer dark ===== -->
+          <tr>
+            <td style="background:{DARK};padding:30px 32px 32px;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <!-- Left column: brand + contacts -->
+                  <td valign="top" style="color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.7;">
+                    <div style="font-weight:700;margin-bottom:6px;letter-spacing:0.02em;">Life Is Here</div>
+                    <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;display:block;">{BBR_PHONE_1}</a>
+                    <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;display:block;">{BBR_PHONE_2}</a>
+                    <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;display:block;">{BBR_INSTAGRAM_HANDLE}</a>
+                    <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;display:block;">{BBR_WEBSITE_LABEL}</a>
+                  </td>
+                  <!-- Right column: livret button + embarquement -->
+                  <td valign="top" align="right" style="text-align:right;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.55;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 12px;">
+                      <tr><td style="background:{CREAM};">
+                        <a href="{BBR_BOOKLET_URL}" target="_blank"
+                           style="display:inline-block;padding:9px 20px;color:{DARK};
+                           font-family:Helvetica,Arial,sans-serif;font-size:12.5px;font-weight:700;
+                           text-decoration:none;letter-spacing:0.02em;">Télécharger notre livret</a>
+                      </td></tr>
+                    </table>
+                    <div style="margin-top:6px;">{boat_svg}</div>
+                    <div style="color:{CREAM};font-size:12.5px;line-height:1.5;margin-top:4px;">
+                      Embarquement dès 11H<br/>Départ toutes les heures
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
         </table>
-        <div style="font-size:10px;color:rgba(10,10,10,0.4);margin-top:14px;letter-spacing:0.08em;">Document automatique — Ne pas répondre à ce message</div>
       </td>
     </tr>
   </table>
@@ -98,85 +266,142 @@ def _wrap_html(content_html: str, *, preheader: str = "") -> str:
 </html>"""
 
 
+# Backward-compat helper used by /staff/integrations/sendgrid/test
+def _wrap_html(content_html: str, *, preheader: str = "") -> str:
+    """Wrap arbitrary HTML inside the master template (no hero image swap)."""
+    return _render_template(
+        hero_image=DEFAULT_HERO,
+        title="Boulay Beach Resort",
+        paragraphs=[content_html.strip()],
+        preheader=preheader,
+    )
+
+
 # ---------- Templates ----------
 
 def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
                                 date_str: str, boat_time: Optional[str],
-                                amount_label: str, ticket_url: Optional[str]) -> dict:
-    """Confirmation de paiement avec QR (envoyé après webhook FineoPay)."""
-    boat_line = f"<tr><td style='padding:5px 0;color:rgba(10,10,10,0.55);'>Embarquement</td><td style='padding:5px 0;text-align:right;font-weight:600;'>{boat_time}</td></tr>" if boat_time else ""
-    ticket_btn = f'<a href="{ticket_url}" style="display:inline-block;background:{GOLD};color:#ffffff;padding:13px 26px;text-decoration:none;font-size:12px;letter-spacing:0.22em;text-transform:uppercase;">Télécharger mon billet</a>' if ticket_url else ""
-    body = f"""
-      <div style="font-size:11px;letter-spacing:0.28em;color:{GOLD};text-transform:uppercase;margin-bottom:6px;">Réservation confirmée</div>
-      <h1 style="font-family:Georgia,'Playfair Display',serif;font-size:28px;color:{DARK};margin:0 0 14px;line-height:1.2;">Bienvenue, {name}.</h1>
-      <p style="margin:0 0 22px;color:rgba(10,10,10,0.7);">Nous avons bien reçu votre paiement. Votre billet QR est en pièce jointe et également téléchargeable ci-dessous. Présentez-le simplement à l'embarquement.</p>
+                                amount_label: str, ticket_url: Optional[str],
+                                offer_type: str = "") -> dict:
+    """Confirmation de paiement (envoyée après webhook FineoPay)."""
+    first = _first_name(name)
+    hero = OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
 
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid rgba(10,10,10,0.08);padding:18px 20px;margin-bottom:24px;">
-        <tr><td style="padding:5px 0;color:rgba(10,10,10,0.55);font-size:13px;">Référence</td><td style="padding:5px 0;text-align:right;font-weight:600;font-size:13px;font-family:'Courier New',monospace;">{ref}</td></tr>
-        <tr><td style="padding:5px 0;color:rgba(10,10,10,0.55);font-size:13px;">Expérience</td><td style="padding:5px 0;text-align:right;font-weight:600;font-size:13px;">{offer_label}</td></tr>
-        <tr><td style="padding:5px 0;color:rgba(10,10,10,0.55);font-size:13px;">Date</td><td style="padding:5px 0;text-align:right;font-weight:600;font-size:13px;">{date_str}</td></tr>
-        {boat_line}
-        <tr><td style="padding:9px 0 5px;border-top:1px solid rgba(10,10,10,0.08);color:{GOLD};font-size:11px;letter-spacing:0.22em;text-transform:uppercase;">Total réglé</td><td style="padding:9px 0 5px;border-top:1px solid rgba(10,10,10,0.08);text-align:right;font-weight:700;color:{GOLD};font-size:15px;">{amount_label}</td></tr>
-      </table>
+    intro = (
+        f"Bonjour {first}, nous avons le plaisir de vous confirmer votre réservation pour "
+        f"l'expérience {offer_label} au Boulay Beach Resort. Votre billet QR est en pièce jointe "
+        f"et accessible via le bouton ci-dessous."
+    )
+    details = (
+        f"Référence : {ref}\n"
+        f"Date : {date_str}\n"
+        + (f"Embarquement : {boat_time}\n" if boat_time else "")
+        + f"Total réglé : {amount_label}"
+    )
+    closing = (
+        "Présentez simplement votre QR à l'embarquement. Arrivez 30 minutes avant l'horaire de départ. "
+        "Maillot, lunettes et crème solaire sont les bienvenus."
+    )
 
-      <div style="text-align:center;margin:6px 0 16px;">{ticket_btn}</div>
-      <p style="margin:24px 0 0;color:rgba(10,10,10,0.55);font-size:12px;line-height:1.6;">
-        <strong style="color:{DARK};">Bon à savoir :</strong> arrivez 30 minutes avant l'embarquement. Maillot, lunettes et crème solaire sont les bienvenus.
-        À très bientôt sur l'île 🌴
-      </p>
-    """
+    title = "Votre escapade BBr est confirmée"
+    html = _render_template(
+        hero_image=hero,
+        title=title,
+        paragraphs=[intro, details, closing],
+        cta_label="Voir mon billet",
+        cta_url=ticket_url or BBR_WEBSITE_URL,
+        preheader=f"Confirmation de votre réservation {ref}",
+    )
+
     plain = (
-        f"Bienvenue, {name}.\n\n"
-        f"Votre paiement est confirmé.\n"
-        f"Référence : {ref}\nExpérience : {offer_label}\nDate : {date_str}\n"
+        f"Bonjour {first},\n\nVotre réservation est confirmée.\n\n"
+        f"Expérience : {offer_label}\nRéférence : {ref}\nDate : {date_str}\n"
         + (f"Embarquement : {boat_time}\n" if boat_time else "")
         + f"Total réglé : {amount_label}\n\n"
-        + (f"Téléchargez votre billet : {ticket_url}\n\n" if ticket_url else "")
-        + "Présentez votre QR à l'embarquement. À très bientôt sur l'île — Boulay Beach Resort"
+        + (f"Voir mon billet : {ticket_url}\n\n" if ticket_url else "")
+        + "Présentez votre QR à l'embarquement. À très bientôt sur l'île — BBr"
     )
+
     return {
         "subject": f"Votre billet Boulay Beach Resort — {offer_label} · {date_str}",
-        "html": _wrap_html(body, preheader=f"Confirmation de votre réservation {ref}"),
+        "html": html,
         "plain": plain,
     }
 
 
-def render_j_minus_1(*, name: str, ref: str, offer_label: str, date_str: str, boat_time: Optional[str]) -> dict:
-    boat_line = f"<li><strong>Embarquement :</strong> {boat_time}</li>" if boat_time else ""
-    body = f"""
-      <div style="font-size:11px;letter-spacing:0.28em;color:{GOLD};text-transform:uppercase;margin-bottom:6px;">Demain c'est le grand jour</div>
-      <h1 style="font-family:Georgia,'Playfair Display',serif;font-size:26px;color:{DARK};margin:0 0 14px;">Bonjour {name},</h1>
-      <p style="margin:0 0 18px;color:rgba(10,10,10,0.7);">Nous sommes ravis de vous accueillir demain pour votre <strong>{offer_label}</strong> à Boulay Beach Resort.</p>
-      <ul style="color:rgba(10,10,10,0.75);padding-left:20px;line-height:1.8;">
-        <li><strong>Référence :</strong> {ref}</li>
-        <li><strong>Date :</strong> {date_str}</li>
-        {boat_line}
-        <li>Arrivez 30 minutes avant l'embarquement</li>
-        <li>Pensez à votre maillot, lunettes et crème solaire</li>
-      </ul>
-      <p style="margin:22px 0 0;color:rgba(10,10,10,0.55);font-size:12px;">Belle journée demain ✨</p>
-    """
-    plain = f"Bonjour {name},\n\nDemain c'est le grand jour à Boulay Beach Resort.\nRéf. {ref} · {offer_label} · {date_str}\n" + (f"Embarquement : {boat_time}\n" if boat_time else "") + "\nArrivez 30 min avant, maillot et crème solaire conseillés. À demain ✨"
+def render_j_minus_1(*, name: str, ref: str, offer_label: str, date_str: str,
+                     boat_time: Optional[str], offer_type: str = "") -> dict:
+    first = _first_name(name)
+    hero = OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
+
+    intro = (
+        f"Bonjour {first}, demain c'est le grand jour. Nous sommes ravis de vous accueillir "
+        f"pour votre {offer_label} sur l'Île Boulay."
+    )
+    details = (
+        f"Référence : {ref}\n"
+        f"Date : {date_str}\n"
+        + (f"Embarquement : {boat_time}\n" if boat_time else "")
+    )
+    closing = (
+        "Arrivez 30 minutes avant l'embarquement. Pensez à votre maillot, vos lunettes et "
+        "votre crème solaire. À très bientôt sur l'île."
+    )
+
+    html = _render_template(
+        hero_image=hero,
+        title="Demain à Boulay Beach Resort",
+        paragraphs=[intro, details, closing],
+        cta_label="Voir mon billet",
+        cta_url=f"{BBR_WEBSITE_URL}",
+        preheader="Conseils pour profiter pleinement de votre journée",
+    )
+
+    plain = (
+        f"Bonjour {first},\n\nDemain c'est le grand jour à Boulay Beach Resort.\n"
+        f"Réf. {ref} · {offer_label} · {date_str}\n"
+        + (f"Embarquement : {boat_time}\n" if boat_time else "")
+        + "\nArrivez 30 min avant, maillot et crème solaire conseillés. À demain !"
+    )
     return {
         "subject": f"Demain à Boulay Beach Resort — {offer_label}",
-        "html": _wrap_html(body, preheader="Conseils pour profiter pleinement de votre journée"),
+        "html": html,
         "plain": plain,
     }
 
 
-def render_j_plus_1(*, name: str, review_url: Optional[str]) -> dict:
-    review_btn = f'<a href="{review_url}" style="display:inline-block;background:{GOLD};color:#ffffff;padding:13px 30px;text-decoration:none;font-size:12px;letter-spacing:0.22em;text-transform:uppercase;">Donner mon avis</a>' if review_url else ""
-    body = f"""
-      <div style="font-size:11px;letter-spacing:0.28em;color:{GOLD};text-transform:uppercase;margin-bottom:6px;">Merci de votre visite</div>
-      <h1 style="font-family:Georgia,'Playfair Display',serif;font-size:26px;color:{DARK};margin:0 0 14px;">Bonjour {name},</h1>
-      <p style="margin:0 0 22px;color:rgba(10,10,10,0.7);">Merci d'avoir choisi Boulay Beach Resort hier. Nous serions ravis de connaître votre expérience en quelques mots.</p>
-      <div style="text-align:center;margin:18px 0;">{review_btn}</div>
-      <p style="margin:22px 0 0;color:rgba(10,10,10,0.55);font-size:12px;">Au plaisir de vous revoir bientôt sur l'île 🌴</p>
-    """
-    plain = f"Bonjour {name},\n\nMerci d'avoir choisi Boulay Beach Resort hier. Pouvez-vous nous laisser votre avis ?\n" + (f"{review_url}\n\n" if review_url else "") + "Au plaisir de vous revoir 🌴"
+def render_j_plus_1(*, name: str, review_url: Optional[str],
+                    offer_type: str = "", offer_label: str = "") -> dict:
+    first = _first_name(name)
+    hero = OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
+
+    intro = (
+        f"Bonjour {first}, merci d'avoir choisi le Boulay Beach Resort hier"
+        + (f" pour votre {offer_label}." if offer_label else ".")
+    )
+    middle = (
+        "Nous serions ravis de connaître votre expérience en quelques mots. "
+        "Votre retour nourrit notre exigence et inspire nos prochaines créations."
+    )
+    closing = "Au plaisir de vous revoir bientôt sur l'île."
+
+    html = _render_template(
+        hero_image=hero,
+        title="Merci de votre visite",
+        paragraphs=[intro, middle, closing],
+        cta_label="Donner mon avis" if review_url else "Découvrir nos offres",
+        cta_url=review_url or BBR_WEBSITE_URL,
+        preheader="Votre avis nous est précieux",
+    )
+
+    plain = (
+        f"Bonjour {first},\n\nMerci d'avoir choisi le Boulay Beach Resort hier.\n"
+        + (f"Donnez-nous votre avis : {review_url}\n\n" if review_url else "")
+        + "Au plaisir de vous revoir — BBr"
+    )
     return {
         "subject": "Merci pour votre visite à Boulay Beach Resort",
-        "html": _wrap_html(body, preheader="Votre avis nous est précieux"),
+        "html": html,
         "plain": plain,
     }
 
