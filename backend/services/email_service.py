@@ -33,9 +33,13 @@ log = logging.getLogger("bbr.email")
 SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
 SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL", "")
 SENDGRID_FROM_NAME = os.environ.get("SENDGRID_FROM_NAME", "Boulay Beach Resort")
+SENDGRID_REPLY_TO = os.environ.get("SENDGRID_REPLY_TO", "")  # falls back to from
 SENDGRID_BCC = os.environ.get("SENDGRID_BCC", "")  # optional internal copy
-
 SENDGRID_ENABLED = bool(SENDGRID_API_KEY and SENDGRID_FROM_EMAIL)
+
+# Physical sender address (mandatory in CAN-SPAM + GDPR-compliant footers,
+# strongly signals legitimacy to Gmail/Outlook).
+BBR_POSTAL_ADDRESS = "Boulay Beach Resort · Île Boulay, Abidjan · Côte d'Ivoire"
 
 # Brand colors (matches the template artwork)
 DARK = "#2A1A0E"        # dark espresso brown (footer + buttons)
@@ -308,6 +312,21 @@ def _render_template(
             <td bgcolor="{DARK}" height="40" style="background-color:{DARK};height:40px;line-height:0;font-size:0;padding:0;">&nbsp;</td>
           </tr>
 
+          <!-- ===== Legal footer (compliance: physical address + unsubscribe hint) ===== -->
+          <tr>
+            <td bgcolor="{DARK}" align="center" style="background-color:{DARK};text-align:center;padding:0 32px 32px;font-family:{FONT_STACK};">
+              <div style="font-size:11px;line-height:1.6;color:{CREAM};opacity:0.55;letter-spacing:0.02em;">
+                {BBR_POSTAL_ADDRESS}<br/>
+                Vous recevez cet e-mail suite à votre interaction avec Boulay Beach Resort.<br/>
+                <a href="mailto:{SENDGRID_FROM_EMAIL}?subject=DESINSCRIPTION"
+                   style="color:{CREAM};text-decoration:underline;opacity:0.85;">Se désinscrire</a>
+                &nbsp;·&nbsp;
+                <a href="{BBR_WEBSITE_URL}/privacy"
+                   style="color:{CREAM};text-decoration:underline;opacity:0.85;">Confidentialité</a>
+              </div>
+            </td>
+          </tr>
+
         </table>
       </td>
     </tr>
@@ -493,8 +512,36 @@ async def send_email(db, *, to_email: str, subject: str, html: str, plain: str,
         to = To(to_email, to_name) if to_name else To(to_email)
         message = Mail(from_email=from_email, to_emails=to, subject=subject,
                        plain_text_content=plain, html_content=html)
+        # --- Reply-To: lets clients reply directly to the inbox we monitor ---
+        reply_addr = SENDGRID_REPLY_TO or SENDGRID_FROM_EMAIL
+        if _is_valid_email(reply_addr):
+            from sendgrid.helpers.mail import ReplyTo
+            message.reply_to = ReplyTo(reply_addr, SENDGRID_FROM_NAME)
+        # --- Custom headers boost deliverability with Gmail/Yahoo (Feb-2024 spec) ---
+        # List-Unsubscribe + List-Unsubscribe-Post enable 1-click unsubscribe.
+        # Mandatory for senders > 5k emails/day, strongly recommended otherwise.
+        from sendgrid.helpers.mail import Header
+        unsub_mailto = f"<mailto:{reply_addr}?subject=DESINSCRIPTION>"
+        message.add_header(Header("List-Unsubscribe", unsub_mailto))
+        message.add_header(Header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"))
+        # Precedence:bulk hints campaigns; left out for purely transactional mails.
+        if purpose.startswith("campaign:"):
+            message.add_header(Header("Precedence", "bulk"))
+        # --- Disable SendGrid auto-link tracking for transactional emails ---
+        # Wrapped links (sendgrid.net/wf/click?…) lower trust scores at Outlook.
+        if not purpose.startswith("campaign:"):
+            from sendgrid.helpers.mail import (
+                TrackingSettings, ClickTracking, OpenTracking, SubscriptionTracking,
+            )
+            ts = TrackingSettings()
+            ts.click_tracking = ClickTracking(False, False)
+            ts.open_tracking = OpenTracking(False)
+            ts.subscription_tracking = SubscriptionTracking(False)
+            message.tracking_settings = ts
+        # --- BCC internal monitoring copy ---
         if SENDGRID_BCC and _is_valid_email(SENDGRID_BCC):
             message.add_bcc(Bcc(SENDGRID_BCC))
+        # --- Attachments ---
         for att in (attachments or []):
             a = Attachment()
             a.file_content = FileContent(base64.b64encode(att["content"]).decode())
