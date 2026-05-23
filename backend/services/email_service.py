@@ -248,9 +248,9 @@ def _render_template(
 
           <!-- ===== Hero image #1 ===== -->
           <tr>
-            <td bgcolor="{CREAM}" style="background:{CREAM};padding:0;margin:0;line-height:0;font-size:0;mso-line-height-rule:exactly;">
+            <td bgcolor="{CREAM}" style="background:{CREAM};padding:0;margin:0;line-height:0;font-size:0;mso-line-height-rule:exactly;border:0;">
               <img src="{hero_image}" alt="" width="640"
-                   style="display:block;width:100%;height:auto;max-height:380px;object-fit:cover;border:0;outline:none;text-decoration:none;vertical-align:bottom;" />
+                   style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;vertical-align:bottom;margin:0;padding:0;" />
             </td>
           </tr>
 
@@ -269,9 +269,9 @@ def _render_template(
 
           <!-- ===== Hero image #2 ===== -->
           <tr>
-            <td bgcolor="{CREAM}" style="background:{CREAM};padding:0;margin:0;line-height:0;font-size:0;mso-line-height-rule:exactly;">
+            <td bgcolor="{CREAM}" style="background:{CREAM};padding:0;margin:0;line-height:0;font-size:0;mso-line-height-rule:exactly;border:0;">
               <img src="{hero_image}" alt="" width="640"
-                   style="display:block;width:100%;height:auto;max-height:340px;object-fit:cover;border:0;outline:none;text-decoration:none;vertical-align:bottom;" />
+                   style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;vertical-align:bottom;margin:0;padding:0;" />
             </td>
           </tr>
 
