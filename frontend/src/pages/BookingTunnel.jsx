@@ -324,6 +324,14 @@ export default function BookingTunnel() {
             {offerName}
           </h1>
           <div className="gold-divider mt-4 sm:mt-5" />
+          {(lang === "fr" ? offer.tagline_fr : offer.tagline_en) && (
+            <p
+              className="mt-5 sm:mt-6 text-[0.95rem] sm:text-base text-[#0A0A0A]/70 leading-relaxed whitespace-pre-line max-w-2xl"
+              data-testid="offer-description"
+            >
+              {lang === "fr" ? offer.tagline_fr : offer.tagline_en}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 mb-10 sm:mb-14">
