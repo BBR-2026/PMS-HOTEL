@@ -129,6 +129,52 @@ def _tel_href(phone_with_spaces: str) -> str:
 
 # ----------- Master template -----------
 
+def _bulletproof_button(*, label: str, url: str,
+                       bg: str, color: str,
+                       font_family: str = "Georgia,'Playfair Display',serif",
+                       font_size: int = 16,
+                       padding_v: int = 15, padding_h: int = 64,
+                       letter_spacing: str = "0.18em",
+                       uppercase: bool = True) -> str:
+    """Generate a rounded ("pill") CTA button that renders correctly across
+    ALL email clients — including Outlook for Windows which strips
+    ``border-radius``. Uses VML ``<v:roundrect>`` as Outlook fallback and
+    standard CSS for every other client.
+
+    The arcsize="50%" gives a true pill shape.
+    """
+    # Outlook needs absolute height/width estimates in pixels (px).
+    # We approximate based on label length and font size.
+    text = label.upper() if uppercase else label
+    # Padding in px (Outlook uses absolute units, not em/%)
+    h = padding_v * 2 + font_size + 8  # total height incl. text line-height
+    # Rough width: chars * (font_size * 0.65) + horizontal padding * 2
+    w = max(180, int(len(text) * font_size * 0.7) + padding_h * 2)
+    transform_css = "text-transform:uppercase;" if uppercase else ""
+
+    return (
+        f'<!--[if mso]>'
+        f'<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" '
+        f'xmlns:w="urn:schemas-microsoft-com:office:word" '
+        f'href="{url}" '
+        f'style="height:{h}px;v-text-anchor:middle;width:{w}px;" '
+        f'arcsize="50%" stroke="f" fillcolor="{bg}">'
+        f'<w:anchorlock/>'
+        f'<center style="color:{color};font-family:{font_family};'
+        f'font-size:{font_size}px;letter-spacing:1px;">{text}</center>'
+        f'</v:roundrect>'
+        f'<![endif]-->'
+        f'<!--[if !mso]><!-->'
+        f'<a href="{url}" target="_blank" '
+        f'style="display:inline-block;background:{bg};color:{color};'
+        f'font-family:{font_family};font-size:{font_size}px;'
+        f'text-decoration:none;letter-spacing:{letter_spacing};{transform_css}'
+        f'padding:{padding_v}px {padding_h}px;border-radius:999px;'
+        f'mso-padding-alt:{padding_v}px {padding_h}px;">{text}</a>'
+        f'<!--<![endif]-->'
+    )
+
+
 def _render_template(
     *,
     hero_image: str,
@@ -138,14 +184,7 @@ def _render_template(
     cta_url: Optional[str] = None,
     preheader: str = "",
 ) -> str:
-    """Render the master luxury template matching the BBr mailing artwork.
-
-    All inline styles are kept email-client safe (table-based layout, no flexbox,
-    no SVG — Outlook strips SVG). Line breaks rely on ``<br>`` because Outlook
-    ignores ``white-space:pre-line``.
-    """
-    # Convert any "\n" inside a paragraph into <br> so multi-line blocks
-    # (e.g. "Référence : X\nDate : Y") actually break in Outlook.
+    """Render the master luxury template matching the BBr mailing artwork."""
     paragraphs_html = "".join(
         '<p style="margin:0 0 20px;font-family:Georgia,\'Playfair Display\',serif;'
         f'font-size:16px;line-height:1.6;color:{TEXT};text-align:center;">'
@@ -156,33 +195,24 @@ def _render_template(
 
     inline_cta = ""
     if cta_label and cta_url:
-        inline_cta = f"""
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:28px auto 8px;border-collapse:separate;border-radius:999px;">
-          <tr><td align="center" bgcolor="{DARK}" style="background:{DARK};border-radius:999px;">
-            <a href="{cta_url}" target="_blank"
-               style="display:inline-block;padding:15px 64px;color:{CREAM};
-               font-family:Georgia,'Playfair Display',serif;font-size:16px;
-               text-decoration:none;letter-spacing:0.18em;text-transform:uppercase;
-               border-radius:999px;mso-padding-alt:15px 64px;">{cta_label}</a>
-          </td></tr>
-        </table>"""
+        btn = _bulletproof_button(label=cta_label, url=cta_url,
+                                  bg=DARK, color=CREAM, padding_v=15, padding_h=64)
+        inline_cta = (
+            f'<table role="presentation" cellspacing="0" cellpadding="0" border="0" '
+            f'align="center" style="margin:28px auto 8px;">'
+            f'<tr><td align="center" style="text-align:center;">{btn}</td></tr></table>'
+        )
 
     footer_cta_bar = ""
     if cta_label and cta_url:
-        footer_cta_bar = f"""
-        <tr>
-          <td bgcolor="{DARK}" style="background:{DARK};padding:28px 28px 30px;text-align:center;">
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:separate;border-radius:999px;">
-              <tr><td align="center" bgcolor="{CREAM}" style="background:{CREAM};border-radius:999px;">
-                <a href="{cta_url}" target="_blank"
-                   style="display:inline-block;padding:14px 72px;color:{DARK};
-                   font-family:Georgia,'Playfair Display',serif;font-size:16px;
-                   text-decoration:none;letter-spacing:0.18em;text-transform:uppercase;
-                   border-radius:999px;mso-padding-alt:14px 72px;">{cta_label}</a>
-              </td></tr>
-            </table>
-          </td>
-        </tr>"""
+        btn_footer = _bulletproof_button(label=cta_label, url=cta_url,
+                                         bg=CREAM, color=DARK, padding_v=14, padding_h=72)
+        footer_cta_bar = (
+            f'<tr><td bgcolor="{DARK}" style="background:{DARK};padding:28px 28px 30px;text-align:center;">'
+            f'<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;">'
+            f'<tr><td align="center" style="text-align:center;">{btn_footer}</td></tr></table>'
+            f'</td></tr>'
+        )
 
     return f"""\
 <!doctype html>
@@ -255,13 +285,13 @@ def _render_template(
                   </td>
                   <!-- Right column: livret button + embarquement -->
                   <td valign="top" width="45%" align="right" style="text-align:right;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.55;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 18px;border-collapse:separate;border-radius:999px;">
-                      <tr><td align="center" bgcolor="{CREAM}" style="background:{CREAM};border-radius:999px;">
-                        <a href="{BBR_BOOKLET_URL}" target="_blank"
-                           style="display:inline-block;padding:11px 24px;color:{DARK};
-                           font-family:Helvetica,Arial,sans-serif;font-size:12.5px;font-weight:700;
-                           text-decoration:none;letter-spacing:0.05em;border-radius:999px;
-                           mso-padding-alt:11px 24px;">Télécharger notre livret</a>
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 18px;">
+                      <tr><td align="right" style="text-align:right;">
+                        {_bulletproof_button(label="Télécharger notre livret", url=BBR_BOOKLET_URL,
+                                            bg=CREAM, color=DARK,
+                                            font_family="Helvetica,Arial,sans-serif",
+                                            font_size=12, padding_v=11, padding_h=22,
+                                            letter_spacing="0.05em", uppercase=False)}
                       </td></tr>
                     </table>
                     <br/>
