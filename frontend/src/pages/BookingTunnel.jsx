@@ -298,13 +298,25 @@ export default function BookingTunnel() {
   const setC = (k) => (e) => setContact({ ...contact, [k]: e.target.value });
 
   return (
-    <div data-testid="booking-tunnel" className="min-h-screen bg-white text-[#0A0A0A] pt-24 sm:pt-28 md:pt-32 pb-24 px-4 sm:px-6 md:px-12">
+    <div data-testid="booking-tunnel" className="min-h-screen bg-white text-[#0A0A0A] pt-32 sm:pt-36 md:pt-44 pb-24 px-4 sm:px-6 md:px-12">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8 sm:mb-12">
-          <Link to="/" className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors inline-flex items-center gap-2 mb-5 sm:mb-6">
+          <button
+            onClick={() => {
+              // If we have history within the app, go back to the previous page
+              // (e.g. the pole page). Otherwise fall back to home.
+              if (location.key && location.key !== "default") {
+                navigate(-1);
+              } else {
+                navigate("/");
+              }
+            }}
+            className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors inline-flex items-center gap-2 mb-5 sm:mb-6"
+            data-testid="back-link"
+          >
             <ArrowLeft size={14} />
             {t.booking.back}
-          </Link>
+          </button>
           <div className="text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.28em] sm:tracking-[0.4em] text-[#B8922A] mb-2 sm:mb-3">
             {offer.schedule_fr && lang === "fr" ? offer.schedule_fr : offer.schedule_en}
           </div>
