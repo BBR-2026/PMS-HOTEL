@@ -295,8 +295,7 @@ def _render_template(
                       </td></tr>
                     </table>
                     <br/>
-                    <img src="{_BOAT_DATA_URI}" alt="" width="80" style="display:inline-block;height:auto;border:0;margin-bottom:6px;" />
-                    <div style="color:{CREAM};font-size:12.5px;line-height:1.55;margin-top:2px;">
+                    <div style="color:{CREAM};font-size:12.5px;line-height:1.55;margin-top:8px;">
                       Embarquement dès 11H<br/>Départ toutes les heures
                     </div>
                   </td>
