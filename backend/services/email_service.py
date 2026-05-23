@@ -157,12 +157,13 @@ def _render_template(
     inline_cta = ""
     if cta_label and cta_url:
         inline_cta = f"""
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:24px auto 8px;border-collapse:collapse;">
-          <tr><td align="center" bgcolor="{DARK}" style="background:{DARK};padding:0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:28px auto 8px;border-collapse:separate;border-radius:999px;">
+          <tr><td align="center" bgcolor="{DARK}" style="background:{DARK};border-radius:999px;">
             <a href="{cta_url}" target="_blank"
-               style="display:inline-block;padding:16px 72px;color:{CREAM};
-               font-family:Georgia,'Playfair Display',serif;font-size:18px;
-               text-decoration:none;letter-spacing:0.02em;mso-padding-alt:16px 72px;">{cta_label}</a>
+               style="display:inline-block;padding:15px 64px;color:{CREAM};
+               font-family:Georgia,'Playfair Display',serif;font-size:16px;
+               text-decoration:none;letter-spacing:0.18em;text-transform:uppercase;
+               border-radius:999px;mso-padding-alt:15px 64px;">{cta_label}</a>
           </td></tr>
         </table>"""
 
@@ -170,13 +171,14 @@ def _render_template(
     if cta_label and cta_url:
         footer_cta_bar = f"""
         <tr>
-          <td bgcolor="{DARK}" style="background:{DARK};padding:26px 28px 28px;text-align:center;">
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:collapse;">
-              <tr><td align="center" bgcolor="{CREAM}" style="background:{CREAM};">
+          <td bgcolor="{DARK}" style="background:{DARK};padding:28px 28px 30px;text-align:center;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:separate;border-radius:999px;">
+              <tr><td align="center" bgcolor="{CREAM}" style="background:{CREAM};border-radius:999px;">
                 <a href="{cta_url}" target="_blank"
-                   style="display:inline-block;padding:14px 80px;color:{DARK};
-                   font-family:Georgia,'Playfair Display',serif;font-size:18px;
-                   text-decoration:none;mso-padding-alt:14px 80px;">{cta_label}</a>
+                   style="display:inline-block;padding:14px 72px;color:{DARK};
+                   font-family:Georgia,'Playfair Display',serif;font-size:16px;
+                   text-decoration:none;letter-spacing:0.18em;text-transform:uppercase;
+                   border-radius:999px;mso-padding-alt:14px 72px;">{cta_label}</a>
               </td></tr>
             </table>
           </td>
@@ -245,7 +247,7 @@ def _render_template(
                 <tr>
                   <!-- Left column: brand + contacts -->
                   <td valign="top" width="55%" style="color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13.5px;line-height:1.75;">
-                    <div style="font-weight:700;margin-bottom:8px;letter-spacing:0.02em;font-size:14px;">Life Is Here</div>
+                    <div style="font-weight:700;margin-bottom:2px;letter-spacing:0.02em;font-size:14px;">Life Is Here</div>
                     <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
                     <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_2}</a><br/>
                     <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;">{BBR_INSTAGRAM_HANDLE}</a><br/>
@@ -253,12 +255,13 @@ def _render_template(
                   </td>
                   <!-- Right column: livret button + embarquement -->
                   <td valign="top" width="45%" align="right" style="text-align:right;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.55;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 18px;border-collapse:collapse;">
-                      <tr><td align="center" bgcolor="{CREAM}" style="background:{CREAM};">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 18px;border-collapse:separate;border-radius:999px;">
+                      <tr><td align="center" bgcolor="{CREAM}" style="background:{CREAM};border-radius:999px;">
                         <a href="{BBR_BOOKLET_URL}" target="_blank"
-                           style="display:inline-block;padding:10px 22px;color:{DARK};
+                           style="display:inline-block;padding:11px 24px;color:{DARK};
                            font-family:Helvetica,Arial,sans-serif;font-size:12.5px;font-weight:700;
-                           text-decoration:none;letter-spacing:0.02em;mso-padding-alt:10px 22px;">Télécharger notre livret</a>
+                           text-decoration:none;letter-spacing:0.05em;border-radius:999px;
+                           mso-padding-alt:11px 24px;">Télécharger notre livret</a>
                       </td></tr>
                     </table>
                     <br/>

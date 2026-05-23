@@ -29,6 +29,7 @@ load_dotenv(ROOT_DIR / ".env")
 # Imported after load_dotenv so env vars are populated when the module reads them.
 from services import twilio_service  # noqa: E402
 from services import email_service  # noqa: E402
+from services import campaign_service  # noqa: E402
 
 # ----- Config -----
 MONGO_URL = os.environ["MONGO_URL"]
@@ -6973,8 +6974,13 @@ async def start_scheduler():
     scheduler.add_job(_run_j_minus_1, "cron", hour=17, minute=0, id="j_minus_1", replace_existing=True)
     # J+1 review request every day at 10:00 UTC (≈11h Abidjan)
     scheduler.add_job(_run_j_plus_1, "cron", hour=10, minute=0, id="j_plus_1", replace_existing=True)
+    # Campaign dispatcher — every minute
+    scheduler.add_job(
+        lambda: campaign_service.run_due_campaigns(db),
+        "interval", minutes=1, id="campaigns_runner", replace_existing=True,
+    )
     scheduler.start()
-    logging.info("APScheduler started: J-1 @17:00 UTC, J+1 @10:00 UTC")
+    logging.info("APScheduler started: J-1 @17:00 UTC, J+1 @10:00 UTC, campaigns_runner @1min")
 
 
 @app.on_event("shutdown")
@@ -7653,6 +7659,145 @@ async def admin_sendgrid_test(body: dict, staff=Depends(get_current_staff)):
         purpose="admin_test",
     )
     return res
+
+
+# =================================================================
+# EMAIL CAMPAIGNS — Import CSV/XLSX + schedule bulk send
+# =================================================================
+from fastapi import UploadFile, File  # noqa: E402
+
+
+@api.post("/staff/campaigns/parse-list")
+async def staff_campaigns_parse_list(file: UploadFile = File(...),
+                                     staff=Depends(get_current_staff)):
+    """Parse an uploaded CSV/XLSX file and return the list of detected
+    recipients. Does not store anything."""
+    await _require_role(staff, ["admin", "manager"])
+    content = await file.read()
+    if len(content) > 4 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 4 Mo).")
+    name = (file.filename or "").lower()
+    try:
+        if name.endswith(".xlsx"):
+            recipients = campaign_service.parse_recipients_xlsx(content)
+        else:
+            recipients = campaign_service.parse_recipients_csv(content)
+    except Exception as ex:  # noqa: BLE001
+        logging.exception("Failed to parse campaign list")
+        raise HTTPException(status_code=400, detail=f"Format de fichier non reconnu : {ex}")
+    return {
+        "filename": file.filename,
+        "total": len(recipients),
+        "recipients": recipients[:500],  # cap UI preview
+        "truncated": len(recipients) > 500,
+    }
+
+
+class CampaignCreateBody(BaseModel):
+    name: Optional[str] = None
+    subject: str
+    title: Optional[str] = None
+    body: str
+    offer_type: Optional[str] = "pass_day"
+    cta_label: Optional[str] = None
+    cta_url: Optional[str] = None
+    recipients: List[dict]  # [{email, name?}]
+    scheduled_at: Optional[str] = None  # ISO UTC; if None → draft (manual send)
+
+
+@api.post("/staff/campaigns")
+async def staff_campaigns_create(body: CampaignCreateBody,
+                                 staff=Depends(get_current_staff)):
+    """Create a campaign. ``scheduled_at`` ISO UTC string. Without it, the
+    campaign stays as ``draft`` until the admin clicks ``send-now``."""
+    await _require_role(staff, ["admin", "manager"])
+    # Sanitize recipients
+    cleaned: list[dict] = []
+    seen: set = set()
+    for r in body.recipients:
+        e = (r.get("email") or "").lower().strip()
+        if "@" not in e or e in seen:
+            continue
+        seen.add(e)
+        cleaned.append({"email": e, "name": (r.get("name") or "").strip() or None})
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Aucune adresse e-mail valide.")
+    doc = campaign_service.new_campaign_doc(
+        payload=body.model_dump(),
+        recipients=cleaned,
+        created_by=staff.get("email") or staff.get("id") or "admin",
+    )
+    await db.email_campaigns.insert_one(doc)
+    return {"ok": True, "id": doc["id"], "total": len(cleaned), "status": doc["status"]}
+
+
+@api.get("/staff/campaigns")
+async def staff_campaigns_list(staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin", "manager"])
+    cursor = db.email_campaigns.find({}, {"_id": 0}).sort("created_at", -1).limit(100)
+    items = await cursor.to_list(length=100)
+    # Strip the heavy recipients list from the index response
+    for it in items:
+        it.pop("recipients", None)
+        it.pop("sent_emails", None)
+    return {"items": items}
+
+
+@api.get("/staff/campaigns/{campaign_id}")
+async def staff_campaigns_get(campaign_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin", "manager"])
+    c = await db.email_campaigns.find_one({"id": campaign_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Campagne introuvable.")
+    return c
+
+
+@api.post("/staff/campaigns/{campaign_id}/send-now")
+async def staff_campaigns_send_now(campaign_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    if not email_service.SENDGRID_ENABLED:
+        raise HTTPException(status_code=503, detail="SendGrid non configuré.")
+    # Trigger in the background so the request returns immediately.
+    import asyncio
+    asyncio.create_task(campaign_service.send_campaign_now(db, campaign_id))
+    return {"ok": True, "status": "dispatching"}
+
+
+@api.post("/staff/campaigns/{campaign_id}/cancel")
+async def staff_campaigns_cancel(campaign_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    res = await db.email_campaigns.update_one(
+        {"id": campaign_id, "status": {"$in": ["scheduled", "draft"]}},
+        {"$set": {"status": "cancelled"}},
+    )
+    if res.modified_count == 0:
+        raise HTTPException(status_code=409, detail="Impossible d'annuler cette campagne.")
+    return {"ok": True}
+
+
+@api.delete("/staff/campaigns/{campaign_id}")
+async def staff_campaigns_delete(campaign_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    res = await db.email_campaigns.delete_one({"id": campaign_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Campagne introuvable.")
+    return {"ok": True}
+
+
+@api.post("/staff/campaigns/preview")
+async def staff_campaigns_preview(body: CampaignCreateBody,
+                                  staff=Depends(get_current_staff)):
+    """Return the rendered HTML so the admin can preview before scheduling."""
+    await _require_role(staff, ["admin", "manager"])
+    sample_name = (body.recipients[0].get("name") if body.recipients else None) or "Prénom"
+    html, _ = campaign_service._render_campaign_html(
+        title=body.title or body.subject,
+        body=body.body or "",
+        recipient_name=sample_name,
+        cta_label=body.cta_label, cta_url=body.cta_url,
+        offer_type=body.offer_type or "pass_day",
+    )
+    return {"html": html, "sample_recipient": sample_name}
 
 
 app.include_router(api)

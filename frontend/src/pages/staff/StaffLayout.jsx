@@ -22,6 +22,7 @@ import {
   Briefcase,
   CalendarHeart,
   Wallet,
+  Megaphone,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -62,6 +63,7 @@ const NAV = [
   { to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: R_ACT },
   { section: "Administration", roles: R_ADMIN },
   { to: "/staff/notifications", icon: Bell, label: "Notifications SMS/WhatsApp", roles: R_MGMT },
+  { to: "/staff/campaigns", icon: Megaphone, label: "Campagnes e-mail", roles: R_MGMT },
   { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: R_MGMT },
   { to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: R_MGMT },
   { to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },
