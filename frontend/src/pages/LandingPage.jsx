@@ -34,9 +34,6 @@ function PoleCard({ pole, index }) {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A]/55 via-transparent to-transparent" />
           <div className="absolute bottom-5 left-6 right-6">
-            <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#F5E9C7] mb-1.5">
-              Pôle {pole.sort_order}
-            </div>
             <h2 className="font-display-serif text-2xl md:text-3xl text-white tracking-tight leading-tight">
               {pole.name_fr}
             </h2>

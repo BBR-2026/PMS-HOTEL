@@ -152,7 +152,7 @@ export default function PolePage() {
           </Link>
           <div className="max-w-3xl">
             <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">
-              Pôle {pole.sort_order} · BBr
+              BBr
             </div>
             <h1 className="font-display-serif text-4xl md:text-5xl lg:text-6xl text-[#0A0A0A] tracking-tight leading-[1.05] mb-6">
               {pole.name_fr}
