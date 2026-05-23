@@ -209,16 +209,9 @@ def _render_template(
     if cta_label and cta_url:
         btn_footer = _bulletproof_button(label=cta_label, url=cta_url,
                                          bg=CREAM, color=DARK, padding_v=14, padding_h=72)
-        # The dark CTA bar is rendered as a full-width nested table whose
-        # cells all carry bgcolor=DARK. Avoids the Outlook bug where a parent
-        # table's bgcolor bleeds through the padding of a child <td>.
         footer_cta_bar = (
-            f'<tr><td bgcolor="{DARK}" style="background:{DARK};padding:0;margin:0;line-height:0;font-size:0;">'
-            f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="{DARK}" style="background:{DARK};border-collapse:collapse;">'
-            f'<tr><td bgcolor="{DARK}" height="28" style="background:{DARK};line-height:0;font-size:0;height:28px;">&nbsp;</td></tr>'
-            f'<tr><td bgcolor="{DARK}" align="center" style="background:{DARK};text-align:center;">{btn_footer}</td></tr>'
-            f'<tr><td bgcolor="{DARK}" height="30" style="background:{DARK};line-height:0;font-size:0;height:30px;">&nbsp;</td></tr>'
-            f'</table>'
+            f'<tr><td bgcolor="{DARK}" align="center" style="background-color:{DARK};padding:28px 28px 30px;text-align:center;">'
+            f'{btn_footer}'
             f'</td></tr>'
         )
 
@@ -281,34 +274,41 @@ def _render_template(
             </td>
           </tr>
 
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ============================================================
+       DARK BOTTOM WRAPPER (separate table to prevent bg bleed)
+       ============================================================ -->
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="{DARK}" style="background:{DARK};">
+    <tr>
+      <td align="center" style="padding:0;background:{DARK};">
+        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" bgcolor="{DARK}" style="background:{DARK};max-width:640px;width:100%;">
+
           <!-- ===== Dark CTA bar ===== -->
           {footer_cta_bar}
 
           <!-- ===== Footer (centered) ===== -->
           <tr>
-            <td bgcolor="{DARK}" style="background:{DARK};padding:0;margin:0;line-height:0;font-size:0;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="{DARK}" style="background:{DARK};border-collapse:collapse;">
-                <tr><td bgcolor="{DARK}" height="38" style="background:{DARK};line-height:0;font-size:0;height:38px;">&nbsp;</td></tr>
-                <tr><td bgcolor="{DARK}" align="center" style="background:{DARK};text-align:center;color:{CREAM};font-family:{FONT_STACK};">
-                  <div style="font-weight:700;letter-spacing:0.18em;font-size:13px;text-transform:uppercase;color:{CREAM};margin-bottom:14px;">Life Is Here</div>
-                  <div style="line-height:1.85;font-family:{FONT_STACK};font-size:14px;color:{CREAM};">
-                    <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
-                    <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_2}</a><br/>
-                    <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;">{BBR_INSTAGRAM_HANDLE}</a><br/>
-                    <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;">{BBR_WEBSITE_LABEL}</a>
-                  </div>
-                  <div style="margin:24px 0 16px;">
-                    {_bulletproof_button(label="Télécharger notre livret", url=BBR_BOOKLET_URL,
-                                        bg=CREAM, color=DARK,
-                                        font_size=12, padding_v=11, padding_h=26,
-                                        letter_spacing="0.12em", uppercase=True)}
-                  </div>
-                  <div style="color:{CREAM};font-size:12px;line-height:1.6;letter-spacing:0.04em;opacity:0.85;">
-                    Embarquement dès 11H<br/>Départ toutes les heures
-                  </div>
-                </td></tr>
-                <tr><td bgcolor="{DARK}" height="40" style="background:{DARK};line-height:0;font-size:0;height:40px;">&nbsp;</td></tr>
-              </table>
+            <td bgcolor="{DARK}" align="center" style="background-color:{DARK};padding:38px 32px 40px;color:{CREAM};font-family:{FONT_STACK};font-size:13px;text-align:center;">
+              <div style="font-weight:700;letter-spacing:0.18em;font-size:13px;text-transform:uppercase;color:{CREAM};margin-bottom:14px;">Life Is Here</div>
+              <div style="line-height:1.85;font-family:{FONT_STACK};font-size:14px;color:{CREAM};">
+                <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
+                <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_2}</a><br/>
+                <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;">{BBR_INSTAGRAM_HANDLE}</a><br/>
+                <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;">{BBR_WEBSITE_LABEL}</a>
+              </div>
+              <div style="margin:24px 0 16px;">
+                {_bulletproof_button(label="Télécharger notre livret", url=BBR_BOOKLET_URL,
+                                    bg=CREAM, color=DARK,
+                                    font_size=12, padding_v=11, padding_h=26,
+                                    letter_spacing="0.12em", uppercase=True)}
+              </div>
+              <div style="color:{CREAM};font-size:12px;line-height:1.6;letter-spacing:0.04em;opacity:0.85;">
+                Embarquement dès 11H<br/>Départ toutes les heures
+              </div>
             </td>
           </tr>
 
