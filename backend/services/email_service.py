@@ -287,9 +287,9 @@ def _render_template(
           <!-- ===== Dark CTA bar (height-based, no padding-bleed) ===== -->
           {footer_cta_bar}
 
-          <!-- ===== Footer (centered, height-based spacers) ===== -->
+          <!-- ===== Footer (centered, all-in-one dark block) ===== -->
           <tr>
-            <td bgcolor="{DARK}" align="center" style="background-color:{DARK};text-align:center;color:{CREAM};font-family:{FONT_STACK};font-size:13px;padding:0 32px;">
+            <td bgcolor="{DARK}" align="center" style="background-color:{DARK};text-align:center;color:{CREAM};font-family:{FONT_STACK};font-size:13px;padding:38px 32px 40px;">
               <div style="font-weight:700;letter-spacing:0.18em;font-size:13px;text-transform:uppercase;color:{CREAM};margin-bottom:14px;">Life Is Here</div>
               <div style="line-height:1.85;font-family:{FONT_STACK};font-size:14px;color:{CREAM};">
                 <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
@@ -303,19 +303,10 @@ def _render_template(
                                     font_size=12, padding_v=11, padding_h=26,
                                     letter_spacing="0.12em", uppercase=True)}
               </div>
-              <div style="color:{CREAM};font-size:12px;line-height:1.6;letter-spacing:0.04em;opacity:0.85;">
+              <div style="color:{CREAM};font-size:12px;line-height:1.6;letter-spacing:0.04em;opacity:0.85;margin-bottom:28px;">
                 Embarquement dès 11H<br/>Départ toutes les heures
               </div>
-            </td>
-          </tr>
-          <tr>
-            <td bgcolor="{DARK}" height="40" style="background-color:{DARK};height:40px;line-height:0;font-size:0;padding:0;">&nbsp;</td>
-          </tr>
-
-          <!-- ===== Legal footer (compliance: physical address + unsubscribe hint) ===== -->
-          <tr>
-            <td bgcolor="{DARK}" align="center" style="background-color:{DARK};text-align:center;padding:0 32px 32px;font-family:{FONT_STACK};">
-              <div style="font-size:11px;line-height:1.6;color:{CREAM};opacity:0.55;letter-spacing:0.02em;">
+              <div style="font-size:11px;line-height:1.65;color:{CREAM};opacity:0.55;letter-spacing:0.02em;padding-top:18px;border-top:1px solid rgba(248,239,231,0.18);">
                 {BBR_POSTAL_ADDRESS}<br/>
                 Vous recevez cet e-mail suite à votre interaction avec Boulay Beach Resort.<br/>
                 <a href="mailto:{SENDGRID_FROM_EMAIL}?subject=DESINSCRIPTION"
