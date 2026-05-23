@@ -209,8 +209,12 @@ def _render_template(
     if cta_label and cta_url:
         btn_footer = _bulletproof_button(label=cta_label, url=cta_url,
                                          bg=CREAM, color=DARK, padding_v=14, padding_h=72)
+        # height-based spacing (no CSS padding) to prevent Outlook web from
+        # bleeding the parent CREAM bgcolor through padding areas.
         footer_cta_bar = (
-            f'<tr><td bgcolor="{DARK}" align="center" style="background-color:{DARK};padding:28px 28px 30px;text-align:center;">'
+            f'<tr><td bgcolor="{DARK}" align="center" height="90" '
+            f'style="background-color:{DARK};text-align:center;height:90px;'
+            f'padding:0;line-height:0;font-size:0;">'
             f'{btn_footer}'
             f'</td></tr>'
         )
@@ -274,25 +278,12 @@ def _render_template(
             </td>
           </tr>
 
-        </table>
-      </td>
-    </tr>
-  </table>
-
-  <!-- ============================================================
-       DARK BOTTOM WRAPPER (separate table to prevent bg bleed)
-       ============================================================ -->
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="{DARK}" style="background:{DARK};">
-    <tr>
-      <td align="center" style="padding:0;background:{DARK};">
-        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" bgcolor="{DARK}" style="background:{DARK};max-width:640px;width:100%;">
-
-          <!-- ===== Dark CTA bar ===== -->
+          <!-- ===== Dark CTA bar (height-based, no padding-bleed) ===== -->
           {footer_cta_bar}
 
-          <!-- ===== Footer (centered) ===== -->
+          <!-- ===== Footer (centered, height-based spacers) ===== -->
           <tr>
-            <td bgcolor="{DARK}" align="center" style="background-color:{DARK};padding:38px 32px 40px;color:{CREAM};font-family:{FONT_STACK};font-size:13px;text-align:center;">
+            <td bgcolor="{DARK}" align="center" style="background-color:{DARK};text-align:center;color:{CREAM};font-family:{FONT_STACK};font-size:13px;padding:0 32px;">
               <div style="font-weight:700;letter-spacing:0.18em;font-size:13px;text-transform:uppercase;color:{CREAM};margin-bottom:14px;">Life Is Here</div>
               <div style="line-height:1.85;font-family:{FONT_STACK};font-size:14px;color:{CREAM};">
                 <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
@@ -310,6 +301,9 @@ def _render_template(
                 Embarquement dès 11H<br/>Départ toutes les heures
               </div>
             </td>
+          </tr>
+          <tr>
+            <td bgcolor="{DARK}" height="40" style="background-color:{DARK};height:40px;line-height:0;font-size:0;padding:0;">&nbsp;</td>
           </tr>
 
         </table>
