@@ -59,7 +59,7 @@ BBR_INSTAGRAM_HANDLE = "@BoulayBeachResort"
 BBR_INSTAGRAM_URL = "https://instagram.com/boulaybeachresort"
 BBR_WEBSITE_LABEL = "boulaybeachresort.com"
 BBR_WEBSITE_URL = "https://workflow-boulaybeachresort.com"
-BBR_BOOKLET_URL = f"{PUBLIC_BASE_URL}/bbr-presentation.pdf"
+BBR_BOOKLET_URL = f"{PUBLIC_BASE_URL}/livret-bbr.pdf"
 BBR_LOGO_URL = (
     "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/"
     "6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"

@@ -1181,8 +1181,8 @@ function ConfirmationView({ booking, t, lang, navigate }) {
     lines.push("");
     lines.push(
       isFr
-        ? "Livret BBR : https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/opmut9mt_LIVRET_BBR.pdf"
-        : "BBR Booklet: https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/opmut9mt_LIVRET_BBR.pdf"
+        ? `Livret BBR : ${window.location.origin}/livret-bbr.pdf`
+        : `BBR Booklet: ${window.location.origin}/livret-bbr.pdf`
     );
     lines.push("");
     lines.push("— Boulay Beach Resort, Abidjan");
@@ -1357,7 +1357,7 @@ function ConfirmationView({ booking, t, lang, navigate }) {
         </button>
         <div>
           <a
-            href="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/opmut9mt_LIVRET_BBR.pdf"
+            href="/livret-bbr.pdf"
             target="_blank"
             rel="noopener noreferrer"
             download="LIVRET_BBR.pdf"
