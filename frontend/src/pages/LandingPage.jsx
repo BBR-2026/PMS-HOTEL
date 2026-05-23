@@ -87,7 +87,7 @@ export default function LandingPage() {
             <div className="gold-divider mb-6" />
             <p className="text-base text-[#0A0A0A]/60 leading-relaxed">
               Beach club, hébergement, corporate, événements ou table signature.
-              Choisissez votre univers et laissez-vous porter par l'expérience Boulay.
+              Choisissez votre univers et laissez-vous porter par l'expérience Life is here.
             </p>
           </div>
 
