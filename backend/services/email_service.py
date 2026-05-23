@@ -40,11 +40,17 @@ SENDGRID_ENABLED = bool(SENDGRID_API_KEY and SENDGRID_FROM_EMAIL)
 # Brand colors (matches the template artwork)
 DARK = "#2A1A0E"        # dark espresso brown (footer + buttons)
 GOLD = "#B8922A"
-CREAM = "#F8EFE7"        # warm cream (content panels only)
-WHITE = "#FFFFFF"        # outer background — pure white
-PAGE_BG = "#E6E1DC"      # light grey/beige for hero placeholders
+CREAM = "#F8EFE7"        # warm cream — unified outer & content background
+WHITE = "#F8EFE7"        # alias: kept for backward-compat; was white, now cream
+PAGE_BG = "#F8EFE7"      # was light grey; aligned to cream to remove visible gaps
 TEXT = "#2A1A0E"
 TEXT_MUTED = "#6B5B4F"
+
+# Font stack: Optima first (Apple Mail / iOS / macOS), with elegant fallbacks
+# for Outlook / Windows where Optima is unavailable.
+FONT_STACK = ("'Optima','Optima Nova','URW Classico','Segoe UI',"
+              "'Helvetica Neue',Helvetica,Arial,sans-serif")
+FONT_DISPLAY = FONT_STACK
 
 PUBLIC_BASE_URL = (
     os.environ.get("FINEO_PUBLIC_BASE_URL")
@@ -131,7 +137,7 @@ def _tel_href(phone_with_spaces: str) -> str:
 
 def _bulletproof_button(*, label: str, url: str,
                        bg: str, color: str,
-                       font_family: str = "Georgia,'Playfair Display',serif",
+                       font_family: str = None,
                        font_size: int = 16,
                        padding_v: int = 15, padding_h: int = 64,
                        letter_spacing: str = "0.18em",
@@ -140,15 +146,11 @@ def _bulletproof_button(*, label: str, url: str,
     ALL email clients — including Outlook for Windows which strips
     ``border-radius``. Uses VML ``<v:roundrect>`` as Outlook fallback and
     standard CSS for every other client.
-
-    The arcsize="50%" gives a true pill shape.
     """
-    # Outlook needs absolute height/width estimates in pixels (px).
-    # We approximate based on label length and font size.
+    if font_family is None:
+        font_family = FONT_STACK
     text = label.upper() if uppercase else label
-    # Padding in px (Outlook uses absolute units, not em/%)
-    h = padding_v * 2 + font_size + 8  # total height incl. text line-height
-    # Rough width: chars * (font_size * 0.65) + horizontal padding * 2
+    h = padding_v * 2 + font_size + 8
     w = max(180, int(len(text) * font_size * 0.7) + padding_h * 2)
     transform_css = "text-transform:uppercase;" if uppercase else ""
 
@@ -186,7 +188,7 @@ def _render_template(
 ) -> str:
     """Render the master luxury template matching the BBr mailing artwork."""
     paragraphs_html = "".join(
-        '<p style="margin:0 0 20px;font-family:Georgia,\'Playfair Display\',serif;'
+        '<p style="margin:0 0 20px;font-family:' + FONT_STACK + ';'
         f'font-size:16px;line-height:1.6;color:{TEXT};text-align:center;">'
         + p.replace("\n", "<br/>")
         + "</p>"
@@ -221,18 +223,24 @@ def _render_template(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Boulay Beach Resort</title>
+  <style>
+    /* Reset image gaps in all clients */
+    img {{ display:block; outline:none; border:0; text-decoration:none; -ms-interpolation-mode:bicubic; }}
+    table {{ border-collapse:collapse !important; mso-table-lspace:0pt; mso-table-rspace:0pt; }}
+    td {{ mso-line-height-rule:exactly; }}
+  </style>
 </head>
-<body style="margin:0;padding:0;background:{WHITE};font-family:Helvetica,Arial,sans-serif;color:{TEXT};">
+<body style="margin:0;padding:0;background:{CREAM};font-family:{FONT_STACK};color:{TEXT};">
   <span style="display:none!important;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{preheader}</span>
 
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="{WHITE}" style="background:{WHITE};">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="{CREAM}" style="background:{CREAM};">
     <tr>
-      <td align="center" style="padding:0;background:{WHITE};">
-        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" bgcolor="{WHITE}" style="background:{WHITE};max-width:640px;width:100%;">
+      <td align="center" style="padding:0;background:{CREAM};">
+        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" bgcolor="{CREAM}" style="background:{CREAM};max-width:640px;width:100%;">
 
-          <!-- ===== Top: BBr logo on white ===== -->
+          <!-- ===== Top: BBr logo on cream ===== -->
           <tr>
-            <td bgcolor="{WHITE}" style="background:{WHITE};padding:32px 28px 24px;text-align:center;">
+            <td bgcolor="{CREAM}" style="background:{CREAM};padding:32px 28px 24px;text-align:center;line-height:0;font-size:0;">
               <img src="{BBR_LOGO_URL}" alt="Boulay Beach Resort"
                    width="120" style="display:inline-block;height:auto;border:0;outline:none;text-decoration:none;" />
             </td>
@@ -240,18 +248,18 @@ def _render_template(
 
           <!-- ===== Hero image #1 ===== -->
           <tr>
-            <td bgcolor="{PAGE_BG}" style="background:{PAGE_BG};padding:0;line-height:0;font-size:0;">
+            <td bgcolor="{CREAM}" style="background:{CREAM};padding:0;margin:0;line-height:0;font-size:0;mso-line-height-rule:exactly;">
               <img src="{hero_image}" alt="" width="640"
-                   style="display:block;width:100%;height:auto;max-height:380px;object-fit:cover;border:0;" />
+                   style="display:block;width:100%;height:auto;max-height:380px;object-fit:cover;border:0;outline:none;text-decoration:none;vertical-align:bottom;" />
             </td>
           </tr>
 
           <!-- ===== Content panel (cream) ===== -->
           <tr>
             <td bgcolor="{CREAM}" style="background:{CREAM};padding:46px 48px 40px;text-align:center;">
-              <h1 style="margin:0 0 26px;font-family:Georgia,'Playfair Display',serif;
-                  font-size:32px;line-height:1.18;color:{DARK};font-weight:700;
-                  letter-spacing:-0.005em;">
+              <h1 style="margin:0 0 26px;font-family:{FONT_STACK};
+                  font-size:32px;line-height:1.2;color:{DARK};font-weight:600;
+                  letter-spacing:0.005em;">
                 {title}
               </h1>
               {paragraphs_html}
@@ -261,9 +269,9 @@ def _render_template(
 
           <!-- ===== Hero image #2 ===== -->
           <tr>
-            <td bgcolor="{PAGE_BG}" style="background:{PAGE_BG};padding:0;line-height:0;font-size:0;">
+            <td bgcolor="{CREAM}" style="background:{CREAM};padding:0;margin:0;line-height:0;font-size:0;mso-line-height-rule:exactly;">
               <img src="{hero_image}" alt="" width="640"
-                   style="display:block;width:100%;height:auto;max-height:340px;object-fit:cover;border:0;" />
+                   style="display:block;width:100%;height:auto;max-height:340px;object-fit:cover;border:0;outline:none;text-decoration:none;vertical-align:bottom;" />
             </td>
           </tr>
 
@@ -272,11 +280,11 @@ def _render_template(
 
           <!-- ===== Footer ===== -->
           <tr>
-            <td bgcolor="{DARK}" style="background:{DARK};padding:34px 36px 36px;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;">
+            <td bgcolor="{DARK}" style="background:{DARK};padding:34px 36px 36px;color:{CREAM};font-family:{FONT_STACK};font-size:13px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <!-- Left column: brand + contacts -->
-                  <td valign="top" width="55%" style="color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13.5px;line-height:1.75;">
+                  <td valign="top" width="55%" style="color:{CREAM};font-family:{FONT_STACK};font-size:13.5px;line-height:1.75;">
                     <div style="font-weight:700;margin-bottom:2px;letter-spacing:0.02em;font-size:14px;">Life Is Here</div>
                     <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
                     <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_2}</a><br/>
@@ -284,7 +292,7 @@ def _render_template(
                     <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;">{BBR_WEBSITE_LABEL}</a>
                   </td>
                   <!-- Right column: livret button + embarquement -->
-                  <td valign="top" width="45%" align="right" style="text-align:right;color:{CREAM};font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.55;">
+                  <td valign="top" width="45%" align="right" style="text-align:right;color:{CREAM};font-family:{FONT_STACK};font-size:13px;line-height:1.55;">
                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 18px;">
                       <tr><td align="right" style="text-align:right;">
                         {_bulletproof_button(label="Télécharger notre livret", url=BBR_BOOKLET_URL,
