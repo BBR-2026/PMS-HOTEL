@@ -278,37 +278,25 @@ def _render_template(
           <!-- ===== Dark CTA bar ===== -->
           {footer_cta_bar}
 
-          <!-- ===== Footer ===== -->
+          <!-- ===== Footer (centered) ===== -->
           <tr>
-            <td bgcolor="{DARK}" style="background:{DARK};padding:34px 36px 36px;color:{CREAM};font-family:{FONT_STACK};font-size:13px;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-                <tr>
-                  <!-- Left column: brand + contacts -->
-                  <td valign="top" width="55%" style="color:{CREAM};font-family:{FONT_STACK};font-size:13.5px;line-height:1.75;">
-                    <div style="font-weight:700;margin-bottom:2px;letter-spacing:0.02em;font-size:14px;">Life Is Here</div>
-                    <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
-                    <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_2}</a><br/>
-                    <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;">{BBR_INSTAGRAM_HANDLE}</a><br/>
-                    <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;">{BBR_WEBSITE_LABEL}</a>
-                  </td>
-                  <!-- Right column: livret button + embarquement -->
-                  <td valign="top" width="45%" align="right" style="text-align:right;color:{CREAM};font-family:{FONT_STACK};font-size:13px;line-height:1.55;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" style="margin:0 0 18px;">
-                      <tr><td align="right" style="text-align:right;">
-                        {_bulletproof_button(label="Télécharger notre livret", url=BBR_BOOKLET_URL,
-                                            bg=CREAM, color=DARK,
-                                            font_family="Helvetica,Arial,sans-serif",
-                                            font_size=12, padding_v=11, padding_h=22,
-                                            letter_spacing="0.05em", uppercase=False)}
-                      </td></tr>
-                    </table>
-                    <br/>
-                    <div style="color:{CREAM};font-size:12.5px;line-height:1.55;margin-top:8px;">
-                      Embarquement dès 11H<br/>Départ toutes les heures
-                    </div>
-                  </td>
-                </tr>
-              </table>
+            <td bgcolor="{DARK}" style="background:{DARK};padding:38px 32px 40px;color:{CREAM};font-family:{FONT_STACK};font-size:13px;text-align:center;">
+              <div style="font-weight:700;letter-spacing:0.18em;font-size:13px;text-transform:uppercase;color:{CREAM};margin-bottom:14px;">Life Is Here</div>
+              <div style="line-height:1.85;font-family:{FONT_STACK};font-size:14px;color:{CREAM};">
+                <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
+                <a href="{_tel_href(BBR_PHONE_2)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_2}</a><br/>
+                <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;">{BBR_INSTAGRAM_HANDLE}</a><br/>
+                <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;">{BBR_WEBSITE_LABEL}</a>
+              </div>
+              <div style="margin:24px 0 16px;">
+                {_bulletproof_button(label="Télécharger notre livret", url=BBR_BOOKLET_URL,
+                                    bg=CREAM, color=DARK,
+                                    font_size=12, padding_v=11, padding_h=26,
+                                    letter_spacing="0.12em", uppercase=True)}
+              </div>
+              <div style="color:{CREAM};font-size:12px;line-height:1.6;letter-spacing:0.04em;opacity:0.85;">
+                Embarquement dès 11H<br/>Départ toutes les heures
+              </div>
             </td>
           </tr>
 
