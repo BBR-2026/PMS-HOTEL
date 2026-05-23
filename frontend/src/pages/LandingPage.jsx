@@ -77,12 +77,12 @@ export default function LandingPage() {
         className="pt-44 md:pt-56 pb-24 md:pb-32 px-6 md:px-12 lg:px-24"
       >
         <div className="max-w-7xl mx-auto">
-          <div className="mb-16 md:mb-20 max-w-2xl">
+          <div className="mb-16 md:mb-20 max-w-4xl">
             <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">
               Nos univers
             </div>
             <h2 className="font-display-serif text-4xl md:text-5xl lg:text-6xl text-[#0A0A0A] tracking-tight leading-[1.05] mb-6">
-              Cinq univers pour une expérience<br />premium et unique.
+              Cinq univers pour une<br />expérience premium et unique.
             </h2>
             <div className="gold-divider mb-6" />
             <p className="text-base text-[#0A0A0A]/60 leading-relaxed">
