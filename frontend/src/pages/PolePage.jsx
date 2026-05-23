@@ -17,6 +17,9 @@ const SUB_OFFER_IMAGES = {
   lounge: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/rg0ibzao_LOUNGE.png",
   seminaire: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/oy7zzngs_SEMINAIRE.png",
   team_building: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1600&q=80",
+  journee_etude: "https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=1600&q=80",
+  dejeuner_diner_entreprise: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=80",
+  formule_personnalisee: "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1600&q=80",
   offres_loisirs: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/66jfvevy_OFFRE%20LOISIRS.png",
 };
 

@@ -155,27 +155,68 @@ OFFERS = {
     },
     "seminaire": {
         "id": "seminaire",
-        "name_fr": "Séminaire",
-        "name_en": "Corporate Seminar",
-        "schedule_fr": "Du lundi au vendredi · Journée pro",
-        "schedule_en": "Monday to Friday · Business day",
-        "tagline_fr": "Salles équipées, vue océan et pauses gastronomiques pour vos séminaires.",
-        "tagline_en": "Equipped rooms, ocean view and gourmet breaks for your seminars.",
-        "price_adult": 150000,
+        "name_fr": "Séminaire résidentiel",
+        "name_en": "Residential Seminar",
+        "schedule_fr": "Tous les jours · Sur demande",
+        "schedule_en": "Every day · On request",
+        "tagline_fr": "Salles équipées, vue océan, hébergement et pauses gastronomiques pour vos séminaires résidentiels.",
+        "tagline_en": "Equipped rooms, ocean view, accommodation and gourmet breaks for your residential seminars.",
+        "price_adult": 0,
         "price_child": 0,
-        "max_capacity": 80,
+        "max_capacity": 300,
+        "price_on_request": True,
+    },
+    "journee_etude": {
+        "id": "journee_etude",
+        "name_fr": "Journée d'étude",
+        "name_en": "Study Day",
+        "schedule_fr": "Tous les jours · Sur demande",
+        "schedule_en": "Every day · On request",
+        "tagline_fr": "Une journée pro complète : salle équipée, pauses café, déjeuner d'affaires et accès Beach Club.",
+        "tagline_en": "A complete business day: equipped room, coffee breaks, business lunch and Beach Club access.",
+        "price_adult": 0,
+        "price_child": 0,
+        "max_capacity": 300,
+        "price_on_request": True,
     },
     "team_building": {
         "id": "team_building",
         "name_fr": "Team Building",
         "name_en": "Team Building",
-        "schedule_fr": "Du lundi au vendredi · Journée immersive",
-        "schedule_en": "Monday to Friday · Immersive day",
-        "tagline_fr": "Activités lagunaires, défis et expériences pour fédérer vos équipes.",
-        "tagline_en": "Lagoon activities, challenges and experiences to unite your teams.",
-        "price_adult": 100000,
+        "schedule_fr": "Tous les jours · Sur demande",
+        "schedule_en": "Every day · On request",
+        "tagline_fr": "Activités lagunaires, défis et expériences sur-mesure pour fédérer vos équipes.",
+        "tagline_en": "Lagoon activities, challenges and tailor-made experiences to unite your teams.",
+        "price_adult": 0,
         "price_child": 0,
-        "max_capacity": 80,
+        "max_capacity": 300,
+        "price_on_request": True,
+    },
+    "dejeuner_diner_entreprise": {
+        "id": "dejeuner_diner_entreprise",
+        "name_fr": "Déjeuner et dîner entreprise",
+        "name_en": "Corporate Lunch & Dinner",
+        "schedule_fr": "Tous les jours · Sur demande",
+        "schedule_en": "Every day · On request",
+        "tagline_fr": "Repas d'affaires signature au Kaai ou en privatisation, dans un cadre lagune d'exception.",
+        "tagline_en": "Signature business meals at Le Kaai or in private settings, in an exceptional lagoon atmosphere.",
+        "price_adult": 0,
+        "price_child": 0,
+        "max_capacity": 300,
+        "price_on_request": True,
+    },
+    "formule_personnalisee": {
+        "id": "formule_personnalisee",
+        "name_fr": "Formule personnalisée",
+        "name_en": "Tailor-Made Package",
+        "schedule_fr": "Tous les jours · Sur devis",
+        "schedule_en": "Every day · On quote",
+        "tagline_fr": "Construisons ensemble votre événement corporate sur-mesure, du brief à la mise en scène signature BBr.",
+        "tagline_en": "Let's build together your bespoke corporate event, from brief to BBr signature production.",
+        "price_adult": 0,
+        "price_child": 0,
+        "max_capacity": 300,
+        "price_on_request": True,
     },
     "offres_loisirs": {
         "id": "offres_loisirs",
@@ -237,7 +278,7 @@ POLES = {
         "name_en": "Corporate",
         "tagline_fr": "Séminaires et team buildings haut de gamme, en bord d'océan.",
         "tagline_en": "Premium seminars and team buildings, by the ocean.",
-        "offers": ["seminaire", "team_building"],
+        "offers": ["seminaire", "journee_etude", "team_building", "dejeuner_diner_entreprise", "formule_personnalisee"],
         "sort_order": 3,
     },
     "activites_events": {
@@ -288,6 +329,9 @@ BOAT_TIMES_BY_OFFER = {
     "lounge": ["16H", "17H", "18H", "19H", "20H"],
     "seminaire": ["8H", "9H", "10H"],
     "team_building": ["8H", "9H", "10H"],
+    "journee_etude": ["8H", "9H", "10H"],
+    "dejeuner_diner_entreprise": ["10H", "12H", "14H", "16H", "18H", "20H"],
+    "formule_personnalisee": ["8H", "9H", "10H", "12H", "14H", "16H", "18H", "20H"],
     "offres_loisirs": ["10H", "12H", "14H", "16H"],
     # le_kaai + hebergement are day-dependent — resolved via _boat_times_for_date()
 }
@@ -301,8 +345,11 @@ ALLOWED_WEEKDAYS_BY_OFFER = {
     "hebergement": [0, 1, 2, 3, 4, 5, 6],  # Every day
     "spa_wellness": [0, 1, 2, 3, 4, 5, 6],  # Every day
     "lounge": [0, 1, 2, 3, 4, 5, 6],  # Every day
-    "seminaire": [0, 1, 2, 3, 4],          # Mon-Fri
-    "team_building": [0, 1, 2, 3, 4],      # Mon-Fri
+    "seminaire": [0, 1, 2, 3, 4, 5, 6],     # Every day
+    "team_building": [0, 1, 2, 3, 4, 5, 6], # Every day
+    "journee_etude": [0, 1, 2, 3, 4, 5, 6], # Every day
+    "dejeuner_diner_entreprise": [0, 1, 2, 3, 4, 5, 6], # Every day
+    "formule_personnalisee": [0, 1, 2, 3, 4, 5, 6], # Every day
     "offres_loisirs": [0, 1, 2, 3, 4, 5, 6],  # Every day
 }
 
@@ -6783,8 +6830,11 @@ def _offer_label_fr(offer_type: str) -> str:
         "lounge": "Lounge",
         "spa_wellness": "Spa & Wellness",
         "special_event": "Événement spécial",
-        "seminaire": "Séminaire",
+        "seminaire": "Séminaire résidentiel",
         "team_building": "Team Building",
+        "journee_etude": "Journée d'étude",
+        "dejeuner_diner_entreprise": "Déjeuner & dîner entreprise",
+        "formule_personnalisee": "Formule personnalisée",
         "offres_loisirs": "Activité",
     }.get(offer_type, (offer_type or "Réservation").replace("_", " ").title())
 
