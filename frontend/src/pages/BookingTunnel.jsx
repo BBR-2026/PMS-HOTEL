@@ -451,15 +451,9 @@ export default function BookingTunnel() {
                     {nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}
                   </div>
                 )}
-                {availability && (
+                {availability && availability.remaining <= 0 && (
                   <div className="mt-6 text-sm">
-                    {availability.remaining > 0 ? (
-                      <div className="text-[#0A0A0A]/60">
-                        <span className="text-[#B8922A]">{availability.remaining}</span> {t.booking.remaining}
-                      </div>
-                    ) : (
-                      <div className="text-red-400">{t.booking.capacityFull}</div>
-                    )}
+                    <div className="text-red-400">{t.booking.capacityFull}</div>
                   </div>
                 )}
               </div>
