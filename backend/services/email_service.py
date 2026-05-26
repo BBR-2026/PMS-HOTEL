@@ -209,19 +209,7 @@ def _render_template(
             f'<tr><td align="center" style="text-align:center;">{btn}</td></tr></table>'
         )
 
-    footer_cta_bar = ""
-    if cta_label and cta_url:
-        btn_footer = _bulletproof_button(label=cta_label, url=cta_url,
-                                         bg=CREAM, color=DARK, padding_v=14, padding_h=72)
-        # height-based spacing (no CSS padding) to prevent Outlook web from
-        # bleeding the parent CREAM bgcolor through padding areas.
-        footer_cta_bar = (
-            f'<tr><td bgcolor="{DARK}" align="center" height="90" '
-            f'style="background-color:{DARK};text-align:center;height:90px;'
-            f'padding:0;line-height:0;font-size:0;">'
-            f'{btn_footer}'
-            f'</td></tr>'
-        )
+    footer_cta_bar = ""  # cream CTA bar removed (user request)
 
     return f"""\
 <!doctype html>
@@ -290,7 +278,7 @@ def _render_template(
                 <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;">{BBR_WEBSITE_LABEL}</a>
               </div>
               <div style="margin:24px 0 16px;">
-                {_bulletproof_button(label="Télécharger notre livret", url=BBR_BOOKLET_URL,
+                {_bulletproof_button(label="Télécharger le livret", url=BBR_BOOKLET_URL,
                                     bg=CREAM, color=DARK,
                                     font_size=12, padding_v=11, padding_h=26,
                                     letter_spacing="0.12em", uppercase=True)}
