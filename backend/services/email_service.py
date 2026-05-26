@@ -237,7 +237,7 @@ def _render_template(
           <tr>
             <td bgcolor="{CREAM}" style="background:{CREAM};padding:32px 28px 24px;text-align:center;line-height:0;font-size:0;">
               <img src="{BBR_LOGO_URL}" alt="Boulay Beach Resort"
-                   width="204" style="display:inline-block;width:204px;height:auto;border:0;outline:none;text-decoration:none;" />
+                   width="265" style="display:inline-block;width:265px;height:auto;border:0;outline:none;text-decoration:none;" />
             </td>
           </tr>
 
