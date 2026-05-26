@@ -109,21 +109,30 @@ def _render_campaign_html(*, title: str, body: str, recipient_name: Optional[str
 
     Variables substituted in body & title: ``{prenom}`` → first name (or
     "cher invité" fallback).
+
+    Uses the SAME ``email_service._render_template`` as transactional emails
+    (booking confirmation, J-1 reminder, J+1 review) so every BBR email keeps
+    the exact same visual identity. If the campaign has no CTA configured,
+    we fall back to a generic "Réserver" button so the dark CTA bar is still
+    rendered — guarantees identical structure for all email types.
     """
     first = email_service._first_name(recipient_name) if recipient_name else "cher invité"
     title_r = title.replace("{prenom}", first.capitalize())
     body_r = body.replace("{prenom}", first.capitalize())
 
+    # Always provide a CTA so the dark button bar renders (identity consistency)
+    final_cta_label = (cta_label or "").strip() or "Réserver"
+    final_cta_url = (cta_url or "").strip() or email_service.BBR_WEBSITE_URL
+
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body_r) if p.strip()]
     hero = email_service.OFFER_HERO_IMAGES.get(offer_type, email_service.DEFAULT_HERO)
     html = email_service._render_template(
         hero_image=hero, title=title_r, paragraphs=paragraphs,
-        cta_label=cta_label, cta_url=cta_url,
+        cta_label=final_cta_label, cta_url=final_cta_url,
         preheader=title_r[:140],
     )
     plain = title_r + "\n\n" + "\n\n".join(paragraphs)
-    if cta_label and cta_url:
-        plain += f"\n\n{cta_label}: {cta_url}"
+    plain += f"\n\n{final_cta_label}: {final_cta_url}"
     return html, plain
 
 
