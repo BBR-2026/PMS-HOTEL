@@ -274,15 +274,7 @@ def _render_template(
             </td>
           </tr>
 
-          <!-- ===== Hero image #2 ===== -->
-          <!-- TD bg is DARK (not CREAM) so any baseline-descender gap below
-               the image inherits DARK and merges with the dark section. -->
-          <tr>
-            <td bgcolor="{DARK}" style="background:{DARK};padding:0;margin:0;line-height:0;font-size:0;mso-line-height-rule:exactly;border:0;">
-              <img src="{hero_image}" alt="" width="640"
-                   style="display:block;width:640px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;vertical-align:bottom;margin:0;padding:0;" />
-            </td>
-          </tr>
+          <!-- ===== Hero image #2 removed (user request) ===== -->
 
           <!-- ===== Dark CTA bar (height-based, no padding-bleed) ===== -->
           {footer_cta_bar}
