@@ -7800,6 +7800,124 @@ async def staff_campaigns_preview(body: CampaignCreateBody,
     return {"html": html, "sample_recipient": sample_name}
 
 
+# =================================================================
+# RETOUR EXPÉRIENCE — Public feedback form + Staff analytics
+# =================================================================
+
+EXP_CATEGORIES = [
+    "pass_day", "sunset", "restaurant", "hebergement", "evenement_prive", "autre",
+]
+
+EXP_RATING_FIELDS = [
+    "accueil_arrivee",
+    "service_amabilite",
+    "restauration_boissons",
+    "ambiance_cadre",
+    "proprete_confort",
+    "experience_globale",
+]
+
+
+class FeedbackBody(BaseModel):
+    experience_type: str
+    other_label: Optional[str] = None
+    visit_date: Optional[str] = None  # ISO date string
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    accueil_arrivee: int
+    service_amabilite: int
+    restauration_boissons: int
+    ambiance_cadre: int
+    proprete_confort: int
+    experience_globale: int
+    most_appreciated: Optional[str] = None
+    improvement_suggestion: Optional[str] = None
+    staff_member_mention: Optional[str] = None
+
+
+@api.post("/feedback")
+async def public_submit_feedback(body: FeedbackBody, request: Request):
+    """Public endpoint — no auth required. Stores a customer feedback entry."""
+    if body.experience_type not in EXP_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Type d'expérience invalide.")
+    for f in EXP_RATING_FIELDS:
+        v = getattr(body, f, None)
+        if not isinstance(v, int) or v < 1 or v > 5:
+            raise HTTPException(status_code=400, detail=f"Note {f} invalide (1-5).")
+    doc = body.model_dump()
+    doc["id"] = str(uuid.uuid4())
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    # Light spam guard: source IP/UA for moderation later
+    client_ip = (request.headers.get("x-forwarded-for") or request.client.host or "")
+    doc["source_ip"] = client_ip.split(",")[0].strip()[:64]
+    doc["user_agent"] = (request.headers.get("user-agent") or "")[:300]
+    await db.experience_feedback.insert_one(doc)
+    return {"ok": True, "id": doc["id"]}
+
+
+@api.get("/staff/feedback")
+async def staff_feedback_list(limit: int = 200, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin", "manager", "management_general"])
+    cursor = db.experience_feedback.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    items = await cursor.to_list(length=limit)
+    return {"items": items}
+
+
+@api.get("/staff/feedback/analytics")
+async def staff_feedback_analytics(staff=Depends(get_current_staff)):
+    """Aggregated metrics: counts per experience type, average rating per
+    criterion, NPS-style breakdown of overall rating."""
+    await _require_role(staff, ["admin", "manager", "management_general"])
+    pipeline = [
+        {"$group": {
+            "_id": None,
+            "total": {"$sum": 1},
+            "avg_accueil": {"$avg": "$accueil_arrivee"},
+            "avg_service": {"$avg": "$service_amabilite"},
+            "avg_restau":  {"$avg": "$restauration_boissons"},
+            "avg_ambiance": {"$avg": "$ambiance_cadre"},
+            "avg_proprete": {"$avg": "$proprete_confort"},
+            "avg_globale": {"$avg": "$experience_globale"},
+        }},
+    ]
+    agg = await db.experience_feedback.aggregate(pipeline).to_list(length=1)
+    overall = agg[0] if agg else {}
+    overall.pop("_id", None)
+
+    by_type_cursor = db.experience_feedback.aggregate([
+        {"$group": {
+            "_id": "$experience_type",
+            "count": {"$sum": 1},
+            "avg_globale": {"$avg": "$experience_globale"},
+        }},
+        {"$sort": {"count": -1}},
+    ])
+    by_type = await by_type_cursor.to_list(length=20)
+    for r in by_type:
+        r["type"] = r.pop("_id")
+
+    # NPS-like distribution of experience_globale
+    distrib_cursor = db.experience_feedback.aggregate([
+        {"$group": {"_id": "$experience_globale", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ])
+    distrib = await distrib_cursor.to_list(length=10)
+    for r in distrib:
+        r["rating"] = r.pop("_id")
+
+    return {"overall": overall, "by_type": by_type, "distribution": distrib}
+
+
+@api.delete("/staff/feedback/{fb_id}")
+async def staff_feedback_delete(fb_id: str, staff=Depends(get_current_staff)):
+    await _require_role(staff, ["admin"])
+    res = await db.experience_feedback.delete_one({"id": fb_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Retour introuvable.")
+    return {"ok": True}
+
+
 app.include_router(api)
 
 

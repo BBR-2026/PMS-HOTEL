@@ -9,6 +9,8 @@ import BookingTunnel from "./pages/BookingTunnel";
 import FineoResult from "./pages/FineoResult";
 import StaffNotifications from "./pages/staff/StaffNotifications";
 import StaffCampaigns from "./pages/staff/StaffCampaigns";
+import StaffFeedback from "./pages/staff/StaffFeedback";
+import Feedback from "./pages/Feedback";
 import EventPrivatization from "./pages/EventPrivatization";
 import StaffLogin from "./pages/staff/StaffLogin";
 import StaffLayout from "./pages/staff/StaffLayout";
@@ -79,6 +81,7 @@ function App() {
               <Route path="/payment/fineo/result" element={<FineoResult />} />
               <Route path="/booking/special-event/:eventId" element={<BookingTunnel />} />
               <Route path="/events" element={<EventPrivatization />} />
+              <Route path="/retour-experience" element={<Feedback />} />
             </Route>
             <Route path="/staff/login" element={<StaffLogin />} />
             <Route path="/staff" element={<StaffLayout />}>
@@ -103,6 +106,7 @@ function App() {
               <Route path="config" element={<RoleGuard allowed={ADMIN_ONLY}><StaffConfig /></RoleGuard>} />
               <Route path="notifications" element={<RoleGuard allowed={MANAGER_PLUS}><StaffNotifications /></RoleGuard>} />
               <Route path="campaigns" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCampaigns /></RoleGuard>} />
+              <Route path="feedback" element={<RoleGuard allowed={MANAGER_PLUS}><StaffFeedback /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>
