@@ -74,8 +74,14 @@ export default function Feedback() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-[#F8EFE7] flex items-center justify-center px-6 py-12">
+      <div className="min-h-screen bg-white flex items-center justify-center px-6 py-12">
         <div className="max-w-md w-full text-center" data-testid="feedback-thanks">
+          <img
+            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
+            alt="Boulay Beach Resort"
+            className="h-[70px] w-auto object-contain mx-auto mb-8"
+            style={{ filter: "brightness(0.9)" }}
+          />
           <CheckCircle2 size={56} className="mx-auto text-[#B8922A] mb-6" />
           <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">Merci !</div>
           <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] mb-4">Votre retour est précieux</h1>
@@ -91,7 +97,16 @@ export default function Feedback() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8EFE7] py-12 px-4 sm:px-6 md:px-12" data-testid="feedback-page">
+    <div className="min-h-screen bg-white py-12 px-4 sm:px-6 md:px-12" data-testid="feedback-page">
+      {/* Logo BBR top-left */}
+      <div className="max-w-6xl mx-auto mb-10">
+        <img
+          src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
+          alt="Boulay Beach Resort"
+          className="h-[80px] sm:h-[100px] w-auto object-contain"
+          style={{ filter: "brightness(0.9)" }}
+        />
+      </div>
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-12">
           <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">Retour Expérience</div>
@@ -109,7 +124,7 @@ export default function Feedback() {
           </div>
         )}
 
-        <form onSubmit={submit} className="space-y-10 bg-white p-6 sm:p-10 shadow-sm">
+        <form onSubmit={submit} className="space-y-10 bg-white p-6 sm:p-10 border border-[#0A0A0A]/8">
 
           {/* Experience type */}
           <Section title="Votre expérience au BBr">
