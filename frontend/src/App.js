@@ -81,8 +81,8 @@ function App() {
               <Route path="/payment/fineo/result" element={<FineoResult />} />
               <Route path="/booking/special-event/:eventId" element={<BookingTunnel />} />
               <Route path="/events" element={<EventPrivatization />} />
-              <Route path="/retour-experience" element={<Feedback />} />
             </Route>
+            <Route path="/retour-experience" element={<Feedback />} />
             <Route path="/staff/login" element={<StaffLogin />} />
             <Route path="/staff" element={<StaffLayout />}>
               <Route index element={<StaffDashboard />} />

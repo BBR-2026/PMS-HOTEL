@@ -93,10 +93,6 @@ export default function Feedback() {
   return (
     <div className="min-h-screen bg-[#F8EFE7] py-12 px-4 sm:px-6 md:px-12" data-testid="feedback-page">
       <div className="max-w-3xl mx-auto">
-        <Link to="/" className="text-[0.7rem] uppercase tracking-[0.28em] text-[#0A0A0A]/50 hover:text-[#B8922A] transition-colors mb-8 inline-block">
-          ← Boulay Beach Resort
-        </Link>
-
         <div className="text-center mb-12">
           <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">Retour Expérience</div>
           <h1 className="font-display-serif text-3xl sm:text-4xl md:text-5xl text-[#0A0A0A] mb-5 leading-tight">
