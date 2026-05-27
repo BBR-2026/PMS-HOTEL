@@ -99,23 +99,23 @@ export default function Feedback() {
   }
 
   return (
-    <div className="min-h-screen bg-white py-12 px-4 sm:px-6 md:px-12" data-testid="feedback-page">
+    <div className="min-h-screen bg-white py-6 sm:py-12 px-4 sm:px-6 md:px-12" data-testid="feedback-page">
       {/* Logo BBR — centered on mobile, left-aligned on desktop */}
-      <div className="max-w-6xl mx-auto mb-10 flex justify-center md:justify-start">
+      <div className="max-w-6xl mx-auto mb-6 sm:mb-10 flex justify-center md:justify-start">
         <img
           src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
           alt="Boulay Beach Resort"
-          className="h-[120px] sm:h-[150px] w-auto object-contain"
+          className="h-[90px] sm:h-[120px] md:h-[150px] w-auto object-contain"
           style={{ filter: "brightness(0.9)" }}
         />
       </div>
       <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-12">
-          <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">Retour Expérience</div>
-          <h1 className="font-display-serif text-3xl sm:text-4xl md:text-5xl text-[#0A0A0A] mb-5 leading-tight">
+        <div className="text-center mb-8 sm:mb-12">
+          <div className="text-[0.6rem] sm:text-[0.62rem] uppercase tracking-[0.28em] sm:tracking-[0.32em] text-[#B8922A] mb-3">Retour Expérience</div>
+          <h1 className="font-display-serif text-[1.7rem] leading-[1.15] sm:text-4xl md:text-5xl text-[#0A0A0A] mb-4 sm:mb-5">
             Merci d'avoir choisi le BBr
           </h1>
-          <p className="text-[#0A0A0A]/65 text-base max-w-xl mx-auto">
+          <p className="text-[#0A0A0A]/65 text-sm sm:text-base max-w-xl mx-auto px-2">
             Votre avis nous aide à rendre chaque expérience encore plus mémorable.
           </p>
         </div>
@@ -126,7 +126,7 @@ export default function Feedback() {
           </div>
         )}
 
-        <form onSubmit={submit} className="space-y-10 bg-white p-6 sm:p-10 border border-[#0A0A0A]/8">
+        <form onSubmit={submit} className="space-y-7 sm:space-y-10 bg-white p-4 sm:p-8 md:p-10 border border-[#0A0A0A]/8">
 
           {/* Experience type */}
           <Section title="Votre expérience au BBr">
@@ -152,9 +152,11 @@ export default function Feedback() {
           <Section title="Évaluation de votre expérience">
             <div className="space-y-5">
               {CRITERIA.map((c) => (
-                <div key={c.id} className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-[#0A0A0A]/8 last:border-0">
-                  <div className="text-sm text-[#0A0A0A]/90 flex-1 min-w-[200px]">{c.label}</div>
-                  <StarRating value={form[c.id]} onChange={(v) => update(c.id, v)} testid={`rate-${c.id}`} />
+                <div key={c.id} className="pb-4 border-b border-[#0A0A0A]/8 last:border-0">
+                  <div className="text-sm text-[#0A0A0A]/90 mb-2 sm:mb-0 sm:flex sm:items-center sm:justify-between sm:flex-wrap sm:gap-3">
+                    <span className="flex-1 min-w-[200px]">{c.label}</span>
+                    <StarRating value={form[c.id]} onChange={(v) => update(c.id, v)} testid={`rate-${c.id}`} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -188,7 +190,7 @@ export default function Feedback() {
 function Section({ title, children }) {
   return (
     <div>
-      <h2 className="font-display-serif text-xl sm:text-2xl text-[#0A0A0A] mb-5">{title}</h2>
+      <h2 className="font-display-serif text-lg sm:text-2xl text-[#0A0A0A] mb-4 sm:mb-5">{title}</h2>
       {children}
     </div>
   );
@@ -206,7 +208,7 @@ function FieldTA({ label, value, onChange, testid }) {
 function StarRating({ value, onChange, testid }) {
   const [hover, setHover] = useState(0);
   return (
-    <div className="flex items-center gap-1" data-testid={testid}>
+    <div className="flex items-center gap-0.5 sm:gap-1" data-testid={testid}>
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           type="button"
@@ -214,12 +216,12 @@ function StarRating({ value, onChange, testid }) {
           onMouseEnter={() => setHover(n)}
           onMouseLeave={() => setHover(0)}
           onClick={() => onChange(n)}
-          className="p-1 transition-transform hover:scale-110"
+          className="p-0.5 sm:p-1 transition-transform active:scale-90 hover:scale-110"
           data-testid={`${testid}-${n}`}
           aria-label={`${n} étoile${n > 1 ? "s" : ""}`}
         >
           <Star
-            size={26}
+            size={30}
             className={(hover || value) >= n ? "fill-[#B8922A] text-[#B8922A]" : "text-[#0A0A0A]/25"}
             fill={(hover || value) >= n ? "#B8922A" : "none"}
           />
