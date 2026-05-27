@@ -7867,7 +7867,8 @@ async def staff_feedback_list(limit: int = 200, staff=Depends(get_current_staff)
 @api.get("/staff/feedback/analytics")
 async def staff_feedback_analytics(staff=Depends(get_current_staff)):
     """Aggregated metrics: counts per experience type, average rating per
-    criterion, NPS-style breakdown of overall rating."""
+    criterion, NPS-style breakdown of overall rating, weekly trend & most-
+    appreciated keywords."""
     await _require_role(staff, ["admin", "manager", "management_general"])
     pipeline = [
         {"$group": {
@@ -7890,6 +7891,11 @@ async def staff_feedback_analytics(staff=Depends(get_current_staff)):
             "_id": "$experience_type",
             "count": {"$sum": 1},
             "avg_globale": {"$avg": "$experience_globale"},
+            "avg_accueil": {"$avg": "$accueil_arrivee"},
+            "avg_service": {"$avg": "$service_amabilite"},
+            "avg_restau":  {"$avg": "$restauration_boissons"},
+            "avg_ambiance": {"$avg": "$ambiance_cadre"},
+            "avg_proprete": {"$avg": "$proprete_confort"},
         }},
         {"$sort": {"count": -1}},
     ])
@@ -7897,7 +7903,6 @@ async def staff_feedback_analytics(staff=Depends(get_current_staff)):
     for r in by_type:
         r["type"] = r.pop("_id")
 
-    # NPS-like distribution of experience_globale
     distrib_cursor = db.experience_feedback.aggregate([
         {"$group": {"_id": "$experience_globale", "count": {"$sum": 1}}},
         {"$sort": {"_id": 1}},
@@ -7906,7 +7911,44 @@ async def staff_feedback_analytics(staff=Depends(get_current_staff)):
     for r in distrib:
         r["rating"] = r.pop("_id")
 
-    return {"overall": overall, "by_type": by_type, "distribution": distrib}
+    # ---- Trend: feedback count + avg rating per day for last 30 days ----
+    from datetime import timedelta
+    horizon = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    trend_cursor = db.experience_feedback.aggregate([
+        {"$match": {"created_at": {"$gte": horizon}}},
+        {"$addFields": {"day": {"$substr": ["$created_at", 0, 10]}}},
+        {"$group": {
+            "_id": "$day",
+            "count": {"$sum": 1},
+            "avg_globale": {"$avg": "$experience_globale"},
+        }},
+        {"$sort": {"_id": 1}},
+    ])
+    trend = await trend_cursor.to_list(length=60)
+    for r in trend:
+        r["day"] = r.pop("_id")
+
+    # ---- NPS-like (promoters 5★, passives 4★, detractors ≤3★) ----
+    promoters = sum(1 for d in distrib if d["rating"] == 5) and \
+                sum(d["count"] for d in distrib if d["rating"] == 5)
+    passives = sum(d["count"] for d in distrib if d["rating"] == 4)
+    detractors = sum(d["count"] for d in distrib if d["rating"] <= 3)
+    total_resp = (promoters or 0) + passives + detractors
+    nps = round(((promoters - detractors) / total_resp) * 100) if total_resp else 0
+    nps_block = {
+        "promoters": promoters or 0,
+        "passives": passives,
+        "detractors": detractors,
+        "score": nps,
+    }
+
+    return {
+        "overall": overall,
+        "by_type": by_type,
+        "distribution": distrib,
+        "trend": trend,
+        "nps": nps_block,
+    }
 
 
 @api.delete("/staff/feedback/{fb_id}")

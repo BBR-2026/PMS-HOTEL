@@ -98,12 +98,12 @@ export default function Feedback() {
 
   return (
     <div className="min-h-screen bg-white py-12 px-4 sm:px-6 md:px-12" data-testid="feedback-page">
-      {/* Logo BBR top-left */}
-      <div className="max-w-6xl mx-auto mb-10">
+      {/* Logo BBR — centered on mobile, left-aligned on desktop */}
+      <div className="max-w-6xl mx-auto mb-10 flex justify-center md:justify-start">
         <img
           src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png"
           alt="Boulay Beach Resort"
-          className="h-[80px] sm:h-[100px] w-auto object-contain"
+          className="h-[120px] sm:h-[150px] w-auto object-contain"
           style={{ filter: "brightness(0.9)" }}
         />
       </div>

@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { Star, MessageSquare, Trash2, Filter } from "lucide-react";
+import {
+  Star, MessageSquare, Trash2, Filter, TrendingUp, Award, AlertCircle, Users,
+} from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
+  PieChart, Pie, Cell, Legend,
+} from "recharts";
 import { toast } from "sonner";
 import api from "../../lib/api";
 
@@ -20,6 +27,9 @@ const CRIT = [
   ["avg_proprete", "Propreté"],
   ["avg_globale",  "Expérience globale"],
 ];
+
+const COLORS_BAR = ["#B8922A", "#9F7E22", "#86691B", "#6B5316", "#553F11", "#3D2D0B"];
+const NPS_COLORS = { promoters: "#15803D", passives: "#B8922A", detractors: "#DC2626" };
 
 export default function StaffFeedback() {
   const [items, setItems] = useState([]);
@@ -53,12 +63,17 @@ export default function StaffFeedback() {
 
   const filtered = filterType ? items.filter((i) => i.experience_type === filterType) : items;
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  const fmtDay = (d) => d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }) : "";
+
+  const overall = analytics?.overall || {};
+  const total = overall.total ?? 0;
+  const nps = analytics?.nps;
 
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-feedback-page">
       <div className="mb-8">
         <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-2 flex items-center gap-2">
-          <MessageSquare size={14} /> Voix du client
+          <MessageSquare size={14} /> Voix du client · Analytics
         </div>
         <h1 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A]">Retour expérience</h1>
         <p className="text-sm text-[#0A0A0A]/55 max-w-2xl mt-2">
@@ -66,79 +81,164 @@ export default function StaffFeedback() {
         </p>
       </div>
 
+      {/* KPIs */}
       {analytics && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8" data-testid="feedback-kpis">
-          <KPI label="Total retours" value={analytics.overall?.total ?? 0} />
-          <KPI label="Note globale moyenne" value={analytics.overall?.avg_globale ? analytics.overall.avg_globale.toFixed(2) + " / 5" : "—"} gold />
-          <KPI label="Meilleure note" value={
-            (analytics.distribution || []).length
-              ? (Math.max(...analytics.distribution.map(d => d.rating)) + " ★")
-              : "—"
-          } />
-          <KPI label="Catégorie #1" value={analytics.by_type?.[0]?.type ? EXP_LABELS[analytics.by_type[0].type] : "—"} />
+          <KPI icon={Users} label="Total retours" value={total} />
+          <KPI icon={Award} label="Note globale" value={overall.avg_globale ? overall.avg_globale.toFixed(2) + " / 5" : "—"} gold />
+          <KPI icon={TrendingUp} label="Score NPS" value={total ? `${nps?.score}` : "—"} colorClass={nps?.score >= 50 ? "text-green-700" : nps?.score >= 0 ? "text-[#B8922A]" : "text-red-600"} sub={total ? `${nps?.promoters} promoteurs · ${nps?.detractors} détracteurs` : ""} />
+          <KPI icon={Award} label="Catégorie #1" value={analytics.by_type?.[0]?.type ? EXP_LABELS[analytics.by_type[0].type] : "—"} sub={analytics.by_type?.[0] ? `${analytics.by_type[0].count} retours` : ""} />
         </div>
       )}
 
-      {analytics?.overall?.total > 0 && (
-        <div className="bg-white border border-[#0A0A0A]/10 p-6 mb-8">
-          <h3 className="font-display-serif text-lg mb-4">Moyennes par critère</h3>
-          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {CRIT.map(([k, lbl]) => {
-              const v = analytics.overall?.[k];
-              return (
-                <div key={k}>
-                  <div className="text-[0.7rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 mb-1">{lbl}</div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-2xl font-display-serif text-[#0A0A0A]">{v ? v.toFixed(2) : "—"}</div>
-                    <div className="flex items-center gap-0.5 text-[#B8922A]">
-                      {[1,2,3,4,5].map((n) => (
-                        <Star key={n} size={14} fill={v && v >= n ? "#B8922A" : "none"} className={v && v >= n ? "fill-[#B8922A]" : "text-[#0A0A0A]/15"} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <Filter size={14} className="text-[#0A0A0A]/50" />
-        <button onClick={() => setFilterType("")} className={`px-3 py-1.5 text-[0.7rem] uppercase tracking-[0.18em] border ${!filterType ? "bg-[#0A0A0A] text-white border-[#0A0A0A]" : "border-[#0A0A0A]/15 hover:border-[#0A0A0A]"}`}>
-          Tous ({items.length})
-        </button>
-        {Object.entries(EXP_LABELS).map(([id, lbl]) => {
-          const c = items.filter((i) => i.experience_type === id).length;
-          if (c === 0) return null;
-          return (
-            <button key={id} onClick={() => setFilterType(id)} className={`px-3 py-1.5 text-[0.7rem] uppercase tracking-[0.18em] border ${filterType === id ? "bg-[#0A0A0A] text-white border-[#0A0A0A]" : "border-[#0A0A0A]/15 hover:border-[#0A0A0A]"}`}>
-              {lbl} ({c})
-            </button>
-          );
-        })}
-      </div>
-
-      {loading ? (
-        <div className="text-sm text-[#0A0A0A]/50">Chargement…</div>
-      ) : filtered.length === 0 ? (
+      {total === 0 ? (
         <div className="border border-dashed border-[#0A0A0A]/15 p-10 text-center text-[#0A0A0A]/55 text-sm">
           Aucun retour pour le moment.
         </div>
       ) : (
-        <div className="space-y-3" data-testid="feedback-items">
-          {filtered.map((f) => <FeedbackCard key={f.id} f={f} onDelete={remove} fmtDate={fmtDate} />)}
-        </div>
+        <>
+          {/* Charts row 1 — Distribution stars + NPS pie */}
+          <div className="grid lg:grid-cols-3 gap-4 mb-6">
+            <ChartCard title="Distribution des notes globales" subtitle="Combien de clients ont mis chaque note ?" cols="lg:col-span-2">
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={(analytics.distribution || []).map((d) => ({ rating: `${d.rating} ★`, count: d.count }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#0A0A0A0F" />
+                  <XAxis dataKey="rating" tick={{ fontSize: 12, fill: "#0A0A0A99" }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#0A0A0A99" }} />
+                  <Tooltip cursor={{ fill: "#B8922A10" }} contentStyle={{ background: "#fff", border: "1px solid #0A0A0A20", fontSize: 12 }} />
+                  <Bar dataKey="count" fill="#B8922A" radius={[4, 4, 0, 0]}>
+                    {(analytics.distribution || []).map((d, i) => (
+                      <Cell key={i} fill={d.rating >= 4 ? "#15803D" : d.rating === 3 ? "#B8922A" : "#DC2626"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Répartition NPS" subtitle="Promoteurs · Passifs · Détracteurs">
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: "Promoteurs (5★)",  value: nps?.promoters || 0, color: NPS_COLORS.promoters },
+                      { name: "Passifs (4★)",     value: nps?.passives || 0,  color: NPS_COLORS.passives },
+                      { name: "Détracteurs (≤3★)",value: nps?.detractors || 0,color: NPS_COLORS.detractors },
+                    ]}
+                    cx="50%" cy="50%" innerRadius={50} outerRadius={90} paddingAngle={3} dataKey="value"
+                  >
+                    {[NPS_COLORS.promoters, NPS_COLORS.passives, NPS_COLORS.detractors].map((c, i) => <Cell key={i} fill={c} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "#fff", border: "1px solid #0A0A0A20", fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+
+          {/* Charts row 2 — Radar criteria + bars by type */}
+          <div className="grid lg:grid-cols-2 gap-4 mb-6">
+            <ChartCard title="Moyennes par critère" subtitle="Radar des 6 dimensions notées">
+              <ResponsiveContainer width="100%" height={300}>
+                <RadarChart outerRadius={100} data={CRIT.map(([k, lbl]) => ({ criterion: lbl, score: Number((overall[k] || 0).toFixed(2)) }))}>
+                  <PolarGrid stroke="#0A0A0A20" />
+                  <PolarAngleAxis dataKey="criterion" tick={{ fontSize: 11, fill: "#0A0A0A99" }} />
+                  <PolarRadiusAxis domain={[0, 5]} tick={{ fontSize: 10 }} />
+                  <Radar name="Score moyen" dataKey="score" stroke="#B8922A" fill="#B8922A" fillOpacity={0.45} />
+                  <Tooltip contentStyle={{ background: "#fff", border: "1px solid #0A0A0A20", fontSize: 12 }} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Note globale par offre" subtitle="Performance comparative">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={(analytics.by_type || []).map((t) => ({ name: EXP_LABELS[t.type] || t.type, score: Number(t.avg_globale.toFixed(2)), count: t.count }))} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#0A0A0A0F" />
+                  <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 11, fill: "#0A0A0A99" }} />
+                  <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12, fill: "#0A0A0A99" }} />
+                  <Tooltip cursor={{ fill: "#B8922A10" }} contentStyle={{ background: "#fff", border: "1px solid #0A0A0A20", fontSize: 12 }}
+                    formatter={(v, _n, ctx) => [`${v} / 5 · ${ctx.payload.count} retours`, "Note globale"]} />
+                  <Bar dataKey="score" fill="#0A0A0A" radius={[0, 4, 4, 0]}>
+                    {(analytics.by_type || []).map((_, i) => <Cell key={i} fill={COLORS_BAR[i % COLORS_BAR.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+
+          {/* Trend line (30 days) */}
+          {analytics.trend?.length > 0 && (
+            <div className="mb-6">
+              <ChartCard title="Tendance des 30 derniers jours" subtitle="Nombre de retours soumis & note moyenne par jour">
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={analytics.trend.map((t) => ({ day: fmtDay(t.day), count: t.count, avg: Number(t.avg_globale.toFixed(2)) }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#0A0A0A0F" />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#0A0A0A99" }} />
+                    <YAxis yAxisId="left" allowDecimals={false} tick={{ fontSize: 11, fill: "#0A0A0A99" }} label={{ value: "Retours", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "#0A0A0A66" } }} />
+                    <YAxis yAxisId="right" orientation="right" domain={[0, 5]} tick={{ fontSize: 11, fill: "#B8922A" }} label={{ value: "Note /5", angle: 90, position: "insideRight", style: { fontSize: 11, fill: "#B8922A" } }} />
+                    <Tooltip contentStyle={{ background: "#fff", border: "1px solid #0A0A0A20", fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line yAxisId="left"  type="monotone" dataKey="count" name="Nb retours" stroke="#0A0A0A" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line yAxisId="right" type="monotone" dataKey="avg"   name="Note moyenne" stroke="#B8922A" strokeWidth={2.5} dot={{ r: 4, fill: "#B8922A" }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            </div>
+          )}
+
+          {/* Filters */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <Filter size={14} className="text-[#0A0A0A]/50" />
+            <button onClick={() => setFilterType("")} className={`px-3 py-1.5 text-[0.7rem] uppercase tracking-[0.18em] border ${!filterType ? "bg-[#0A0A0A] text-white border-[#0A0A0A]" : "border-[#0A0A0A]/15 hover:border-[#0A0A0A]"}`}>
+              Tous ({items.length})
+            </button>
+            {Object.entries(EXP_LABELS).map(([id, lbl]) => {
+              const c = items.filter((i) => i.experience_type === id).length;
+              if (c === 0) return null;
+              return (
+                <button key={id} onClick={() => setFilterType(id)} className={`px-3 py-1.5 text-[0.7rem] uppercase tracking-[0.18em] border ${filterType === id ? "bg-[#0A0A0A] text-white border-[#0A0A0A]" : "border-[#0A0A0A]/15 hover:border-[#0A0A0A]"}`}>
+                  {lbl} ({c})
+                </button>
+              );
+            })}
+          </div>
+
+          {loading ? (
+            <div className="text-sm text-[#0A0A0A]/50">Chargement…</div>
+          ) : filtered.length === 0 ? (
+            <div className="border border-dashed border-[#0A0A0A]/15 p-10 text-center text-[#0A0A0A]/55 text-sm">
+              Aucun retour pour cette catégorie.
+            </div>
+          ) : (
+            <div className="space-y-3" data-testid="feedback-items">
+              {filtered.map((f) => <FeedbackCard key={f.id} f={f} onDelete={remove} fmtDate={fmtDate} />)}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function KPI({ label, value, gold }) {
+function KPI({ icon: Icon, label, value, gold, sub, colorClass }) {
   return (
     <div className={`p-5 border ${gold ? "bg-[#B8922A]/8 border-[#B8922A]/30" : "bg-white border-[#0A0A0A]/10"}`}>
-      <div className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 mb-2">{label}</div>
-      <div className={`text-2xl font-display-serif ${gold ? "text-[#B8922A]" : "text-[#0A0A0A]"}`}>{value}</div>
+      <div className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 mb-2 flex items-center gap-1.5">
+        {Icon && <Icon size={11} />} {label}
+      </div>
+      <div className={`text-2xl font-display-serif ${colorClass || (gold ? "text-[#B8922A]" : "text-[#0A0A0A]")}`}>{value}</div>
+      {sub && <div className="text-[0.7rem] text-[#0A0A0A]/45 mt-1">{sub}</div>}
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, cols, children }) {
+  return (
+    <div className={`bg-white border border-[#0A0A0A]/10 p-4 sm:p-5 ${cols || ""}`}>
+      <div className="mb-3">
+        <div className="font-display-serif text-base text-[#0A0A0A]">{title}</div>
+        {subtitle && <div className="text-[0.72rem] text-[#0A0A0A]/55 mt-0.5">{subtitle}</div>}
+      </div>
+      {children}
     </div>
   );
 }
