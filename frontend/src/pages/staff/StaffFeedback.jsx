@@ -13,6 +13,8 @@ import api from "../../lib/api";
 const EXP_LABELS = {
   pass_day: "Pass Day",
   sunset: "Sunset",
+  brunch: "Brunch",
+  lounge: "Lounge",
   restaurant: "Restaurant",
   hebergement: "Hébergement",
   evenement_prive: "Événement privé",
@@ -185,6 +187,56 @@ export default function StaffFeedback() {
             </div>
           )}
 
+          {/* Detailed per-offer table */}
+          <div className="mb-6">
+            <ChartCard title="Notes moyennes par offre — détail par critère"
+              subtitle="Comparez la performance de chaque offre sur les 6 dimensions notées par vos clients.">
+              <div className="overflow-x-auto -mx-4 sm:-mx-5 px-4 sm:px-5">
+                <table className="w-full text-sm border-collapse" data-testid="per-offer-table">
+                  <thead>
+                    <tr className="text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/15">
+                      <th className="text-left py-3 pr-3">Offre</th>
+                      <th className="text-center py-3 px-2">Retours</th>
+                      <th className="text-center py-3 px-2">Accueil</th>
+                      <th className="text-center py-3 px-2">Service</th>
+                      <th className="text-center py-3 px-2">Restauration</th>
+                      <th className="text-center py-3 px-2">Ambiance</th>
+                      <th className="text-center py-3 px-2">Propreté</th>
+                      <th className="text-center py-3 pl-2 text-[#B8922A]">Globale</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(analytics.by_type || []).map((t) => (
+                      <tr key={t.type} className="border-b border-[#0A0A0A]/8 hover:bg-[#FAFAF7] transition-colors" data-testid={`row-${t.type}`}>
+                        <td className="py-3 pr-3">
+                          <div className="font-medium text-[#0A0A0A]">{EXP_LABELS[t.type] || t.type}</div>
+                        </td>
+                        <td className="text-center py-3 px-2 text-[#0A0A0A]/70">{t.count}</td>
+                        <ScoreCell v={t.avg_accueil} />
+                        <ScoreCell v={t.avg_service} />
+                        <ScoreCell v={t.avg_restau} />
+                        <ScoreCell v={t.avg_ambiance} />
+                        <ScoreCell v={t.avg_proprete} />
+                        <ScoreCell v={t.avg_globale} highlight />
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 text-[0.7rem] text-[#0A0A0A]/45 flex items-center gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-3 h-3 inline-block rounded-full bg-green-600"></span> ≥ 4.5
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-3 h-3 inline-block rounded-full bg-[#B8922A]"></span> 3.5 – 4.5
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-3 h-3 inline-block rounded-full bg-red-500"></span> &lt; 3.5
+                </span>
+              </div>
+            </ChartCard>
+          </div>
+
           {/* Filters */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <Filter size={14} className="text-[#0A0A0A]/50" />
@@ -305,6 +357,20 @@ function Row({ label, stars }) {
       <span className="text-[#0A0A0A]/65">{label}</span>
       {stars}
     </div>
+  );
+}
+
+function ScoreCell({ v, highlight }) {
+  if (v == null) return <td className="text-center py-3 px-2 text-[#0A0A0A]/25">—</td>;
+  const score = Number(v);
+  const color = score >= 4.5 ? "bg-green-600" : score >= 3.5 ? "bg-[#B8922A]" : "bg-red-500";
+  return (
+    <td className={`text-center py-3 px-2 ${highlight ? "font-semibold text-[#B8922A]" : "text-[#0A0A0A]/85"}`}>
+      <span className="inline-flex items-center gap-1.5">
+        <span className={`w-2 h-2 rounded-full ${color}`}></span>
+        {score.toFixed(2)}
+      </span>
+    </td>
   );
 }
 

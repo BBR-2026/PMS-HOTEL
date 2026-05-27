@@ -8,6 +8,8 @@ const API = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "") + "/api
 const EXPERIENCES = [
   { id: "pass_day", label: "Pass Day" },
   { id: "sunset", label: "Sunset" },
+  { id: "brunch", label: "Brunch" },
+  { id: "lounge", label: "Lounge" },
   { id: "restaurant", label: "Restaurant" },
   { id: "hebergement", label: "Hébergement" },
   { id: "evenement_prive", label: "Événement privé" },

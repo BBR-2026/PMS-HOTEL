@@ -7805,7 +7805,7 @@ async def staff_campaigns_preview(body: CampaignCreateBody,
 # =================================================================
 
 EXP_CATEGORIES = [
-    "pass_day", "sunset", "restaurant", "hebergement", "evenement_prive", "autre",
+    "pass_day", "sunset", "brunch", "lounge", "restaurant", "hebergement", "evenement_prive", "autre",
 ]
 
 EXP_RATING_FIELDS = [
