@@ -11,6 +11,9 @@ import StaffNotifications from "./pages/staff/StaffNotifications";
 import StaffCampaigns from "./pages/staff/StaffCampaigns";
 import StaffFeedback from "./pages/staff/StaffFeedback";
 import Feedback from "./pages/Feedback";
+import Accueil from "./pages/Accueil";
+import PaiementHub from "./pages/PaiementHub";
+import WifiPage from "./pages/WifiPage";
 import EventPrivatization from "./pages/EventPrivatization";
 import StaffLogin from "./pages/staff/StaffLogin";
 import StaffLayout from "./pages/staff/StaffLayout";
@@ -83,6 +86,9 @@ function App() {
               <Route path="/events" element={<EventPrivatization />} />
             </Route>
             <Route path="/retour-experience" element={<Feedback />} />
+            <Route path="/accueil" element={<Accueil />} />
+            <Route path="/accueil/paiement" element={<PaiementHub />} />
+            <Route path="/accueil/wifi" element={<WifiPage />} />
             <Route path="/staff/login" element={<StaffLogin />} />
             <Route path="/staff" element={<StaffLayout />}>
               <Route index element={<StaffDashboard />} />

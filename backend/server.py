@@ -7163,6 +7163,97 @@ async def fineo_create_checkout(body: FineoCheckoutBody):
     }
 
 
+# ----- On-site direct payment (no booking) -----
+ONSITE_LOCATIONS = {
+    "quai_bbr":       "Quai BBr",
+    "restaurant":     "Restaurant",
+    "bar_beach_club": "Bar Beach Club",
+    "reception":      "Réception",
+    "lounge":         "Lounge",
+    "boutique":       "Boutique",
+}
+
+
+class OnsiteCheckoutBody(BaseModel):
+    location: str       # one of ONSITE_LOCATIONS keys
+    amount: int         # FCFA, > 0
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+
+
+@api.post("/payments/fineo/onsite-checkout")
+async def fineo_onsite_checkout(body: OnsiteCheckoutBody):
+    """Generate a FineoPay hosted-checkout link for an on-site (no booking)
+    payment. Used by the standalone /accueil hub so guests can settle a
+    consumption directly from their phone at one of the 6 BBr points of sale.
+
+    No idempotency: each request creates a fresh syncRef (uuid) — staff
+    typically enters a different amount each time.
+    """
+    if not FINEO_ENABLED:
+        raise HTTPException(status_code=503, detail="FineoPay non configuré sur cette instance.")
+    if body.location not in ONSITE_LOCATIONS:
+        raise HTTPException(status_code=400, detail="Point de paiement inconnu.")
+    if body.amount <= 0 or body.amount > 50_000_000:
+        raise HTTPException(status_code=400, detail="Montant invalide (1 - 50 000 000 FCFA).")
+
+    label = ONSITE_LOCATIONS[body.location]
+    amount = int(body.amount)
+    sync_ref = f"BBR-ONSITE-{uuid.uuid4().hex[:12].upper()}"
+
+    def _fmt_xof(n: int) -> str:
+        return f"{n:,}".replace(",", " ") + " FCFA"
+
+    title = f"BBR — {label} — {_fmt_xof(amount)}"
+
+    payload = {
+        "title": title,
+        "amount": amount,
+        "callbackUrl": _fineo_callback_url(),
+        "returnUrl": f"{FINEO_PUBLIC_BASE_URL}/accueil/paiement/resultat?ref={sync_ref}",
+        "syncRef": sync_ref,
+        "inputs": [
+            {"label": "Point de paiement", "value": label},
+            {"label": "Montant", "value": _fmt_xof(amount)},
+            {"label": "Client", "value": (body.customer_name or "").strip() or "Client BBR"},
+            {"label": "Téléphone", "value": (body.customer_phone or "").strip()},
+        ],
+    }
+
+    client_ = FineoClient()
+    try:
+        resp = await client_.create_checkout_link(payload)
+    except httpx.HTTPStatusError as e:
+        logging.exception("Fineo on-site checkout failed (%s): %s", e.response.status_code, e.response.text)
+        raise HTTPException(status_code=502, detail=f"FineoPay a refusé la demande ({e.response.status_code}).") from e
+    except httpx.HTTPError as e:
+        logging.exception("Fineo network error (on-site): %s", e)
+        raise HTTPException(status_code=502, detail="FineoPay injoignable. Réessayez dans un instant.") from e
+
+    if not resp.get("success") or "checkoutLink" not in (resp.get("data") or {}):
+        logging.error("Unexpected Fineo on-site response: %s", resp)
+        raise HTTPException(status_code=502, detail="Réponse FineoPay inattendue.")
+
+    checkout_url = resp["data"]["checkoutLink"]
+
+    await db.fineo_payments.insert_one({
+        "sync_ref": sync_ref,
+        "booking_id": None,
+        "intent": "onsite",
+        "location": body.location,
+        "location_label": label,
+        "customer_name": body.customer_name,
+        "customer_phone": body.customer_phone,
+        "amount": amount,
+        "checkout_url": checkout_url,
+        "status": "pending",
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    })
+
+    return {"checkout_url": checkout_url, "sync_ref": sync_ref, "amount": amount}
+
+
 @api.get("/payments/fineo/status/{booking_id}")
 async def fineo_payment_status(booking_id: str, intent: str = "booking"):
     """Polling endpoint used by the frontend result page while awaiting the
