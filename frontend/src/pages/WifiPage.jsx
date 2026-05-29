@@ -6,8 +6,8 @@ import { toast } from "sonner";
 const BBR_LOGO = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png";
 
 // Edit these credentials when needed
-const WIFI_SSID = "BBr-Guest";
-const WIFI_PASSWORD = "BoulayBeach2026";
+const WIFI_SSID = "Welcome-BBR";
+const WIFI_PASSWORD = "welc@mebbr";
 
 export default function WifiPage() {
   const [copied, setCopied] = useState(null);
