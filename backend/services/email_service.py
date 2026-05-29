@@ -132,6 +132,24 @@ def _first_name(full_name: Optional[str]) -> str:
     return parts[0] if parts else "cher client"
 
 
+def _formal_greeting(full_name: Optional[str]) -> str:
+    """Return a polite formal salutation: "Cher(e) Jean Dupont" or
+    "cher(e) client" if the booking has no name. Used as the addressee
+    immediately after "Bonjour" in our email templates."""
+    cleaned = (full_name or "").strip()
+    if not cleaned:
+        return "cher(e) client"
+    # Title-case in a way that respects French composite names ("Marie-Claire"
+    # → "Marie-Claire", "jean dupont" → "Jean Dupont").
+    parts = []
+    for tok in cleaned.split():
+        tok_pieces = []
+        for sub in tok.split("-"):
+            tok_pieces.append(sub[:1].upper() + sub[1:].lower() if sub else sub)
+        parts.append("-".join(tok_pieces))
+    return f"Cher(e) {' '.join(parts)}"
+
+
 def _tel_href(phone_with_spaces: str) -> str:
     """+225 07 17 400 400 → tel:+22507174000400."""
     return "tel:" + "".join(c for c in phone_with_spaces if c.isdigit() or c == "+")
@@ -324,11 +342,11 @@ def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
                                 amount_label: str, ticket_url: Optional[str],
                                 offer_type: str = "") -> dict:
     """Confirmation de paiement (envoyée après webhook FineoPay)."""
-    first = _first_name(name)
+    greet = _formal_greeting(name)
     hero = OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
 
     intro = (
-        f"Bonjour {first}, nous avons le plaisir de vous confirmer votre réservation pour "
+        f"Bonjour {greet}, nous avons le plaisir de vous confirmer votre réservation pour "
         f"l'expérience {offer_label} au Boulay Beach Resort. Votre billet QR est en pièce jointe "
         f"et accessible via le bouton ci-dessous."
     )
@@ -354,7 +372,7 @@ def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
     )
 
     plain = (
-        f"Bonjour {first},\n\nVotre réservation est confirmée.\n\n"
+        f"Bonjour {greet},\n\nVotre réservation est confirmée.\n\n"
         f"Expérience : {offer_label}\nRéférence : {ref}\nDate : {date_str}\n"
         + (f"Embarquement : {boat_time}\n" if boat_time else "")
         + f"Total réglé : {amount_label}\n\n"
@@ -371,11 +389,11 @@ def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
 
 def render_j_minus_1(*, name: str, ref: str, offer_label: str, date_str: str,
                      boat_time: Optional[str], offer_type: str = "") -> dict:
-    first = _first_name(name)
+    greet = _formal_greeting(name)
     hero = OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
 
     intro = (
-        f"Bonjour {first}, demain c'est le grand jour. Nous sommes ravis de vous accueillir "
+        f"Bonjour {greet}, demain c'est le grand jour. Nous sommes ravis de vous accueillir "
         f"pour votre {offer_label} sur l'Île Boulay."
     )
     details = (
@@ -398,7 +416,7 @@ def render_j_minus_1(*, name: str, ref: str, offer_label: str, date_str: str,
     )
 
     plain = (
-        f"Bonjour {first},\n\nDemain c'est le grand jour à Boulay Beach Resort.\n"
+        f"Bonjour {greet},\n\nDemain c'est le grand jour à Boulay Beach Resort.\n"
         f"Réf. {ref} · {offer_label} · {date_str}\n"
         + (f"Embarquement : {boat_time}\n" if boat_time else "")
         + "\nArrivez 30 min avant, maillot et crème solaire conseillés. À demain !"
@@ -412,11 +430,11 @@ def render_j_minus_1(*, name: str, ref: str, offer_label: str, date_str: str,
 
 def render_j_plus_1(*, name: str, review_url: Optional[str],
                     offer_type: str = "", offer_label: str = "") -> dict:
-    first = _first_name(name)
+    greet = _formal_greeting(name)
     hero = OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
 
     intro = (
-        f"Bonjour {first}, merci d'avoir choisi le Boulay Beach Resort hier"
+        f"Bonjour {greet}, merci d'avoir choisi le Boulay Beach Resort hier"
         + (f" pour votre {offer_label}." if offer_label else ".")
     )
     middle = (
@@ -435,7 +453,7 @@ def render_j_plus_1(*, name: str, review_url: Optional[str],
     )
 
     plain = (
-        f"Bonjour {first},\n\nMerci d'avoir choisi le Boulay Beach Resort hier.\n"
+        f"Bonjour {greet},\n\nMerci d'avoir choisi le Boulay Beach Resort hier.\n"
         + (f"Donnez-nous votre avis : {review_url}\n\n" if review_url else "")
         + "Au plaisir de vous revoir — BBr"
     )

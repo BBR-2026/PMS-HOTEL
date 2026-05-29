@@ -4,8 +4,8 @@ import { CheckCircle2, XCircle, Loader2, RefreshCw, Home, CreditCard } from "luc
 import api from "../lib/api";
 import { toast } from "sonner";
 
-const POLL_INTERVAL_MS = 2500;
-const POLL_MAX = 24; // ≈ 60 s
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX = 120; // ≈ 6 min — leaves plenty of time for customer to pay
 
 export default function FineoResult() {
   const [params] = useSearchParams();
@@ -104,11 +104,13 @@ export default function FineoResult() {
             <Loader2 className="mx-auto text-[#B8922A] animate-spin mb-4" size={48} />
             <h1 className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A] mb-2">Paiement en cours…</h1>
             <p className="text-sm text-[#0A0A0A]/65 mb-4">
-              Nous attendons la confirmation de FineoPay. Cela prend quelques secondes après votre validation.
+              Votre paiement est en cours sur l'onglet FineoPay qui vient de s'ouvrir.
+              Cette page se mettra à jour <strong>automatiquement</strong> dès que le paiement sera validé
+              (généralement sous 30 secondes).
             </p>
             <p className="text-[0.72rem] text-[#0A0A0A]/55 mb-6">
-              Si vous êtes revenu sur cette page <strong>sans avoir finalisé</strong> votre paiement sur FineoPay,
-              vous pouvez le reprendre ci-dessous.
+              Vous pouvez fermer l'onglet FineoPay une fois le paiement terminé : la confirmation
+              apparaîtra ici sans action de votre part.
             </p>
             <button
               onClick={resumeCheckout}
@@ -117,7 +119,7 @@ export default function FineoResult() {
               data-testid="fineo-resume-btn"
             >
               {resumeBusy ? <Loader2 size={12} className="animate-spin" /> : <CreditCard size={12} />}
-              Reprendre le paiement
+              Rouvrir le paiement FineoPay
             </button>
             <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/40 mt-3">
               Réf. réservation : {bookingId.slice(0, 8).toUpperCase()}

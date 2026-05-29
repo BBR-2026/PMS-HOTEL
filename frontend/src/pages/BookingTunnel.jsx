@@ -256,8 +256,11 @@ export default function BookingTunnel() {
     const trackKey = method === "deposit" && extra.deposit_pct ? `deposit-${extra.deposit_pct}` : method;
     setPaying(trackKey);
 
-    // Real FineoPay flow: ask the backend for a hosted checkout link and
-    // redirect the customer. The booking will be marked paid via webhook.
+    // Real FineoPay flow: open the hosted checkout in a NEW tab and switch
+    // OUR tab to the result page right away. FineoPay does not support
+    // returnUrl (confirmed by their support), so this is how we guarantee
+    // the customer always lands back on our confirmation page once payment
+    // settles — the background sweeper detects it within ~30s.
     if (method === "fineo") {
       try {
         const { data } = await api.post(`/payments/fineo/checkout`, {
@@ -265,7 +268,9 @@ export default function BookingTunnel() {
           intent: "booking",
         });
         if (data?.checkout_url) {
-          window.location.href = data.checkout_url;
+          window.open(data.checkout_url, "_blank", "noopener,noreferrer");
+          // Move our tab to the result page → starts polling for "paid".
+          navigate(`/payment/fineo/result?booking_id=${bookingResp.id}&intent=booking`);
           return;
         }
         throw new Error("Aucune URL FineoPay reçue");
