@@ -6862,8 +6862,8 @@ async def _send_booking_confirmation_email(booking: dict) -> None:
         offer_type=booking.get("offer_type", ""),
     )
 
-    # Attach the QR ticket PNG by fetching it from our own endpoint (avoids
-    # external dependency). Best-effort — email is sent without attachment if fail.
+    # Attach the QR ticket PNG + the styled booking confirmation PDF. Both are
+    # best-effort: the email is still sent if either generation fails.
     attachments = []
     try:
         png_bytes = await _build_ticket_png(booking)
@@ -6876,6 +6876,17 @@ async def _send_booking_confirmation_email(booking: dict) -> None:
             })
     except Exception as ex:
         logging.warning("Could not attach ticket PNG to email: %s", ex)
+    try:
+        pdf_bytes = await _build_booking_confirmation_pdf(booking)
+        if pdf_bytes:
+            attachments.append({
+                "content": pdf_bytes,
+                "filename": f"BBR-reservation-{ref}.pdf",
+                "mime": "application/pdf",
+                "disposition": "attachment",
+            })
+    except Exception as ex:
+        logging.warning("Could not attach reservation PDF to email: %s", ex)
 
     await email_service.send_email(
         db, to_email=booking["email"], to_name=name,
@@ -6897,6 +6908,151 @@ async def _build_ticket_png(booking: dict) -> Optional[bytes]:
         from base64 import b64decode
         return b64decode(img_data)
     except Exception:
+        return None
+
+
+async def _build_booking_confirmation_pdf(booking: dict) -> Optional[bytes]:
+    """Render a luxury-styled, single-page reservation confirmation PDF.
+
+    The PDF doubles as a printable boarding pass: branded header, booking
+    details table, embedded QR code, and a polite info footer. Returns the
+    raw PDF bytes, or ``None`` if anything goes wrong.
+    """
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image,
+        )
+
+        styles = _pdf_styles()
+        GOLD, DARK, LIGHT, MUTED = styles["GOLD"], styles["DARK"], styles["LIGHT"], styles["MUTED"]
+
+        name = (booking.get("name") or "").strip() or "Cher client"
+        ref = (booking.get("id", "") or "")[:8].upper()
+        offer_label = _offer_label_fr(booking.get("offer_type", ""))
+        date_str = _fmt_date_fr(booking.get("date", ""))
+        boat_time = booking.get("boat_time")
+        amount_label = _fmt_xof(booking.get("total_amount", 0))
+        email = booking.get("email") or "—"
+        phone = booking.get("phone") or "—"
+        guests = booking.get("guests") or booking.get("nb_guests")
+        room_label = booking.get("room_label") or booking.get("room_id")
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf, pagesize=A4,
+            leftMargin=2 * cm, rightMargin=2 * cm,
+            topMargin=2 * cm, bottomMargin=2 * cm,
+            title=f"Réservation BBR — {ref}",
+            author="Boulay Beach Resort",
+        )
+
+        elements = []
+        # Brand header
+        elements.append(Paragraph("Boulay Beach Resort", styles["h1"]))
+        elements.append(Paragraph("Confirmation de réservation", styles["sub"]))
+
+        # Greeting band
+        elements.append(Paragraph(
+            f"Bonjour <b>{name}</b>,<br/>"
+            "Nous avons le plaisir de vous confirmer votre réservation. "
+            "Présentez ce document (ou le QR code ci-dessous) à votre arrivée.",
+            styles["body"],
+        ))
+        elements.append(Spacer(1, 0.5 * cm))
+
+        # Details table
+        details = [
+            ["Référence",   ref],
+            ["Prestation",  offer_label],
+            ["Date",        date_str],
+        ]
+        if boat_time:
+            details.append(["Traversée", str(boat_time)])
+        if guests:
+            details.append(["Personnes", str(guests)])
+        if room_label and booking.get("offer_type") == "hebergement":
+            details.append(["Chambre", str(room_label)])
+        details.append(["Montant réglé", amount_label])
+        details.append(["Client", name])
+        details.append(["Email", email])
+        if phone and phone != "—":
+            details.append(["Téléphone", phone])
+
+        tbl = Table(details, colWidths=[5 * cm, 11 * cm])
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica"),
+            ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("TEXTCOLOR", (0, 0), (0, -1), MUTED),
+            ("TEXTCOLOR", (1, 0), (1, -1), DARK),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.2, colors.HexColor("#EEE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        elements.append(tbl)
+        elements.append(Spacer(1, 0.6 * cm))
+
+        # QR code block (embedded — same image as the email PNG attachment)
+        qr_bytes = await _build_ticket_png(booking)
+        if qr_bytes:
+            qr_buf = io.BytesIO(qr_bytes)
+            qr_img = Image(qr_buf, width=5.5 * cm, height=5.5 * cm)
+            qr_label = Paragraph(
+                "<b>Votre QR code d'accès</b><br/>"
+                "Scannez ce code à la réception ou à l'embarquement.<br/>"
+                f"<font color='#888888'>Code de référence : {ref}</font>",
+                styles["body"],
+            )
+            qr_tbl = Table(
+                [[qr_img, qr_label]],
+                colWidths=[6 * cm, 10 * cm],
+            )
+            qr_tbl.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+                ("BOX", (0, 0), (-1, -1), 0.5, GOLD),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 12),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ]))
+            elements.append(qr_tbl)
+            elements.append(Spacer(1, 0.5 * cm))
+
+        # Practical info
+        elements.append(Paragraph("Informations pratiques", styles["h2"]))
+        elements.append(Paragraph(
+            "• Accès uniquement par bateau depuis notre quai à Abidjan, Zone 4.<br/>"
+            "• Présentez-vous 15 minutes avant l'horaire de traversée indiqué.<br/>"
+            "• Un justificatif d'identité peut vous être demandé à l'embarquement.<br/>"
+            "• Toute annulation doit nous être communiquée au moins 48h à l'avance.",
+            styles["body"],
+        ))
+        elements.append(Spacer(1, 0.4 * cm))
+        elements.append(Paragraph(
+            "Pour toute question : contact@boulaybeachresort.com",
+            styles["small"],
+        ))
+
+        def _footer(canvas, doc_):
+            canvas.saveState()
+            canvas.setStrokeColor(GOLD)
+            canvas.setLineWidth(0.5)
+            canvas.line(2 * cm, 1.5 * cm, A4[0] - 2 * cm, 1.5 * cm)
+            canvas.setFont("Helvetica", 7)
+            canvas.setFillColor(MUTED)
+            canvas.drawString(2 * cm, 1 * cm, "Boulay Beach Resort — Life Is Here")
+            canvas.drawRightString(A4[0] - 2 * cm, 1 * cm, f"Réf. {ref}")
+            canvas.restoreState()
+
+        doc.build(elements, onFirstPage=_footer, onLaterPages=_footer)
+        return buf.getvalue()
+    except Exception as ex:
+        logging.warning("Failed to build booking confirmation PDF: %s", ex)
         return None
 
 
