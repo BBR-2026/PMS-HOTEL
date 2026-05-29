@@ -14,8 +14,14 @@ function fmtDateFR(iso) {
 export default function SpecialEventCard({ event, index = 0 }) {
   if (!event) return null;
   const datesLabel = (event.event_dates || []).map(fmtDateFR).slice(0, 3).join(" · ");
-  const totalSeatsLeft = Object.values(event.seats_per_date || {}).reduce((a, b) => a + b, 0);
-  const sold_out = totalSeatsLeft === 0;
+  const seats = event.seats_per_date || {};
+  const seatKeys = Object.keys(seats);
+  const totalSeatsLeft = Object.values(seats).reduce((a, b) => a + b, 0);
+  // "Complet" should ONLY fire when we have at least one upcoming date AND
+  // every single one is full. If seats_per_date is empty (event has no
+  // upcoming dates yet, or no capacity defined), do NOT show "Complet" —
+  // the event is simply not bookable for now and that's OK.
+  const sold_out = seatKeys.length > 0 && totalSeatsLeft === 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
