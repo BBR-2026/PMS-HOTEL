@@ -2277,7 +2277,9 @@ async def get_booking(booking_id: str, ref: str):
 
 @api.get("/bookings/{booking_id}/ticket.png")
 async def get_booking_ticket_image(booking_id: str, ref: str):
-    """Public PNG of the first ticket — used by Twilio WhatsApp media."""
+    """Public PNG of the first ticket — used by Twilio WhatsApp media. If the
+    booking was settled via FineoPay before the QR-generation fix shipped, we
+    retro-generate the ticket on-the-fly so the customer can still print it."""
     from base64 import b64decode
     from fastapi.responses import Response
     booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
@@ -2285,6 +2287,23 @@ async def get_booking_ticket_image(booking_id: str, ref: str):
         raise HTTPException(status_code=404, detail="Not found")
     qrs = booking.get("qr_codes") or []
     img_data = (qrs[0] if qrs else {}).get("ticket_image", "")
+    # Retro-fix: paid booking without QR (FineoPay legacy settle path).
+    if not img_data and booking.get("paid_at") and booking.get("status") != "cancelled":
+        try:
+            pay_body = PayBooking(
+                reference_token=booking["reference_token"],
+                payment_method="fineo",
+                deposit_pct=None,
+            )
+            # Mark status as pending so pay_booking accepts to regenerate
+            await db.bookings.update_one({"id": booking_id}, {"$set": {"status": "pending"}})
+            await pay_booking(booking_id, pay_body)
+            booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+            qrs = (booking or {}).get("qr_codes") or []
+            img_data = (qrs[0] if qrs else {}).get("ticket_image", "")
+            logging.info("Ticket retro-generated for booking %s", booking_id)
+        except Exception as ex:
+            logging.warning("Retro QR generation failed for %s: %s", booking_id, ex)
     if not img_data:
         raise HTTPException(status_code=404, detail="No ticket")
     if img_data.startswith("data:"):
@@ -6848,12 +6867,24 @@ async def _send_booking_confirmation_email(booking: dict) -> None:
         return
     if await _email_sent_already("booking_paid", booking.get("id", "")):
         return
-    name = (booking.get("name") or "").strip() or "Cher client"
+    name = (booking.get("name") or "").strip()
+    if not name:
+        # Real customer name lives in participants[0] (booking.name is empty)
+        for p in (booking.get("participants") or []):
+            if p.get("kind") == "adult":
+                name = f"{p.get('name','').strip()} {p.get('surname','').strip()}".strip()
+                if name:
+                    break
+        if not name and (booking.get("participants") or []):
+            p = booking["participants"][0]
+            name = f"{p.get('name','').strip()} {p.get('surname','').strip()}".strip()
+    if not name:
+        name = "Cher client"
     ref = (booking.get("id", "") or "")[:8].upper()
     offer_label = _offer_label_fr(booking.get("offer_type", ""))
     date_str = _fmt_date_fr(booking.get("date", ""))
     boat = booking.get("boat_time")
-    amount_label = _fmt_xof(booking.get("total_amount", 0))
+    amount_label = _fmt_xof(booking.get("paid_amount") or booking.get("total_amount", 0))
     ticket_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking['id']}/ticket.png?ref={booking.get('reference_token', '')}"
 
     tpl = email_service.render_booking_confirmation(
@@ -6929,16 +6960,45 @@ async def _build_booking_confirmation_pdf(booking: dict) -> Optional[bytes]:
         styles = _pdf_styles()
         GOLD, DARK, LIGHT, MUTED = styles["GOLD"], styles["DARK"], styles["LIGHT"], styles["MUTED"]
 
-        name = (booking.get("name") or "").strip() or "Cher client"
+        # Resolve the customer name: prefer the booking-level "name" if set,
+        # otherwise fall back to the first adult participant.
+        def _customer_name(b: dict) -> str:
+            raw = (b.get("name") or "").strip()
+            if raw:
+                return raw
+            for p in (b.get("participants") or []):
+                if p.get("kind") == "adult":
+                    full = f"{p.get('name','').strip()} {p.get('surname','').strip()}".strip()
+                    if full:
+                        return full
+            ps = b.get("participants") or []
+            if ps:
+                full = f"{ps[0].get('name','').strip()} {ps[0].get('surname','').strip()}".strip()
+                if full:
+                    return full
+            return "Cher client"
+
+        name = _customer_name(booking)
         ref = (booking.get("id", "") or "")[:8].upper()
-        offer_label = _offer_label_fr(booking.get("offer_type", ""))
+        offer_label = _offer_label_fr(booking.get("offer_type", "") or booking.get("offer_name", ""))
         date_str = _fmt_date_fr(booking.get("date", ""))
         boat_time = booking.get("boat_time")
-        amount_label = _fmt_xof(booking.get("total_amount", 0))
+        return_boat_time = booking.get("return_boat_time")
+        amount_label = _fmt_xof(booking.get("paid_amount") or booking.get("total_amount", 0))
         email = booking.get("email") or "—"
         phone = booking.get("phone") or "—"
-        guests = booking.get("guests") or booking.get("nb_guests")
-        room_label = booking.get("room_label") or booking.get("room_id")
+        # Compute total guests from adults + children (real schema) or fallback
+        adults = int(booking.get("adults") or 0)
+        children = int(booking.get("children") or 0)
+        guests = adults + children or booking.get("guests") or booking.get("nb_guests")
+        guests_label = None
+        if guests:
+            if adults and children:
+                guests_label = f"{adults} adulte(s) · {children} enfant(s)"
+            else:
+                guests_label = f"{int(guests)} personne(s)"
+        room_label = booking.get("room_tier_name") or booking.get("room_label") or booking.get("room_id")
+        nights = int(booking.get("nights") or 0)
 
         buf = io.BytesIO()
         doc = SimpleDocTemplate(
@@ -6970,10 +7030,14 @@ async def _build_booking_confirmation_pdf(booking: dict) -> Optional[bytes]:
             ["Date",        date_str],
         ]
         if boat_time:
-            details.append(["Traversée", str(boat_time)])
-        if guests:
-            details.append(["Personnes", str(guests)])
-        if room_label and booking.get("offer_type") == "hebergement":
+            details.append(["Traversée aller", str(boat_time)])
+        if return_boat_time:
+            details.append(["Traversée retour", str(return_boat_time)])
+        if nights:
+            details.append(["Nuitées", f"{nights} nuit(s)"])
+        if guests_label:
+            details.append(["Personnes", guests_label])
+        if room_label and booking.get("offer_type") in ("hebergement", "seminaire"):
             details.append(["Chambre", str(room_label)])
         details.append(["Montant réglé", amount_label])
         details.append(["Client", name])
@@ -7667,47 +7731,90 @@ async def _settle_payment(booking_id: str, intent: str, sync_ref: str, fineo_ref
     emit a fiscal receipt. Safe to call multiple times (callback retries)."""
     now = now_iso()
     if intent == "booking":
+        # CRITICAL: re-use the same code path as the legacy /pay endpoint so that
+        # QR codes, wallet QR, fiscal receipt, Twilio and email confirmation are
+        # all generated. The function is idempotent on its own (status check).
+        booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+        if not booking:
+            logging.warning("Fineo settle: booking %s not found", booking_id)
+            return
+        # Pick deposit_pct from the booking itself for overnight stays
+        deposit_pct = None
+        if booking.get("offer_type") in ("hebergement", "seminaire") and \
+                int(booking.get("total_amount", 0)) > 0 and \
+                amount > 0 and amount < int(booking["total_amount"]):
+            ratio = amount / int(booking["total_amount"])
+            for pct in (10, 30, 70):
+                if abs(ratio - pct / 100) < 0.01:
+                    deposit_pct = pct
+                    break
+        # Only run the QR-generation path on the first webhook for this booking.
+        if booking.get("status") == "pending" and not booking.get("qr_codes"):
+            try:
+                pay_body = PayBooking(
+                    reference_token=booking.get("reference_token", ""),
+                    payment_method=("deposit" if deposit_pct else "fineo"),
+                    deposit_pct=deposit_pct,
+                )
+                await pay_booking(booking_id, pay_body)
+                logging.info("Fineo settle: pay_booking generated QR codes for %s", booking_id)
+            except Exception as ex:
+                logging.exception("Fineo settle: pay_booking failed for %s — falling back to manual update: %s",
+                                  booking_id, ex)
+                # Fallback: mark as paid even without QRs so we don't leave booking stuck.
+                await db.bookings.update_one(
+                    {"id": booking_id, "paid_at": {"$exists": False}},
+                    {"$set": {
+                        "paid_at": now,
+                        "payment_method": "fineo",
+                        "payment_reference": fineo_ref,
+                        "paid_amount": amount,
+                    }},
+                )
+        # Always (re)attach the FineoPay reference and ensure paid_at is set.
         await db.bookings.update_one(
-            {"id": booking_id, "paid_at": {"$exists": False}},
+            {"id": booking_id},
             {"$set": {
-                "paid_at": now,
                 "payment_method": "fineo",
                 "payment_reference": fineo_ref,
                 "paid_amount": amount,
+                **({"paid_at": now} if not booking.get("paid_at") else {}),
             }},
         )
+        # Re-read the booking so downstream notifications see the latest QR codes.
         booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
-        if booking:
-            try:
-                await _create_receipt(
-                    source="booking",
-                    source_id=booking_id,
-                    customer_name=booking.get("name", ""),
-                    customer_email=booking.get("email", ""),
-                    customer_phone=booking.get("phone", ""),
-                    lines=[{"description": f"Réservation {booking.get('offer_type', '')}",
-                            "quantity": 1, "unit_price": amount, "total": amount}],
-                    payment_method="fineo",
-                    issued_by="FineoPay",
-                    issued_by_role="gateway",
-                    metadata={"booking_id": booking_id, "fineo_ref": fineo_ref, "sync_ref": sync_ref},
-                )
-            except Exception as ex:
-                logging.exception("Booking receipt creation failed: %s", ex)
-            # Twilio notification — never blocks
-            try:
-                qrs = booking.get("qr_codes") or []
-                qr_url = (qrs[0] if qrs else {}).get("ticket_image", "")
-                if qr_url and not qr_url.startswith(("http://", "https://")):
-                    qr_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking.get('reference_token','')}"
-                await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
-            except Exception as ex:
-                logging.warning("Twilio fineo-paid notification failed: %s", ex)
-            # SendGrid confirmation email + PDF attachment — idempotent
-            try:
-                await _send_booking_confirmation_email(booking)
-            except Exception as ex:
-                logging.warning("SendGrid fineo-paid email failed: %s", ex)
+        if not booking:
+            return
+        # Fiscal receipt — idempotent on (source, source_id)
+        try:
+            await _create_receipt(
+                source="booking",
+                source_id=booking_id,
+                customer_name=booking.get("name", ""),
+                customer_email=booking.get("email", ""),
+                customer_phone=booking.get("phone", ""),
+                lines=[{"description": f"Réservation {booking.get('offer_type', '')}",
+                        "quantity": 1, "unit_price": amount, "total": amount}],
+                payment_method="fineo",
+                issued_by="FineoPay",
+                issued_by_role="gateway",
+                metadata={"booking_id": booking_id, "fineo_ref": fineo_ref, "sync_ref": sync_ref},
+            )
+        except Exception as ex:
+            logging.exception("Booking receipt creation failed: %s", ex)
+        # Twilio + email — both idempotent (_email_sent_already / _sent_already)
+        try:
+            qrs = booking.get("qr_codes") or []
+            qr_url = (qrs[0] if qrs else {}).get("ticket_image", "")
+            if qr_url and not qr_url.startswith(("http://", "https://")):
+                qr_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking.get('reference_token','')}"
+            await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
+        except Exception as ex:
+            logging.warning("Twilio fineo-paid notification failed: %s", ex)
+        try:
+            await _send_booking_confirmation_email(booking)
+        except Exception as ex:
+            logging.warning("SendGrid fineo-paid email failed: %s", ex)
     elif intent == "wallet":
         wallet = await db.wallets.find_one({"booking_id": booking_id}, {"_id": 0})
         if wallet and wallet.get("status") != "closed":

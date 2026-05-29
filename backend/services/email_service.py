@@ -126,28 +126,24 @@ def _is_valid_email(s: Optional[str]) -> bool:
 
 
 def _first_name(full_name: Optional[str]) -> str:
+    """Return the customer's first name capitalised, or a polite fallback
+    when the booking has no name attached."""
     if not full_name:
         return "cher client"
     parts = full_name.strip().split()
-    return parts[0] if parts else "cher client"
+    if not parts:
+        return "cher client"
+    first = parts[0]
+    # Capitalise each hyphenated piece: "marie-claire" → "Marie-Claire"
+    pieces = []
+    for sub in first.split("-"):
+        pieces.append(sub[:1].upper() + sub[1:].lower() if sub else sub)
+    return "-".join(pieces)
 
 
 def _formal_greeting(full_name: Optional[str]) -> str:
-    """Return a polite formal salutation: "Cher(e) Jean Dupont" or
-    "cher(e) client" if the booking has no name. Used as the addressee
-    immediately after "Bonjour" in our email templates."""
-    cleaned = (full_name or "").strip()
-    if not cleaned:
-        return "cher(e) client"
-    # Title-case in a way that respects French composite names ("Marie-Claire"
-    # → "Marie-Claire", "jean dupont" → "Jean Dupont").
-    parts = []
-    for tok in cleaned.split():
-        tok_pieces = []
-        for sub in tok.split("-"):
-            tok_pieces.append(sub[:1].upper() + sub[1:].lower() if sub else sub)
-        parts.append("-".join(tok_pieces))
-    return f"Cher(e) {' '.join(parts)}"
+    """Backward-compat alias: returns the first name (no more "Cher(e)" form)."""
+    return _first_name(full_name)
 
 
 def _tel_href(phone_with_spaces: str) -> str:
