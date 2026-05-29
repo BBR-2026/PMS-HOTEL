@@ -7124,6 +7124,109 @@ async def _run_j_plus_1():
             logging.warning("J+1 email failed for %s: %s", b.get("id"), ex)
 
 
+async def _sweep_pending_fineo_payments():
+    """Background reconciliation: find pending FineoPay payments whose webhook
+    never fired or whose customer never returned to /payment/fineo/result, and
+    actively poll Fineo's /transactions to settle them.
+
+    Runs every 30 seconds. Safe to fail silently — exceptions are logged and
+    the next tick will retry.
+    """
+    if not FINEO_ENABLED:
+        return
+    try:
+        # Pick payments that have been pending for at least 30s (let the
+        # webhook a fair chance) and at most 24h (anything older is unlikely
+        # to settle and would just spam the Fineo API).
+        cutoff_floor = datetime.now(timezone.utc) - timedelta(hours=24)
+        cutoff_ceil = datetime.now(timezone.utc) - timedelta(seconds=30)
+        cursor = db.fineo_payments.find(
+            {
+                "status": "pending",
+                "intent": "booking",  # only customer bookings need this rescue
+                "created_at": {"$gte": cutoff_floor.isoformat(), "$lte": cutoff_ceil.isoformat()},
+            },
+            {"_id": 0, "sync_ref": 1, "booking_id": 1, "intent": 1, "amount": 1, "reference": 1},
+        ).limit(50)
+        pending = await cursor.to_list(length=50)
+        if not pending:
+            return
+
+        # Fetch the latest transactions ONCE, then cross-match against all our
+        # pending payments — way more efficient than calling per-payment.
+        client_ = FineoClient()
+        try:
+            resp = await client_.list_transactions(page=1, limit=100)
+        except Exception as ex:
+            logging.warning("Fineo sweeper: list_transactions failed: %s", ex)
+            return
+        data = (resp or {}).get("data") or {}
+        items = data.get("transactions") if isinstance(data, dict) else (data or [])
+        items = items or []
+
+        # Build an index by syncRef for O(1) lookup; fall back to amount-based
+        # heuristic (last 24h, cashin, success) if Fineo doesn't echo our ref.
+        from datetime import datetime as _dt, timezone as _tz
+        success_set = {"success", "successful", "completed", "paid"}
+        items_by_syncref = {(it.get("syncRef") or it.get("sync_ref") or ""): it for it in items}
+
+        for pay in pending:
+            sync_ref = pay["sync_ref"]
+            tx = items_by_syncref.get(sync_ref)
+            # Heuristic match (amount + recent + success + not already attributed)
+            if not tx:
+                target_amount = int(pay.get("amount", 0))
+                for it in items:
+                    if int(it.get("amount", 0)) != target_amount:
+                        continue
+                    if (it.get("direction") or "") != "cashin":
+                        continue
+                    if (it.get("status") or "").lower() not in success_set:
+                        continue
+                    existing = await db.fineo_payments.find_one(
+                        {"reference": it.get("reference")}, {"_id": 0, "sync_ref": 1},
+                    )
+                    if existing and existing.get("sync_ref") != sync_ref:
+                        continue
+                    tx = it
+                    break
+            if not tx:
+                continue
+            raw_status = (tx.get("status") or "").lower()
+            new_status = (
+                "paid" if raw_status in success_set else
+                "failed" if raw_status in ("failed", "declined") else
+                "expired" if raw_status in ("expired", "cancelled") else
+                "pending"
+            )
+            if new_status == "pending":
+                continue
+            fineo_ref = tx.get("reference") or tx.get("transactionReference")
+            tx_amount = int(tx.get("amount", 0) or pay.get("amount", 0))
+            await db.fineo_payments.update_one(
+                {"sync_ref": sync_ref},
+                {"$set": {
+                    "status": new_status,
+                    "reference": fineo_ref,
+                    "settled_at": now_iso() if new_status == "paid" else None,
+                    "raw_callback": tx,
+                    "updated_at": now_iso(),
+                    "settled_via": "background_sweep",
+                }},
+            )
+            if new_status == "paid" and fineo_ref:
+                try:
+                    await _settle_payment(pay["booking_id"], pay["intent"],
+                                          sync_ref, fineo_ref, tx_amount)
+                    logging.info("Fineo sweeper: settled booking=%s ref=%s amount=%s",
+                                 pay.get("booking_id"), fineo_ref, tx_amount)
+                except Exception as ex:
+                    logging.exception("Fineo sweeper: settle_payment failed for %s: %s",
+                                      pay.get("booking_id"), ex)
+    except Exception as ex:
+        logging.exception("Fineo sweeper iteration failed: %s", ex)
+
+
 @app.on_event("startup")
 async def start_scheduler():
     # J-1 reminders every day at 17:00 UTC (≈18h Abidjan)
@@ -7135,8 +7238,14 @@ async def start_scheduler():
         lambda: campaign_service.run_due_campaigns(db),
         "interval", minutes=1, id="campaigns_runner", replace_existing=True,
     )
+    # FineoPay pending sweeper — actively reconciles payments whose webhook
+    # never fired or whose customer never returned to our result page.
+    scheduler.add_job(
+        _sweep_pending_fineo_payments,
+        "interval", seconds=30, id="fineo_pending_sweeper", replace_existing=True,
+    )
     scheduler.start()
-    logging.info("APScheduler started: J-1 @17:00 UTC, J+1 @10:00 UTC, campaigns_runner @1min")
+    logging.info("APScheduler started: J-1 @17:00 UTC, J+1 @10:00 UTC, campaigns_runner @1min, fineo_sweeper @30s")
 
 
 @app.on_event("shutdown")
@@ -7183,6 +7292,18 @@ class FineoClient:
     async def get_transaction(self, reference: str) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout) as cli:
             r = await cli.get(f"{self.base_url}transactions/{reference}", headers=self.headers)
+            r.raise_for_status()
+            return r.json()
+
+    async def list_transactions(self, page: int = 1, limit: int = 50) -> dict:
+        """List recent transactions (paginated). Used as a fallback when the
+        webhook hasn't fired — we scan the latest page(s) for our syncRef."""
+        async with httpx.AsyncClient(timeout=self.timeout) as cli:
+            r = await cli.get(
+                f"{self.base_url}transactions",
+                params={"page": page, "limit": limit},
+                headers=self.headers,
+            )
             r.raise_for_status()
             return r.json()
 
@@ -7413,8 +7534,9 @@ async def fineo_onsite_checkout(body: OnsiteCheckoutBody):
 @api.get("/payments/fineo/status/{booking_id}")
 async def fineo_payment_status(booking_id: str, intent: str = "booking"):
     """Polling endpoint used by the frontend result page while awaiting the
-    callback. Falls back to a live GET on Fineo if the callback hasn't been
-    received yet."""
+    callback. Falls back to a live lookup on FineoPay's /transactions list if
+    the callback hasn't been received yet — so we still settle the payment and
+    notify the customer even when the webhook fails to fire."""
     sync_ref = f"BBR-{intent.upper()}-{booking_id}"
     pay = await db.fineo_payments.find_one({"sync_ref": sync_ref}, {"_id": 0})
     # Include booking reference_token so the frontend can deep-link the ticket PNG
@@ -7438,14 +7560,105 @@ async def fineo_payment_status(booking_id: str, intent: str = "booking"):
             "settled_at": pay.get("settled_at"),
             **booking_meta,
         }
-    # Live status from Fineo (best-effort)
-    if FINEO_ENABLED and pay.get("reference"):
+    # Live status from Fineo (best-effort) — active fallback when the callback
+    # hasn't fired yet. Two paths:
+    #   1. We already have the Fineo reference → GET /transactions/{ref}.
+    #   2. We don't → scan recent /transactions and match by syncRef or, as a
+    #      last resort, by exact amount within the last 6 hours.
+    if FINEO_ENABLED:
         try:
-            tx = await FineoClient().get_transaction(pay["reference"])
-            status = (tx.get("data", {}) or {}).get("status") or pay["status"]
-            return {"status": status, "sync_ref": sync_ref, "amount": pay.get("amount"), "reference": pay.get("reference"), **booking_meta}
-        except Exception:
-            pass
+            client_ = FineoClient()
+            tx = None
+            if pay.get("reference"):
+                resp = await client_.get_transaction(pay["reference"])
+                inner = (resp or {}).get("data") or {}
+                # API returns {"data": {"transaction": {...}}} for GET /tx/{ref}
+                tx = inner.get("transaction") if isinstance(inner, dict) else None
+                tx = tx or inner if isinstance(inner, dict) else None
+            else:
+                resp = await client_.list_transactions(page=1, limit=50)
+                data = (resp or {}).get("data") or {}
+                items = data.get("transactions") if isinstance(data, dict) else (data or [])
+                items = items or []
+                # Strategy A: explicit syncRef (future-proof if Fineo adds it).
+                for it in items:
+                    if (it.get("syncRef") or it.get("sync_ref") or "") == sync_ref:
+                        tx = it
+                        break
+                # Strategy B: match by exact amount within last 6 hours,
+                # cashin direction, success status. Fragile but only used as
+                # last resort when Fineo doesn't echo our syncRef.
+                if not tx:
+                    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                    cutoff = _dt.now(_tz.utc) - _td(hours=6)
+                    target_amount = int(pay.get("amount", 0))
+                    for it in items:
+                        if int(it.get("amount", 0)) != target_amount:
+                            continue
+                        if (it.get("direction") or "") != "cashin":
+                            continue
+                        if (it.get("status") or "").lower() not in ("success", "successful", "completed", "paid"):
+                            continue
+                        try:
+                            tx_date = _dt.fromisoformat((it.get("date") or "").replace("Z", "+00:00"))
+                        except Exception:
+                            continue
+                        if tx_date < cutoff:
+                            continue
+                        # Make sure THIS transaction hasn't already been bound
+                        # to a different sync_ref to avoid double-attribution.
+                        existing = await db.fineo_payments.find_one(
+                            {"reference": it.get("reference")}, {"_id": 0, "sync_ref": 1},
+                        )
+                        if existing and existing.get("sync_ref") != sync_ref:
+                            continue
+                        tx = it
+                        break
+            if tx:
+                raw_status = (tx.get("status") or "").lower()
+                fineo_ref = tx.get("reference") or tx.get("transactionReference")
+                tx_amount = int(tx.get("amount", 0) or pay.get("amount", 0))
+                new_status = (
+                    "paid" if raw_status in ("success", "successful", "completed", "paid") else
+                    "failed" if raw_status in ("failed", "declined") else
+                    "expired" if raw_status in ("expired", "cancelled") else
+                    "pending"
+                )
+                if new_status != "pending":
+                    await db.fineo_payments.update_one(
+                        {"sync_ref": sync_ref},
+                        {"$set": {
+                            "status": new_status,
+                            "reference": fineo_ref,
+                            "settled_at": now_iso() if new_status == "paid" else None,
+                            "raw_callback": tx,
+                            "updated_at": now_iso(),
+                            "settled_via": "active_poll",
+                        }},
+                    )
+                    if new_status == "paid" and fineo_ref:
+                        try:
+                            await _settle_payment(pay["booking_id"], pay["intent"],
+                                                  sync_ref, fineo_ref, tx_amount)
+                        except Exception as ex:
+                            logging.exception("Active-poll settle_payment failed: %s", ex)
+                    # Re-read booking_meta in case the booking now has qr_codes
+                    booking_lite = await db.bookings.find_one(
+                        {"id": booking_id},
+                        {"_id": 0, "reference_token": 1, "qr_codes": 1, "status": 1},
+                    )
+                    booking_meta = {
+                        "reference_token": (booking_lite or {}).get("reference_token"),
+                        "qr_count": len(((booking_lite or {}).get("qr_codes") or [])),
+                        "booking_status": (booking_lite or {}).get("status"),
+                    }
+                    return {
+                        "status": new_status, "sync_ref": sync_ref,
+                        "amount": tx_amount, "reference": fineo_ref,
+                        **booking_meta,
+                    }
+        except Exception as ex:
+            logging.warning("Fineo active-poll lookup failed: %s", ex)
     return {"status": pay.get("status", "pending"), "sync_ref": sync_ref, "amount": pay.get("amount"), **booking_meta}
 
 
@@ -7490,6 +7703,11 @@ async def _settle_payment(booking_id: str, intent: str, sync_ref: str, fineo_ref
                 await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
             except Exception as ex:
                 logging.warning("Twilio fineo-paid notification failed: %s", ex)
+            # SendGrid confirmation email + PDF attachment — idempotent
+            try:
+                await _send_booking_confirmation_email(booking)
+            except Exception as ex:
+                logging.warning("SendGrid fineo-paid email failed: %s", ex)
     elif intent == "wallet":
         wallet = await db.wallets.find_one({"booking_id": booking_id}, {"_id": 0})
         if wallet and wallet.get("status") != "closed":
