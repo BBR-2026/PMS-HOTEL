@@ -8402,10 +8402,29 @@ class CampaignCreateBody(BaseModel):
     title: Optional[str] = None
     body: str
     offer_type: Optional[str] = "pass_day"
+    special_event_id: Optional[str] = None  # If set, used to resolve hero image + CTA defaults
+    hero_image_url: Optional[str] = None     # explicit override, takes precedence
     cta_label: Optional[str] = None
     cta_url: Optional[str] = None
     recipients: List[dict]  # [{email, name?}]
     scheduled_at: Optional[str] = None  # ISO UTC; if None → draft (manual send)
+
+
+async def _resolve_campaign_hero(body: "CampaignCreateBody") -> Optional[str]:
+    """Resolve the hero image URL for a campaign. Order of precedence:
+    1. Explicit ``hero_image_url`` provided by the admin
+    2. The image of the bound special event (when ``offer_type='special_event'``)
+    3. ``None`` → falls back to OFFER_HERO_IMAGES[offer_type] in the renderer
+    """
+    if (body.hero_image_url or "").strip():
+        return body.hero_image_url.strip()
+    if body.offer_type == "special_event" and body.special_event_id:
+        ev = await db.special_events.find_one(
+            {"id": body.special_event_id}, {"_id": 0, "image_url": 1},
+        )
+        if ev and (ev.get("image_url") or "").strip():
+            return ev["image_url"].strip()
+    return None
 
 
 @api.post("/staff/campaigns")
@@ -8425,8 +8444,10 @@ async def staff_campaigns_create(body: CampaignCreateBody,
         cleaned.append({"email": e, "name": (r.get("name") or "").strip() or None})
     if not cleaned:
         raise HTTPException(status_code=400, detail="Aucune adresse e-mail valide.")
+    payload = body.model_dump()
+    payload["hero_image_url"] = await _resolve_campaign_hero(body)
     doc = campaign_service.new_campaign_doc(
-        payload=body.model_dump(),
+        payload=payload,
         recipients=cleaned,
         created_by=staff.get("email") or staff.get("id") or "admin",
     )
@@ -8493,12 +8514,14 @@ async def staff_campaigns_preview(body: CampaignCreateBody,
     """Return the rendered HTML so the admin can preview before scheduling."""
     await _require_role(staff, ["admin", "manager"])
     sample_name = (body.recipients[0].get("name") if body.recipients else None) or "Prénom"
+    hero_override = await _resolve_campaign_hero(body)
     html, _ = campaign_service._render_campaign_html(
         title=body.title or body.subject,
         body=body.body or "",
         recipient_name=sample_name,
         cta_label=body.cta_label, cta_url=body.cta_url,
         offer_type=body.offer_type or "pass_day",
+        hero_image_override=hero_override,
     )
     return {"html": html, "sample_recipient": sample_name}
 

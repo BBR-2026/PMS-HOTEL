@@ -104,17 +104,15 @@ def _extract_from_rows(rows: list[list[str]]) -> list[dict]:
 
 def _render_campaign_html(*, title: str, body: str, recipient_name: Optional[str],
                          cta_label: Optional[str], cta_url: Optional[str],
-                         offer_type: str) -> tuple[str, str]:
+                         offer_type: str, hero_image_override: Optional[str] = None) -> tuple[str, str]:
     """Render the HTML + plain version of a campaign body for a recipient.
 
     Variables substituted in body & title: ``{prenom}`` → first name (or
     "cher invité" fallback).
 
-    Uses the SAME ``email_service._render_template`` as transactional emails
-    (booking confirmation, J-1 reminder, J+1 review) so every BBR email keeps
-    the exact same visual identity. If the campaign has no CTA configured,
-    we fall back to a generic "Réserver" button so the dark CTA bar is still
-    rendered — guarantees identical structure for all email types.
+    ``hero_image_override`` short-circuits the static OFFER_HERO_IMAGES lookup
+    — used when the campaign is bound to a specific special event so the
+    customer sees that event's poster instead of the generic offer hero.
     """
     first = email_service._first_name(recipient_name) if recipient_name else "cher invité"
     title_r = title.replace("{prenom}", first.capitalize())
@@ -125,7 +123,8 @@ def _render_campaign_html(*, title: str, body: str, recipient_name: Optional[str
     final_cta_url = (cta_url or "").strip() or email_service.BBR_WEBSITE_URL
 
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body_r) if p.strip()]
-    hero = email_service.OFFER_HERO_IMAGES.get(offer_type, email_service.DEFAULT_HERO)
+    hero = (hero_image_override or "").strip() \
+        or email_service.OFFER_HERO_IMAGES.get(offer_type, email_service.DEFAULT_HERO)
     html = email_service._render_template(
         hero_image=hero, title=title_r, paragraphs=paragraphs,
         cta_label=final_cta_label, cta_url=final_cta_url,
@@ -165,6 +164,7 @@ async def send_campaign_now(db, campaign_id: str) -> dict:
             cta_label=camp.get("cta_label"),
             cta_url=camp.get("cta_url"),
             offer_type=camp.get("offer_type", "pass_day"),
+            hero_image_override=camp.get("hero_image_url"),
         )
         try:
             res = await email_service.send_email(
@@ -222,6 +222,8 @@ def new_campaign_doc(*, payload: dict, recipients: list[dict], created_by: str) 
         "title": (payload.get("title") or "").strip() or "Boulay Beach Resort",
         "body": payload.get("body") or "",
         "offer_type": (payload.get("offer_type") or "pass_day").strip(),
+        "special_event_id": (payload.get("special_event_id") or "").strip() or None,
+        "hero_image_url": (payload.get("hero_image_url") or "").strip() or None,
         "cta_label": (payload.get("cta_label") or "").strip() or None,
         "cta_url": (payload.get("cta_url") or "").strip() or None,
         "recipients": recipients,

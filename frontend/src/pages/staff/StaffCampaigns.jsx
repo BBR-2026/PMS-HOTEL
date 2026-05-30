@@ -161,18 +161,50 @@ function CampaignWizard({ onClose, onCreated }) {
   const [recipients, setRecipients] = useState([]);
   const [fileName, setFileName] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [events, setEvents] = useState([]);
   const [form, setForm] = useState({
     name: "",
     subject: "",
     title: "",
     body: "",
     offer_type: "pass_day",
+    special_event_id: "",
     cta_label: "Réserver",
     cta_url: "https://workflow-boulaybeachresort.com",
     scheduled_at: "",
   });
   const [previewHtml, setPreviewHtml] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Load published special events once (used when offer_type === 'special_event')
+  useEffect(() => {
+    api.get("/staff/special-events")
+      .then(({ data }) => {
+        const list = (data.items || data || []).filter(
+          (e) => (e.status || "") === "published",
+        );
+        setEvents(list);
+      })
+      .catch(() => { /* silent — section optional */ });
+  }, []);
+
+  // When admin selects a special event, pre-fill subject/title/body/CTA from it
+  // (only if they haven't been customised yet) — gives a sane starting point.
+  const onSelectEvent = (eventId) => {
+    setForm((f) => ({ ...f, special_event_id: eventId }));
+    if (!eventId) return;
+    const ev = events.find((e) => e.id === eventId);
+    if (!ev) return;
+    setForm((f) => ({
+      ...f,
+      special_event_id: eventId,
+      subject: f.subject || ev.title || f.subject,
+      title: f.title || `Bonjour {prenom}, ${ev.title || "rendez-vous au BBr"}`,
+      body: f.body || (ev.description || "").trim(),
+      cta_label: f.cta_label || "Réserver ma place",
+      cta_url: f.cta_url || `https://workflow-boulaybeachresort.com/booking/special-event/${ev.id}`,
+    }));
+  };
 
   const onFile = async (e) => {
     const file = e.target.files?.[0];
@@ -305,7 +337,7 @@ function CampaignWizard({ onClose, onCreated }) {
               </FieldRow>
               <div className="grid md:grid-cols-2 gap-4">
                 <FieldRow label="Univers / Image hero">
-                  <select value={form.offer_type} onChange={e => setForm({...form, offer_type: e.target.value})} className="input-style" data-testid="field-offer">
+                  <select value={form.offer_type} onChange={e => setForm({...form, offer_type: e.target.value, special_event_id: ""})} className="input-style" data-testid="field-offer">
                     {OFFER_TYPES.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                   </select>
                 </FieldRow>
@@ -313,6 +345,43 @@ function CampaignWizard({ onClose, onCreated }) {
                   <input value={form.cta_url} onChange={e => setForm({...form, cta_url: e.target.value})} placeholder="https://…" className="input-style" data-testid="field-cta-url" />
                 </FieldRow>
               </div>
+
+              {form.offer_type === "special_event" && (
+                <FieldRow label="Événement spécial associé">
+                  <select
+                    value={form.special_event_id}
+                    onChange={(e) => onSelectEvent(e.target.value)}
+                    className="input-style"
+                    data-testid="field-special-event"
+                  >
+                    <option value="">— Choisir un événement publié —</option>
+                    {events.map((ev) => (
+                      <option key={ev.id} value={ev.id}>{ev.title}</option>
+                    ))}
+                  </select>
+                  {form.special_event_id && (() => {
+                    const ev = events.find((e) => e.id === form.special_event_id);
+                    if (!ev) return null;
+                    return (
+                      <div className="mt-3 flex items-center gap-3 p-3 bg-[#FAFAF7] border border-[#B8922A]/20" data-testid="special-event-preview">
+                        {ev.image_url && (
+                          <img src={ev.image_url} alt="" className="w-16 h-16 object-cover border border-[#0A0A0A]/10" />
+                        )}
+                        <div className="text-[0.78rem]">
+                          <div className="font-medium text-[#0A0A0A]">{ev.title}</div>
+                          {ev.subtitle && <div className="text-[#0A0A0A]/55">{ev.subtitle}</div>}
+                          <div className="text-[0.7rem] text-[#B8922A] mt-0.5">L'image ci-dessus sera utilisée comme hero dans l'e-mail.</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {events.length === 0 && (
+                    <div className="text-[0.72rem] text-[#0A0A0A]/55 mt-1">
+                      Aucun événement publié — créez-en un dans "Événements spéciaux".
+                    </div>
+                  )}
+                </FieldRow>
+              )}
               <FieldRow label="Libellé du bouton CTA">
                 <input value={form.cta_label} onChange={e => setForm({...form, cta_label: e.target.value})} placeholder="Ex : Réserver" className="input-style" data-testid="field-cta-label" />
               </FieldRow>
