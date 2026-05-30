@@ -150,11 +150,14 @@ export default function StaffConfig() {
   const saveOffer = async (oid) => {
     const payload = edits[oid];
     if (!payload) return;
-    // Convert string -> int for numeric fields
+    // Convert string -> int for numeric fields, pass through text fields as-is
     const body = {};
     if (payload.price_adult !== undefined) body.price_adult = parseInt(payload.price_adult) || 0;
     if (payload.price_child !== undefined) body.price_child = parseInt(payload.price_child) || 0;
     if (payload.max_capacity !== undefined) body.max_capacity = parseInt(payload.max_capacity) || 1;
+    for (const k of ["name_fr", "name_en", "schedule_fr", "schedule_en", "tagline_fr", "tagline_en", "image_url"]) {
+      if (payload[k] !== undefined) body[k] = payload[k];
+    }
     if (payload.room_tiers) {
       body.room_tiers = payload.room_tiers.map((t) => ({
         ...t,
@@ -389,6 +392,116 @@ export default function StaffConfig() {
                     </div>
                   </div>
                 )}
+
+                {/* Editorial content — name, schedule, tagline, image */}
+                <div className="mt-6 pt-5 border-t border-[#0A0A0A]/8">
+                  <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-3">
+                    Contenu éditorial
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">Nom (FR)</label>
+                      <input
+                        value={e.name_fr ?? o.name_fr ?? ""}
+                        onChange={(ev) => updateOfferField(o.id, "name_fr", ev.target.value)}
+                        className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                        data-testid={`name-fr-${o.id}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">Nom (EN)</label>
+                      <input
+                        value={e.name_en ?? o.name_en ?? ""}
+                        onChange={(ev) => updateOfferField(o.id, "name_en", ev.target.value)}
+                        className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                        data-testid={`name-en-${o.id}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">Horaire (FR)</label>
+                      <input
+                        value={e.schedule_fr ?? o.schedule_fr ?? ""}
+                        onChange={(ev) => updateOfferField(o.id, "schedule_fr", ev.target.value)}
+                        className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                        data-testid={`schedule-fr-${o.id}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">Horaire (EN)</label>
+                      <input
+                        value={e.schedule_en ?? o.schedule_en ?? ""}
+                        onChange={(ev) => updateOfferField(o.id, "schedule_en", ev.target.value)}
+                        className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                        data-testid={`schedule-en-${o.id}`}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">Description (FR)</label>
+                      <textarea
+                        rows={5}
+                        value={e.tagline_fr ?? o.tagline_fr ?? ""}
+                        onChange={(ev) => updateOfferField(o.id, "tagline_fr", ev.target.value)}
+                        className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm font-sans leading-relaxed"
+                        data-testid={`tagline-fr-${o.id}`}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">Description (EN)</label>
+                      <textarea
+                        rows={5}
+                        value={e.tagline_en ?? o.tagline_en ?? ""}
+                        onChange={(ev) => updateOfferField(o.id, "tagline_en", ev.target.value)}
+                        className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm font-sans leading-relaxed"
+                        data-testid={`tagline-en-${o.id}`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Image — URL + upload */}
+                  <div className="mt-4">
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">Image (URL ou téléversement)</label>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      {(e.image_url ?? o.image_url) && (
+                        <img
+                          src={e.image_url ?? o.image_url}
+                          alt=""
+                          className="w-24 h-24 object-cover border border-[#0A0A0A]/15 shrink-0"
+                          data-testid={`image-preview-${o.id}`}
+                        />
+                      )}
+                      <div className="flex-1 space-y-2">
+                        <input
+                          type="url"
+                          placeholder="https://…"
+                          value={e.image_url ?? o.image_url ?? ""}
+                          onChange={(ev) => updateOfferField(o.id, "image_url", ev.target.value)}
+                          className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                          data-testid={`image-url-${o.id}`}
+                        />
+                        <label className="inline-flex items-center gap-2 cursor-pointer text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/65 hover:text-[#B8922A]">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            data-testid={`image-upload-${o.id}`}
+                            onChange={(ev) => {
+                              const f = ev.target.files?.[0];
+                              if (!f) return;
+                              if (f.size > 2 * 1024 * 1024) {
+                                toast.error("Image trop volumineuse (max 2 Mo)");
+                                return;
+                              }
+                              const reader = new FileReader();
+                              reader.onload = () => updateOfferField(o.id, "image_url", reader.result);
+                              reader.readAsDataURL(f);
+                            }}
+                          />
+                          📎 Téléverser une image (max 2 Mo)
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             );
           })}

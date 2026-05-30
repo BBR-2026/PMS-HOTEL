@@ -42,7 +42,7 @@ function SubOfferCard({ offer, index }) {
     >
       <div className="relative overflow-hidden aspect-[16/9] bg-[#FAFAF7]">
         <img
-          src={SUB_OFFER_IMAGES[offer.id] || SUB_OFFER_IMAGES.pass_day}
+          src={offer.image_url || SUB_OFFER_IMAGES[offer.id] || SUB_OFFER_IMAGES.pass_day}
           alt={name}
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-[1.04]"
         />

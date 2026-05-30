@@ -6655,10 +6655,27 @@ async def delete_staff_user(user_id: str, staff=Depends(get_current_staff)):
 
 
 class OfferPriceOverride(BaseModel):
+    # Pricing & capacity
     price_adult: Optional[int] = Field(default=None, ge=0)
     price_child: Optional[int] = Field(default=None, ge=0)
     max_capacity: Optional[int] = Field(default=None, ge=1)
     room_tiers: Optional[List[dict]] = None  # [{id, name_fr, name_en, price}]
+    # Editorial content (so admin can rename/retitle offers from the back-office)
+    name_fr: Optional[str] = Field(default=None, max_length=120)
+    name_en: Optional[str] = Field(default=None, max_length=120)
+    schedule_fr: Optional[str] = Field(default=None, max_length=180)
+    schedule_en: Optional[str] = Field(default=None, max_length=180)
+    tagline_fr: Optional[str] = Field(default=None, max_length=4000)
+    tagline_en: Optional[str] = Field(default=None, max_length=4000)
+    image_url: Optional[str] = Field(default=None, max_length=600)
+
+
+# Fields that flow from the override to the in-memory OFFERS dict
+_OVERRIDE_SCALAR_FIELDS = (
+    "price_adult", "price_child", "max_capacity",
+    "name_fr", "name_en", "schedule_fr", "schedule_en",
+    "tagline_fr", "tagline_en", "image_url",
+)
 
 
 async def _apply_overrides(offer: dict) -> dict:
@@ -6667,7 +6684,7 @@ async def _apply_overrides(offer: dict) -> dict:
     if not override:
         return offer
     merged = dict(offer)
-    for k in ("price_adult", "price_child", "max_capacity"):
+    for k in _OVERRIDE_SCALAR_FIELDS:
         if override.get(k) is not None:
             merged[k] = override[k]
     if override.get("room_tiers"):
@@ -6702,7 +6719,7 @@ async def update_offer_override(offer_id: str, body: OfferPriceOverride, staff=D
         upsert=True,
     )
     # Mutate in-memory OFFERS dict so public site reflects immediately
-    for k in ("price_adult", "price_child", "max_capacity"):
+    for k in _OVERRIDE_SCALAR_FIELDS:
         if payload.get(k) is not None:
             OFFERS[offer_id][k] = payload[k]
     if payload.get("room_tiers"):
@@ -6880,7 +6897,7 @@ async def apply_offer_overrides_on_boot():
         async for ov in db.offer_overrides.find({}, {"_id": 0}):
             oid = ov.get("offer_id")
             if oid in OFFERS:
-                for k in ("price_adult", "price_child", "max_capacity"):
+                for k in _OVERRIDE_SCALAR_FIELDS:
                     if ov.get(k) is not None:
                         OFFERS[oid][k] = ov[k]
                 if ov.get("room_tiers"):
