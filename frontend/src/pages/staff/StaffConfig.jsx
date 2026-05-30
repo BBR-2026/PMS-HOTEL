@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink, Database, Loader2 } from "lucide-react";
+import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink, Database, Loader2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 import {
@@ -457,28 +457,42 @@ export default function StaffConfig() {
                     </div>
                   </div>
 
-                  {/* Image — URL + upload */}
+                  {/* Image — URL or local file upload */}
                   <div className="mt-4">
-                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">Image (URL ou téléversement)</label>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      {(e.image_url ?? o.image_url) && (
-                        <img
-                          src={e.image_url ?? o.image_url}
-                          alt=""
-                          className="w-24 h-24 object-cover border border-[#0A0A0A]/15 shrink-0"
-                          data-testid={`image-preview-${o.id}`}
-                        />
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-2">
+                      Image de l'offre
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-4 items-start">
+                      {(e.image_url ?? o.image_url) ? (
+                        <div className="relative group shrink-0">
+                          <img
+                            src={e.image_url ?? o.image_url}
+                            alt=""
+                            className="w-32 h-32 object-cover border border-[#0A0A0A]/15"
+                            data-testid={`image-preview-${o.id}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateOfferField(o.id, "image_url", "")}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-[0.8rem] hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                            data-testid={`image-clear-${o.id}`}
+                            title="Retirer l'image"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-32 h-32 border-2 border-dashed border-[#0A0A0A]/15 flex items-center justify-center text-[0.7rem] text-[#0A0A0A]/40 shrink-0">
+                          Aucune image
+                        </div>
                       )}
-                      <div className="flex-1 space-y-2">
-                        <input
-                          type="url"
-                          placeholder="https://…"
-                          value={e.image_url ?? o.image_url ?? ""}
-                          onChange={(ev) => updateOfferField(o.id, "image_url", ev.target.value)}
-                          className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
-                          data-testid={`image-url-${o.id}`}
-                        />
-                        <label className="inline-flex items-center gap-2 cursor-pointer text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/65 hover:text-[#B8922A]">
+                      <div className="flex-1 w-full space-y-3">
+                        <label
+                          className="inline-flex items-center gap-2 cursor-pointer bg-[#0A0A0A] text-white px-4 py-2.5 text-[0.65rem] uppercase tracking-[0.22em] hover:bg-[#1A1A1A] transition-colors"
+                          data-testid={`image-upload-label-${o.id}`}
+                        >
+                          <UploadCloud size={14} />
+                          Choisir un fichier depuis le PC
                           <input
                             type="file"
                             accept="image/*"
@@ -487,17 +501,39 @@ export default function StaffConfig() {
                             onChange={(ev) => {
                               const f = ev.target.files?.[0];
                               if (!f) return;
-                              if (f.size > 2 * 1024 * 1024) {
-                                toast.error("Image trop volumineuse (max 2 Mo)");
+                              if (!f.type.startsWith("image/")) {
+                                toast.error("Le fichier doit être une image");
+                                return;
+                              }
+                              if (f.size > 5 * 1024 * 1024) {
+                                toast.error(`Image trop volumineuse (${(f.size / 1024 / 1024).toFixed(1)} Mo). Max 5 Mo.`);
                                 return;
                               }
                               const reader = new FileReader();
                               reader.onload = () => updateOfferField(o.id, "image_url", reader.result);
+                              reader.onerror = () => toast.error("Lecture du fichier impossible");
                               reader.readAsDataURL(f);
+                              // Reset the input so re-selecting the same file triggers onChange
+                              ev.target.value = "";
                             }}
                           />
-                          📎 Téléverser une image (max 2 Mo)
                         </label>
+                        <div className="text-[0.65rem] text-[#0A0A0A]/45">
+                          Formats : JPG, PNG, WebP · Max 5 Mo · Ratio recommandé 16:9
+                        </div>
+                        <div>
+                          <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/50 block mb-1">
+                            ou coller une URL d'image
+                          </label>
+                          <input
+                            type="url"
+                            placeholder="https://..."
+                            value={(e.image_url ?? o.image_url ?? "").startsWith("data:") ? "" : (e.image_url ?? o.image_url ?? "")}
+                            onChange={(ev) => updateOfferField(o.id, "image_url", ev.target.value)}
+                            className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                            data-testid={`image-url-${o.id}`}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
