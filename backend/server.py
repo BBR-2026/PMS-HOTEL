@@ -8649,6 +8649,22 @@ async def staff_feedback_delete(fb_id: str, staff=Depends(get_current_staff)):
 app.include_router(api)
 
 
+# ===== Self-service guest registration module =====
+from routers import registrations as _registrations_mod  # noqa: E402
+
+app.include_router(
+    _registrations_mod.build_router(
+        db=db,
+        offers_catalog=OFFERS,
+        require_role=_require_role,
+        get_current_staff=get_current_staff,
+        email_service=email_service,
+        public_base_url=FINEO_PUBLIC_BASE_URL,
+    ),
+    prefix="/api",
+)
+
+
 
 
 

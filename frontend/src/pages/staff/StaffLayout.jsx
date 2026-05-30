@@ -24,6 +24,7 @@ import {
   Wallet,
   Megaphone,
   MessageSquare,
+  UserCheck,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -66,6 +67,7 @@ const NAV = [
   { to: "/staff/notifications", icon: Bell, label: "Notifications SMS/WhatsApp", roles: R_MGMT },
   { to: "/staff/campaigns", icon: Megaphone, label: "Campagnes e-mail", roles: R_MGMT },
   { to: "/staff/feedback", icon: MessageSquare, label: "Retour expérience", roles: R_MGMT },
+  { to: "/staff/enregistrements", icon: UserCheck, label: "Enregistrements", roles: R_MGMT },
   { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: R_MGMT },
   { to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: R_MGMT },
   { to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },

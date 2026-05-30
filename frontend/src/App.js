@@ -14,6 +14,8 @@ import Feedback from "./pages/Feedback";
 import Accueil from "./pages/Accueil";
 import PaiementHub from "./pages/PaiementHub";
 import WifiPage from "./pages/WifiPage";
+import Enregistrement from "./pages/Enregistrement";
+import StaffRegistrations from "./pages/staff/StaffRegistrations";
 import EventPrivatization from "./pages/EventPrivatization";
 import StaffLogin from "./pages/staff/StaffLogin";
 import StaffLayout from "./pages/staff/StaffLayout";
@@ -89,6 +91,8 @@ function App() {
             <Route path="/accueil" element={<Accueil />} />
             <Route path="/accueil/paiement" element={<PaiementHub />} />
             <Route path="/accueil/wifi" element={<WifiPage />} />
+            <Route path="/accueil/enregistrement" element={<Enregistrement />} />
+            <Route path="/enregistrement" element={<Enregistrement />} />
             <Route path="/staff/login" element={<StaffLogin />} />
             <Route path="/staff" element={<StaffLayout />}>
               <Route index element={<StaffDashboard />} />
@@ -113,6 +117,7 @@ function App() {
               <Route path="notifications" element={<RoleGuard allowed={MANAGER_PLUS}><StaffNotifications /></RoleGuard>} />
               <Route path="campaigns" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCampaigns /></RoleGuard>} />
               <Route path="feedback" element={<RoleGuard allowed={MANAGER_PLUS}><StaffFeedback /></RoleGuard>} />
+              <Route path="enregistrements" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRegistrations /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>
