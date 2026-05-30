@@ -2550,6 +2550,120 @@ async def staff_delete_special_event(event_id: str, staff=Depends(get_current_st
     return {"ok": True}
 
 
+# =================================================================
+# ADMIN — Wipe test data (DANGER)
+# =================================================================
+WIPE_SECTIONS = {
+    "bookings": {
+        "label": "Réservations & paiements",
+        "collections": ["bookings", "fineo_payments", "receipts", "wallets", "deposits", "payments"],
+    },
+    "notifications": {
+        "label": "Notifications (emails + SMS/WhatsApp)",
+        "collections": ["email_messages", "twilio_messages"],
+    },
+    "campaigns": {
+        "label": "Campagnes marketing",
+        "collections": ["campaigns", "campaign_recipients", "email_campaigns"],
+    },
+    "feedback": {
+        "label": "Retours d'expérience",
+        "collections": ["experience_feedback"],
+    },
+    "loisirs": {
+        "label": "Réservations loisirs / événements",
+        "collections": ["loisirs_bookings", "event_bookings", "event_requests"],
+    },
+    "traversees": {
+        "label": "Traversées & manifests passagers",
+        "collections": ["traversees", "traversee_passengers"],
+    },
+    "scans": {
+        "label": "Scans QR (historique)",
+        "collections": ["qr_scans"],
+    },
+    "clients": {
+        "label": "Fiches clients agrégées",
+        "collections": ["clients"],
+    },
+}
+
+
+class WipeTestDataBody(BaseModel):
+    confirmation: str  # must be exactly "VIDER LES DONNEES BBR"
+    sections: Optional[List[str]] = None  # None or ["all"] → wipe everything
+
+
+@api.get("/staff/admin/wipe-sections")
+async def admin_get_wipe_sections(staff=Depends(get_current_staff)):
+    """Return the list of wipe-able sections with their current document counts.
+    Used by the Maintenance tab in StaffConfig."""
+    await _require_role(staff, ["admin"])
+    existing = await db.list_collection_names()
+    out = []
+    for key, spec in WIPE_SECTIONS.items():
+        total = 0
+        for c in spec["collections"]:
+            if c in existing:
+                total += await db[c].count_documents({})
+        out.append({
+            "key": key,
+            "label": spec["label"],
+            "collections": spec["collections"],
+            "count": total,
+        })
+    return {"sections": out}
+
+
+@api.post("/staff/admin/wipe-test-data")
+async def admin_wipe_test_data(body: WipeTestDataBody, staff=Depends(get_current_staff)):
+    """Admin-only nuclear button to wipe transactional data while keeping
+    catalog + staff + integrations intact. Supports granular wipes per
+    ``sections`` (see ``GET /staff/admin/wipe-sections`` for keys).
+
+    Requires the literal confirmation string ``VIDER LES DONNEES BBR`` in the
+    request body to avoid accidental clicks.
+    """
+    await _require_role(staff, ["admin"])
+    if body.confirmation != "VIDER LES DONNEES BBR":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation invalide. Saisissez exactement : VIDER LES DONNEES BBR",
+        )
+    # Resolve which collections to actually wipe.
+    selected_keys = body.sections or ["all"]
+    if "all" in selected_keys:
+        selected_keys = list(WIPE_SECTIONS.keys())
+    unknown = [k for k in selected_keys if k not in WIPE_SECTIONS]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sections inconnues : {', '.join(unknown)}",
+        )
+
+    targets = set()
+    for k in selected_keys:
+        targets.update(WIPE_SECTIONS[k]["collections"])
+
+    existing = await db.list_collection_names()
+    summary = {"wiped": {}, "sections": selected_keys}
+    total_wiped = 0
+    for c in targets:
+        if c in existing:
+            res = await db[c].delete_many({})
+            summary["wiped"][c] = res.deleted_count
+            total_wiped += res.deleted_count
+
+    logging.warning(
+        "Admin %s wiped %d docs (sections=%s, cols=%s)",
+        staff.get("email"), total_wiped, selected_keys, ", ".join(summary["wiped"].keys()),
+    )
+    return {"ok": True, "total_wiped": total_wiped, "details": summary}
+
+
+
+
+
 # ----- Event privatization -----
 @api.post("/events/privatization")
 async def event_privatization(body: EventPrivatization):

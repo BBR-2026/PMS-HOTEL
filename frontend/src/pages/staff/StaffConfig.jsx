@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink } from "lucide-react";
+import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink, Database, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 import {
@@ -209,6 +209,15 @@ export default function StaffConfig() {
         >
           <Plug size={11} /> Intégrations
         </button>
+        <button
+          onClick={() => setTab("maintenance")}
+          className={`px-4 sm:px-5 py-3 text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.22em] border-b-2 transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${
+            tab === "maintenance" ? "border-[#B8922A] text-[#B8922A]" : "border-transparent text-[#0A0A0A]/60 hover:text-[#0A0A0A]"
+          }`}
+          data-testid="tab-maintenance"
+        >
+          <Database size={11} /> Maintenance
+        </button>
       </div>
 
       {loading ? (
@@ -386,6 +395,8 @@ export default function StaffConfig() {
         </div>
       ) : tab === "integrations" ? (
         <IntegrationsPanel />
+      ) : tab === "maintenance" ? (
+        <MaintenancePanel />
       ) : null}
 
       {/* Create user modal */}
@@ -735,6 +746,174 @@ function ConfigRow({ label, value, mono, small }) {
       <div className={`${mono ? "font-mono" : ""} ${small ? "text-[0.72rem]" : "text-[0.8rem]"} text-[#0A0A0A] break-all`}>
         {value || <span className="text-[#0A0A0A]/40">—</span>}
       </div>
+    </div>
+  );
+}
+
+
+// ===== Maintenance Panel (admin-only data wipe per section) =====
+function MaintenancePanel() {
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [confirmModal, setConfirmModal] = useState(null); // {keys: [], label: ""}
+  const [confirmText, setConfirmText] = useState("");
+  const [wiping, setWiping] = useState(false);
+
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/staff/admin/wipe-sections");
+      setSections(data.sections || []);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Impossible de charger les sections");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { refresh(); }, []);
+
+  const totalAll = sections.reduce((a, s) => a + (s.count || 0), 0);
+
+  const openConfirm = (keys, label) => {
+    setConfirmText("");
+    setConfirmModal({ keys, label });
+  };
+
+  const runWipe = async () => {
+    if (!confirmModal) return;
+    if (confirmText !== "VIDER LES DONNEES BBR") {
+      toast.error("Texte de confirmation incorrect");
+      return;
+    }
+    setWiping(true);
+    try {
+      const { data } = await api.post("/staff/admin/wipe-test-data", {
+        confirmation: "VIDER LES DONNEES BBR",
+        sections: confirmModal.keys,
+      });
+      toast.success(`${data.total_wiped} document(s) supprimé(s)`);
+      setConfirmModal(null);
+      setConfirmText("");
+      await refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Échec du vidage");
+    } finally {
+      setWiping(false);
+    }
+  };
+
+  if (loading) return <div className="text-sm text-[#0A0A0A]/50">Chargement…</div>;
+
+  return (
+    <div data-testid="maintenance-panel">
+      <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={20} />
+          <div>
+            <div className="font-medium text-red-900 mb-1">Zone dangereuse</div>
+            <div className="text-[0.78rem] text-red-800/85 leading-relaxed">
+              Le vidage supprime <strong>définitivement</strong> les données de la
+              section choisie. Les comptes staff, le catalogue d'offres, les chambres,
+              les événements spéciaux et les intégrations sont <strong>préservés</strong>.
+              Action irréversible.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3 mb-6" data-testid="wipe-sections-grid">
+        {sections.map((s) => (
+          <div
+            key={s.key}
+            className="border border-[#0A0A0A]/12 p-4 flex items-center justify-between hover:border-red-300 transition-colors"
+            data-testid={`wipe-section-${s.key}`}
+          >
+            <div className="min-w-0 pr-3">
+              <div className="text-sm font-medium text-[#0A0A0A] truncate">{s.label}</div>
+              <div className="text-[0.7rem] text-[#0A0A0A]/55 mt-0.5">
+                {s.count} document(s) · {s.collections.join(", ")}
+              </div>
+            </div>
+            <button
+              onClick={() => openConfirm([s.key], s.label)}
+              disabled={s.count === 0}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              data-testid={`wipe-btn-${s.key}`}
+            >
+              <Trash2 size={12} /> Vider
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-[#0A0A0A]/10 pt-5">
+        <div className="text-sm text-[#0A0A0A]/65 mb-3">
+          Total documents transactionnels : <strong>{totalAll}</strong>
+        </div>
+        <button
+          onClick={() => openConfirm(["all"], "TOUTES les sections")}
+          disabled={totalAll === 0}
+          className="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          data-testid="wipe-all-btn"
+        >
+          <Trash2 size={14} /> Tout vider
+        </button>
+      </div>
+
+      {confirmModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => !wiping && setConfirmModal(null)}
+          data-testid="wipe-confirm-modal"
+        >
+          <div className="bg-white p-7 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="text-red-500" size={22} />
+              <h3 className="font-display-serif text-2xl text-[#0A0A0A]">Confirmer le vidage</h3>
+            </div>
+            <p className="text-sm text-[#0A0A0A]/75 mb-1">
+              Vous êtes sur le point de vider :
+            </p>
+            <p className="text-sm text-red-700 font-medium mb-4">
+              {confirmModal.label}
+            </p>
+            <p className="text-[0.78rem] text-[#0A0A0A]/65 mb-3">
+              Pour confirmer, saisissez exactement la phrase ci-dessous :
+            </p>
+            <div className="text-[0.78rem] font-mono text-[#0A0A0A] bg-[#F5F1E8] px-3 py-2 mb-2">
+              VIDER LES DONNEES BBR
+            </div>
+            <input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="Saisissez la phrase…"
+              className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-red-400 focus:outline-none text-sm font-mono"
+              data-testid="wipe-confirm-input"
+              disabled={wiping}
+            />
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setConfirmModal(null)}
+                disabled={wiping}
+                className="flex-1 px-4 py-2 text-[0.7rem] uppercase tracking-[0.22em] border border-[#0A0A0A]/15 hover:bg-[#0A0A0A]/5 disabled:opacity-40"
+                data-testid="wipe-cancel-btn"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={runWipe}
+                disabled={wiping || confirmText !== "VIDER LES DONNEES BBR"}
+                className="flex-1 inline-flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                data-testid="wipe-execute-btn"
+              >
+                {wiping ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
