@@ -3007,33 +3007,41 @@ async def staff_dashboard(staff=Depends(get_current_staff)):
             "last_30d": pole_30d.get(pid, {"count": 0, "revenue": 0}),
         })
 
-    # Feedback average — last 90 days (rolling). Computes the mean of the
-    # numeric ratings stored in experience_feedback.ratings (typically a dict
-    # of {criterion: 1..5}). Keeps the dashboard light: one aggregate.
+    # Feedback average — last 90 days (rolling). Ratings are stored as flat
+    # fields (accueil_arrivee, service_amabilite, restauration_boissons,
+    # ambiance_cadre, proprete_confort, experience_globale) each scored 1-5.
+    # NPS-style block: promoters = 5★, passives = 4★, detractors ≤ 3★ on
+    # experience_globale, score = (promoters - detractors) / total * 100.
     from datetime import timedelta as _td2
     fb_cutoff = (datetime.now(timezone.utc) - _td2(days=90)).isoformat()
     fb_total = 0
     fb_sum = 0.0
     fb_count = 0
-    nps_sum = 0
-    nps_count = 0
+    promoters = passives = detractors = 0
+    rating_proj = {f: 1 for f in EXP_RATING_FIELDS}
+    rating_proj["_id"] = 0
     async for fb in db.experience_feedback.find(
-        {"created_at": {"$gte": fb_cutoff}},
-        {"_id": 0, "ratings": 1, "nps": 1},
+        {"created_at": {"$gte": fb_cutoff}}, rating_proj,
     ):
-        ratings = fb.get("ratings") or {}
-        if isinstance(ratings, dict) and ratings:
-            vals = [v for v in ratings.values() if isinstance(v, (int, float)) and v > 0]
-            if vals:
-                fb_sum += sum(vals) / len(vals)
-                fb_count += 1
-        nps = fb.get("nps")
-        if isinstance(nps, (int, float)):
-            nps_sum += nps
-            nps_count += 1
+        vals = [
+            fb.get(f) for f in EXP_RATING_FIELDS
+            if isinstance(fb.get(f), (int, float)) and fb.get(f) > 0
+        ]
+        if vals:
+            fb_sum += sum(vals) / len(vals)
+            fb_count += 1
+        eg = fb.get("experience_globale")
+        if isinstance(eg, (int, float)):
+            if eg >= 5:
+                promoters += 1
+            elif eg == 4:
+                passives += 1
+            elif eg >= 1:
+                detractors += 1
         fb_total += 1
     fb_average = round(fb_sum / fb_count, 2) if fb_count else None
-    fb_nps_avg = round(nps_sum / nps_count, 1) if nps_count else None
+    total_resp = promoters + passives + detractors
+    fb_nps_avg = round(((promoters - detractors) / total_resp) * 100) if total_resp else None
 
     return {
         "kpis": {

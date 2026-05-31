@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { useStaffAuth } from "../../context/StaffAuthContext";
-import { CalendarDays, Wallet, Users, Anchor, AlertTriangle, Clock } from "lucide-react";
+import { CalendarDays, Wallet, Users, Anchor, AlertTriangle, Clock, Star } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_COLORS = {
@@ -124,10 +124,10 @@ export default function StaffDashboard() {
             </div>
           </div>
           <div>
-            <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">NPS moyen</div>
+            <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Score NPS</div>
             <div className="font-display-serif text-2xl text-[#0A0A0A] mt-0.5">
               {kpis.feedback_nps_avg ?? "—"}
-              <span className="text-sm text-[#0A0A0A]/40 ml-2">/ 10</span>
+              <span className="text-sm text-[#0A0A0A]/40 ml-2">/ 100</span>
             </div>
           </div>
           <div className="flex sm:justify-end">
