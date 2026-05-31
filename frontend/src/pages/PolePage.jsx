@@ -23,7 +23,7 @@ const SUB_OFFER_IMAGES = {
   offres_loisirs: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/66jfvevy_OFFRE%20LOISIRS.png",
 };
 
-function SubOfferCard({ offer, index }) {
+function SubOfferCard({ offer, index, poleId }) {
   const { lang } = useLang();
   const name = lang === "fr" ? offer.name_fr : offer.name_en;
   const schedule = lang === "fr" ? offer.schedule_fr : offer.schedule_en;
@@ -104,11 +104,11 @@ function SubOfferCard({ offer, index }) {
         )}
         <div className="mt-auto pt-2">
           <Link
-            to={`/booking/${offer.id}`}
+            to={poleId === "corporate" ? `/corporate/${offer.id}` : `/booking/${offer.id}`}
             className="btn-gold inline-flex items-center gap-3"
             data-testid={`sub-offer-cta-${offer.id}`}
           >
-            Réserver <ArrowRight size={13} />
+            {poleId === "corporate" ? "Faire une demande" : "Réserver"} <ArrowRight size={13} />
           </Link>
         </div>
       </div>
@@ -190,7 +190,7 @@ export default function PolePage() {
                   <SpecialEventCard key={ev.id} event={ev} index={j} />
                 ));
               }
-              return <SubOfferCard key={sub.id} offer={sub} index={i} />;
+              return <SubOfferCard key={sub.id} offer={sub} index={i} poleId={poleId} />;
             })}
           </div>
         </div>

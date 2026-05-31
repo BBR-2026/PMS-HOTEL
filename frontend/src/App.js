@@ -17,6 +17,8 @@ import WifiPage from "./pages/WifiPage";
 import Enregistrement from "./pages/Enregistrement";
 import StaffRegistrations from "./pages/staff/StaffRegistrations";
 import StaffCharters from "./pages/staff/StaffCharters";
+import StaffCorporateInquiries from "./pages/staff/StaffCorporateInquiries";
+import CorporateForm from "./pages/CorporateForm";
 import EventPrivatization from "./pages/EventPrivatization";
 import StaffLogin from "./pages/staff/StaffLogin";
 import StaffLayout from "./pages/staff/StaffLayout";
@@ -92,6 +94,7 @@ function App() {
             <Route path="/accueil" element={<Accueil />} />
             <Route path="/accueil/paiement" element={<PaiementHub />} />
             <Route path="/accueil/wifi" element={<WifiPage />} />
+            <Route path="/corporate/:offerId" element={<CorporateForm />} />
             <Route path="/accueil/enregistrement" element={<Enregistrement />} />
             <Route path="/enregistrement" element={<Enregistrement />} />
             <Route path="/staff/login" element={<StaffLogin />} />
@@ -120,6 +123,7 @@ function App() {
               <Route path="feedback" element={<RoleGuard allowed={MANAGER_PLUS}><StaffFeedback /></RoleGuard>} />
               <Route path="enregistrements" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRegistrations /></RoleGuard>} />
               <Route path="privatisations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCharters /></RoleGuard>} />
+              <Route path="corporate" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCorporateInquiries /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>

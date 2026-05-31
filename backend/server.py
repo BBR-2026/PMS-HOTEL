@@ -3007,12 +3007,43 @@ async def staff_dashboard(staff=Depends(get_current_staff)):
             "last_30d": pole_30d.get(pid, {"count": 0, "revenue": 0}),
         })
 
+    # Feedback average — last 90 days (rolling). Computes the mean of the
+    # numeric ratings stored in experience_feedback.ratings (typically a dict
+    # of {criterion: 1..5}). Keeps the dashboard light: one aggregate.
+    from datetime import timedelta as _td2
+    fb_cutoff = (datetime.now(timezone.utc) - _td2(days=90)).isoformat()
+    fb_total = 0
+    fb_sum = 0.0
+    fb_count = 0
+    nps_sum = 0
+    nps_count = 0
+    async for fb in db.experience_feedback.find(
+        {"created_at": {"$gte": fb_cutoff}},
+        {"_id": 0, "ratings": 1, "nps": 1},
+    ):
+        ratings = fb.get("ratings") or {}
+        if isinstance(ratings, dict) and ratings:
+            vals = [v for v in ratings.values() if isinstance(v, (int, float)) and v > 0]
+            if vals:
+                fb_sum += sum(vals) / len(vals)
+                fb_count += 1
+        nps = fb.get("nps")
+        if isinstance(nps, (int, float)):
+            nps_sum += nps
+            nps_count += 1
+        fb_total += 1
+    fb_average = round(fb_sum / fb_count, 2) if fb_count else None
+    fb_nps_avg = round(nps_sum / nps_count, 1) if nps_count else None
+
     return {
         "kpis": {
             "bookings_today": len(bookings_today),
             "revenue_today": revenue_today,
             "guests_today": guests_today,
             "crossings_today": crossings,
+            "feedback_average": fb_average,
+            "feedback_count": fb_total,
+            "feedback_nps_avg": fb_nps_avg,
         },
         "pipeline": pipeline_counts,
         "bookings_today": bookings_today,
@@ -8855,12 +8886,25 @@ app.include_router(api)
 # ===== Self-service guest registration module =====
 from routers import registrations as _registrations_mod  # noqa: E402
 from routers import media as _media_mod  # noqa: E402
+from routers import corporate as _corporate_mod  # noqa: E402
 
 app.include_router(
     _media_mod.build_router(
         db=db,
         require_role=_require_role,
         get_current_staff=get_current_staff,
+        public_base_url=FINEO_PUBLIC_BASE_URL,
+    ),
+    prefix="/api",
+)
+
+app.include_router(
+    _corporate_mod.build_router(
+        db=db,
+        offers_catalog=OFFERS,
+        require_role=_require_role,
+        get_current_staff=get_current_staff,
+        email_service=email_service,
         public_base_url=FINEO_PUBLIC_BASE_URL,
     ),
     prefix="/api",

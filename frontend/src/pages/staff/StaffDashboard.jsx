@@ -104,12 +104,43 @@ export default function StaffDashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
         <KpiCard icon={CalendarDays} label="Réservations du jour" value={kpis.bookings_today} />
         <KpiCard icon={Wallet} label="Revenus du jour" value={formatXOF(kpis.revenue_today)} />
         <KpiCard icon={Users} label="Clients attendus" value={kpis.guests_today} />
         <KpiCard icon={Anchor} label="Traversées prévues" value={kpis.crossings_today} />
       </div>
+
+      {/* Feedback average — last 90 days */}
+      {kpis.feedback_count > 0 && (
+        <div className="bg-white border border-[#0A0A0A]/8 p-5 md:p-6 mb-10 grid grid-cols-1 sm:grid-cols-3 gap-5 items-center" data-testid="dashboard-feedback-avg">
+          <div className="flex items-center gap-4">
+            <Star className="text-[#B8922A]" size={32} strokeWidth={1.2} fill="#B8922A" />
+            <div>
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Satisfaction moyenne</div>
+              <div className="font-display-serif text-3xl text-[#0A0A0A] mt-0.5" data-testid="feedback-average-value">
+                {kpis.feedback_average?.toFixed(2) ?? "—"} <span className="text-base text-[#0A0A0A]/40">/ 5</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">NPS moyen</div>
+            <div className="font-display-serif text-2xl text-[#0A0A0A] mt-0.5">
+              {kpis.feedback_nps_avg ?? "—"}
+              <span className="text-sm text-[#0A0A0A]/40 ml-2">/ 10</span>
+            </div>
+          </div>
+          <div className="flex sm:justify-end">
+            <Link
+              to="/staff/feedback"
+              className="inline-flex items-center gap-2 text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/70 hover:text-[#B8922A]"
+              data-testid="dashboard-feedback-link"
+            >
+              Voir tous les retours · {kpis.feedback_count} sur 90 jours
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Pôle breakdown */}
       {pole_breakdown && pole_breakdown.length > 0 && (
