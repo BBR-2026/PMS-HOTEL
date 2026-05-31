@@ -17,12 +17,12 @@ const ROLE_LABEL = {
   admin: "Administrateur",
   management_general: "Management général (consultation)",
   manager_pole: "Manager pôle",
-  manager: "Manager (legacy)",
+  manager: "Manager",
   hotesse: "Hôtesse",
   serveur_caisse: "Serveur & caisse",
   logistique: "Logistique",
   verification: "Vérification (Scanner QR)",
-  receptionist: "Réception (legacy)",
+  receptionist: "Réception",
 };
 
 const ROLE_OPTIONS = [
@@ -34,8 +34,8 @@ const ROLE_OPTIONS = [
   { value: "management_general", label: "Management général — Consultation" },
   { value: "admin", label: "Administrateur — tout le dashboard" },
   // Legacy values kept for backward compatibility with seed accounts.
-  { value: "receptionist", label: "Réception (legacy)" },
-  { value: "manager", label: "Manager (legacy)" },
+  { value: "receptionist", label: "Réception" },
+  { value: "manager", label: "Manager" },
 ];
 
 const POLE_OPTIONS = [
