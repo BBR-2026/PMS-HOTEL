@@ -24,6 +24,7 @@ import {
   Wallet,
   Megaphone,
   MessageSquare,
+  Ship,
   UserCheck,
 } from "lucide-react";
 
@@ -68,6 +69,7 @@ const NAV = [
   { to: "/staff/campaigns", icon: Megaphone, label: "Campagnes e-mail", roles: R_MGMT },
   { to: "/staff/feedback", icon: MessageSquare, label: "Retour expérience", roles: R_MGMT },
   { to: "/staff/enregistrements", icon: UserCheck, label: "Enregistrements", roles: R_MGMT },
+  { to: "/staff/privatisations", icon: Ship, label: "Privatisations", roles: R_MGMT },
   { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: R_MGMT },
   { to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: R_MGMT },
   { to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },

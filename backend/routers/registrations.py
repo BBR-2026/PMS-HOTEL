@@ -16,7 +16,7 @@ import csv
 import io
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -330,16 +330,32 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         page: int = Query(1, ge=1),
         limit: int = Query(50, ge=1, le=500),
         q: Optional[str] = None,
+        period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        offer_id: Optional[str] = None,
         staff=Depends(get_current_staff),
     ):
         await require_role(staff, ["admin", "manager", "manager_pole", "management_general", "hotesse"])
         filt = {}
         if q:
             rx = {"$regex": q, "$options": "i"}
-            filt = {"$or": [
+            filt["$or"] = [
                 {"first_name": rx}, {"last_name": rx}, {"email": rx},
                 {"phone": rx}, {"nationality": rx}, {"offer_label": rx},
-            ]}
+            ]
+        if offer_id:
+            filt["offer_id"] = offer_id
+        if period and period != "all":
+            now = datetime.now(timezone.utc)
+            if period == "day":
+                since = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif period == "week":
+                # Start of current week (Monday 00:00 UTC)
+                since = (now - timedelta(days=now.weekday())).replace(
+                    hour=0, minute=0, second=0, microsecond=0,
+                )
+            else:  # month
+                since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            filt["created_at"] = {"$gte": since.isoformat()}
         total = await db.registrations.count_documents(filt)
         cursor = (
             db.registrations.find(filt, {"_id": 0, "pass_token": 0})
@@ -358,10 +374,39 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             raise HTTPException(status_code=404, detail="Enregistrement introuvable")
         return {"ok": True}
 
+    def _build_filter(q: Optional[str], period: Optional[str], offer_id: Optional[str]) -> dict:
+        filt: dict = {}
+        if q:
+            rx = {"$regex": q, "$options": "i"}
+            filt["$or"] = [
+                {"first_name": rx}, {"last_name": rx}, {"email": rx},
+                {"phone": rx}, {"nationality": rx}, {"offer_label": rx},
+            ]
+        if offer_id:
+            filt["offer_id"] = offer_id
+        if period and period != "all":
+            now = datetime.now(timezone.utc)
+            if period == "day":
+                since = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif period == "week":
+                since = (now - timedelta(days=now.weekday())).replace(
+                    hour=0, minute=0, second=0, microsecond=0,
+                )
+            else:
+                since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            filt["created_at"] = {"$gte": since.isoformat()}
+        return filt
+
     @router.get("/staff/registrations/export.csv")
-    async def staff_export_csv(staff=Depends(get_current_staff)):
+    async def staff_export_csv(
+        q: Optional[str] = None,
+        period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        offer_id: Optional[str] = None,
+        staff=Depends(get_current_staff),
+    ):
         await require_role(staff, ["admin", "manager", "manager_pole", "management_general"])
-        items = await db.registrations.find({}, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
+        filt = _build_filter(q, period, offer_id)
+        items = await db.registrations.find(filt, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
         buf = io.StringIO()
         w = csv.writer(buf, delimiter=";")
         w.writerow(["Date", "Référence", "Nom", "Prénom", "Email", "Téléphone", "Nationalité", "Offre"])
@@ -380,12 +425,18 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         )
 
     @router.get("/staff/registrations/export.xlsx")
-    async def staff_export_xlsx(staff=Depends(get_current_staff)):
+    async def staff_export_xlsx(
+        q: Optional[str] = None,
+        period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        offer_id: Optional[str] = None,
+        staff=Depends(get_current_staff),
+    ):
         await require_role(staff, ["admin", "manager", "manager_pole", "management_general"])
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
 
-        items = await db.registrations.find({}, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
+        filt = _build_filter(q, period, offer_id)
+        items = await db.registrations.find(filt, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
         wb = Workbook()
         ws = wb.active
         ws.title = "Enregistrements"
@@ -416,7 +467,12 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         )
 
     @router.get("/staff/registrations/export.pdf")
-    async def staff_export_pdf(staff=Depends(get_current_staff)):
+    async def staff_export_pdf(
+        q: Optional[str] = None,
+        period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        offer_id: Optional[str] = None,
+        staff=Depends(get_current_staff),
+    ):
         await require_role(staff, ["admin", "manager", "manager_pole", "management_general"])
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib import colors
@@ -426,7 +482,8 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         )
         from reportlab.lib.styles import ParagraphStyle
 
-        items = await db.registrations.find({}, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
+        filt = _build_filter(q, period, offer_id)
+        items = await db.registrations.find(filt, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
 
         gold = colors.HexColor(COLOR_GOLD)
         dark = colors.HexColor(COLOR_DARK)

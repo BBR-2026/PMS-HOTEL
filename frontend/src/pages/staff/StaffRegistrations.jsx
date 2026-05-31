@@ -11,14 +11,29 @@ export default function StaffRegistrations() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState("all");
+  const [offerId, setOfferId] = useState("");
+  const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const limit = 25;
+
+  // Load offer list once for the dropdown
+  useEffect(() => {
+    api.get("/registration-offers")
+      .then(({ data }) => setOffers(data.offers || []))
+      .catch(() => { /* silent */ });
+  }, []);
 
   const load = async () => {
     setLoading(true);
     try {
       const { data } = await api.get("/staff/registrations", {
-        params: { page, limit, q: query || undefined },
+        params: {
+          page, limit,
+          q: query || undefined,
+          period: period !== "all" ? period : undefined,
+          offer_id: offerId || undefined,
+        },
       });
       setItems(data.items || []);
       setTotal(data.total || 0);
@@ -29,7 +44,10 @@ export default function StaffRegistrations() {
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [page]);
+  // Reload whenever page or filters change. eslint-disable: load is intentionally
+  // referenced from a closure that captures the filters — that's fine here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [page, period, offerId]);
 
   const onSearch = (e) => {
     e.preventDefault();
@@ -49,7 +67,12 @@ export default function StaffRegistrations() {
   };
 
   const download = (format) => {
-    const url = `${api.defaults.baseURL}/staff/registrations/export.${format}`;
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (period !== "all") params.set("period", period);
+    if (offerId) params.set("offer_id", offerId);
+    const qs = params.toString();
+    const url = `${api.defaults.baseURL}/staff/registrations/export.${format}${qs ? `?${qs}` : ""}`;
     fetch(url, { headers: { Authorization: `Bearer ${getStaffToken()}` } })
       .then((r) => {
         if (!r.ok) throw new Error("Export refusé");
@@ -80,7 +103,7 @@ export default function StaffRegistrations() {
         Personnes enregistrées via la page Bienvenue ({total} au total).
       </p>
 
-      <div className="flex flex-wrap items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-3">
         <form onSubmit={onSearch} className="flex items-center gap-2 flex-1 min-w-[260px]">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0A0A0A]/40" />
@@ -108,6 +131,51 @@ export default function StaffRegistrations() {
             <FileType size={12} /> PDF
           </button>
         </div>
+      </div>
+
+      {/* Period + Offer filters */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mr-1">Période :</span>
+        {[
+          { v: "all",   label: "Toutes" },
+          { v: "day",   label: "Aujourd'hui" },
+          { v: "week",  label: "Cette semaine" },
+          { v: "month", label: "Ce mois-ci" },
+        ].map((p) => (
+          <button
+            key={p.v}
+            onClick={() => { setPage(1); setPeriod(p.v); }}
+            className={`px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border transition-colors ${
+              period === p.v
+                ? "bg-[#B8922A] text-white border-[#B8922A]"
+                : "bg-white text-[#0A0A0A]/70 border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+            }`}
+            data-testid={`period-${p.v}`}
+          >
+            {p.label}
+          </button>
+        ))}
+        <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 ml-3 mr-1">Offre :</span>
+        <select
+          value={offerId}
+          onChange={(e) => { setPage(1); setOfferId(e.target.value); }}
+          className="px-3 py-1.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white min-w-[200px]"
+          data-testid="filter-offer"
+        >
+          <option value="">— Toutes les offres —</option>
+          {offers.map((o) => (
+            <option key={o.id} value={o.id}>{o.label}</option>
+          ))}
+        </select>
+        {(period !== "all" || offerId) && (
+          <button
+            onClick={() => { setPage(1); setPeriod("all"); setOfferId(""); }}
+            className="ml-2 text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 hover:text-[#B8922A]"
+            data-testid="clear-filters"
+          >
+            ✕ Réinitialiser
+          </button>
+        )}
       </div>
 
       {loading ? (

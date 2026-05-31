@@ -40,6 +40,22 @@ export default function BookingTunnel() {
     boat_time: "",
     return_boat_time: "",
   });
+  // Private boat charter — optional add-on shown right under the boat-time picker.
+  const [charterEnabled, setCharterEnabled] = useState(false);
+  const [charterBoatId, setCharterBoatId] = useState("");
+  const [charterBoats, setCharterBoats] = useState([]);
+
+  // Load list of boats available for private charter once.
+  useEffect(() => {
+    api.get("/bateaux/charter")
+      .then(({ data }) => setCharterBoats(data.items || []))
+      .catch(() => { /* silent — feature is optional */ });
+  }, []);
+
+  // When the user turns the charter off, clear the selected boat.
+  useEffect(() => {
+    if (!charterEnabled) setCharterBoatId("");
+  }, [charterEnabled]);
   const [availability, setAvailability] = useState(null);
   const [bookingResp, setBookingResp] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -192,13 +208,15 @@ export default function BookingTunnel() {
   const contactValid =
     participantsValid &&
     !!contact.boat_time &&
-    (!isOvernight || !!contact.return_boat_time);
+    (!isOvernight || !!contact.return_boat_time) &&
+    (!charterEnabled || !!charterBoatId);
 
   // Human-readable list of what's still missing at step 3 (shown beside the disabled Next button)
   const missingStep3 = [];
   if (!participantsValid) missingStep3.push(t.booking.missingParticipants);
   if (!contact.boat_time) missingStep3.push(t.booking.missingBoatTime);
   if (isOvernight && !contact.return_boat_time) missingStep3.push(t.booking.missingReturnBoatTime);
+  if (charterEnabled && !charterBoatId) missingStep3.push("bateau privatisé");
 
   const stepValid = {
     1:
@@ -241,6 +259,7 @@ export default function BookingTunnel() {
         boat_time: contact.boat_time,
         return_boat_time: isOvernight ? contact.return_boat_time : null,
         special_requests: contact.special_requests,
+        charter_boat_id: charterEnabled && charterBoatId ? charterBoatId : null,
       });
       setBookingResp(data);
       setStep(5);
@@ -752,6 +771,58 @@ export default function BookingTunnel() {
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+                {/* Private boat charter — optional add-on for any offer */}
+                {charterBoats.length > 0 && (
+                  <div className="mt-8 border border-[#B8922A]/20 bg-[#FBF8EF] p-5">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={charterEnabled}
+                        onChange={(e) => setCharterEnabled(e.target.checked)}
+                        className="mt-1 w-4 h-4 accent-[#B8922A]"
+                        data-testid="charter-toggle"
+                      />
+                      <div className="flex-1">
+                        <div className="text-[0.78rem] uppercase tracking-[0.18em] text-[#B8922A] font-medium">
+                          Privatiser un bateau
+                        </div>
+                        <div className="text-[0.78rem] text-[#0A0A0A]/65 mt-1 leading-relaxed">
+                          Voyagez en privé, à votre rythme. Le montant choisi sera ajouté au total.
+                        </div>
+                      </div>
+                    </label>
+
+                    {charterEnabled && (
+                      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="charter-boat-list">
+                        {charterBoats.map((b) => {
+                          const selected = charterBoatId === b.id;
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => setCharterBoatId(b.id)}
+                              className={`text-left p-4 border transition-all ${
+                                selected
+                                  ? "bg-[#B8922A] text-white border-[#B8922A]"
+                                  : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A]"
+                              }`}
+                              data-testid={`charter-boat-${b.id}`}
+                            >
+                              <div className="font-medium text-sm">{b.name}</div>
+                              <div className={`text-[0.72rem] mt-0.5 ${selected ? "text-white/85" : "text-[#0A0A0A]/55"}`}>
+                                Capacité : {b.capacity} pers.
+                              </div>
+                              <div className={`mt-2 font-medium ${selected ? "text-white" : "text-[#B8922A]"}`}>
+                                {formatXOF(b.charter_price)}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 

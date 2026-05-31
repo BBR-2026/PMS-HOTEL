@@ -15,7 +15,7 @@ import jwt
 import qrcode
 import bcrypt
 import httpx
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body, Request
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -397,6 +397,8 @@ class BookingCreate(BaseModel):
     special_requests: Optional[str] = ""
     # Required when offer_type == "special_event". Identifies which event the booking targets.
     special_event_id: Optional[str] = None
+    # Optional private boat charter — adds boat_charter_amount to the total.
+    charter_boat_id: Optional[str] = None
 
 
 class PayBooking(BaseModel):
@@ -1979,6 +1981,19 @@ async def create_booking(body: BookingCreate):
             total = nights * (body.adults * offer["price_adult"] + body.children * offer["price_child"])
     else:
         total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
+
+    # Optional private boat charter — adds a flat amount to the total.
+    charter_boat: Optional[dict] = None
+    charter_amount = 0
+    if body.charter_boat_id:
+        charter_boat = await db.bateaux.find_one(
+            {"id": body.charter_boat_id, "status": "actif"},
+            {"_id": 0, "id": 1, "name": 1, "capacity": 1, "charter_price": 1},
+        )
+        if not charter_boat or int(charter_boat.get("charter_price", 0)) <= 0:
+            raise HTTPException(status_code=400, detail="Bateau de privatisation indisponible.")
+        charter_amount = int(charter_boat["charter_price"])
+        total += charter_amount
     participants_docs = [
         {
             "name": p.name.strip(),
@@ -2017,6 +2032,10 @@ async def create_booking(body: BookingCreate):
         "phone": primary["phone"],
         "email": primary["email"],
         "special_requests": body.special_requests or "",
+        # Boat charter
+        "charter_boat_id": charter_boat["id"] if charter_boat else None,
+        "charter_boat_name": charter_boat["name"] if charter_boat else None,
+        "charter_amount": charter_amount,
         "created_at": now_iso(),
         "paid_at": None,
     }
@@ -2309,6 +2328,29 @@ async def get_booking_ticket_image(booking_id: str, ref: str):
     if img_data.startswith("data:"):
         img_data = img_data.split(",", 1)[1]
     return Response(content=b64decode(img_data), media_type="image/png")
+
+
+@api.get("/bookings/{booking_id}/reservation.pdf")
+async def get_booking_reservation_pdf(booking_id: str, ref: str):
+    """Public PDF of the full booking confirmation (QR + all details).
+
+    Token-protected via the booking's ``reference_token`` so unauthenticated
+    customers can download their own ticket from the confirmation page after
+    payment, without exposing data to the rest of the internet.
+    """
+    from fastapi.responses import Response
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking or booking.get("reference_token") != ref:
+        raise HTTPException(status_code=404, detail="Not found")
+    pdf_bytes = await _build_booking_confirmation_pdf(booking)
+    if not pdf_bytes:
+        raise HTTPException(status_code=500, detail="Could not generate PDF")
+    ref_short = booking_id[:8].upper()
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="BBR-reservation-{ref_short}.pdf"'},
+    )
 
 
 # =================================================================
@@ -2743,12 +2785,14 @@ class Bateau(BaseModel):
     name: str
     capacity: int = Field(ge=1, le=300)
     status: Literal["actif", "maintenance"] = "actif"
+    charter_price: int = Field(default=0, ge=0)  # FCFA — private charter rate
 
 
 class BateauUpdate(BaseModel):
     name: Optional[str] = None
     capacity: Optional[int] = None
     status: Optional[Literal["actif", "maintenance"]] = None
+    charter_price: Optional[int] = Field(default=None, ge=0)
 
 
 class Traversee(BaseModel):
@@ -2762,12 +2806,81 @@ async def _seed_default_bateaux():
     """Seed 3 default boats if none exist."""
     if await db.bateaux.count_documents({}) == 0:
         defaults = [
-            {"id": str(uuid.uuid4()), "name": "L'Étoile de Boulay", "capacity": 50, "status": "actif"},
-            {"id": str(uuid.uuid4()), "name": "Le Lagon d'Or", "capacity": 40, "status": "actif"},
-            {"id": str(uuid.uuid4()), "name": "Le Sunset Express", "capacity": 30, "status": "actif"},
+            {"id": str(uuid.uuid4()), "name": "L'Étoile de Boulay", "capacity": 50, "status": "actif", "charter_price": 350000},
+            {"id": str(uuid.uuid4()), "name": "Le Lagon d'Or", "capacity": 40, "status": "actif", "charter_price": 280000},
+            {"id": str(uuid.uuid4()), "name": "Le Sunset Express", "capacity": 30, "status": "actif", "charter_price": 220000},
         ]
         await db.bateaux.insert_many(defaults)
         logging.info("Seeded %d default boats", len(defaults))
+    # Backfill charter_price field for existing boats (idempotent)
+    await db.bateaux.update_many(
+        {"charter_price": {"$exists": False}},
+        {"$set": {"charter_price": 0}},
+    )
+
+
+@api.get("/bateaux/charter")
+async def list_bateaux_charter():
+    """Public list of boats available for private charter, sorted by price."""
+    await _seed_default_bateaux()
+    items = await db.bateaux.find(
+        {"status": "actif", "charter_price": {"$gt": 0}},
+        {"_id": 0, "id": 1, "name": 1, "capacity": 1, "charter_price": 1},
+    ).sort("charter_price", 1).to_list(length=50)
+    return {"items": items}
+
+
+@api.get("/staff/charters")
+async def staff_list_charters(
+    period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+    boat_id: Optional[str] = None,
+    staff=Depends(get_current_staff),
+):
+    """List all bookings that include a private boat charter, with the
+    customer, date, boat, amount and payment status. Used by the dashboard
+    so management can see who privatised a boat at a glance."""
+    await _require_role(staff, ["admin", "manager", "manager_pole", "management_general"])
+    filt: dict = {"charter_boat_id": {"$ne": None}}
+    if boat_id:
+        filt["charter_boat_id"] = boat_id
+    if period and period != "all":
+        now = datetime.now(timezone.utc)
+        if period == "day":
+            since = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "week":
+            since = (now - timedelta(days=now.weekday())).replace(
+                hour=0, minute=0, second=0, microsecond=0,
+            )
+        else:
+            since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        filt["date"] = {"$gte": since.date().isoformat()}
+
+    items = await db.bookings.find(
+        filt,
+        {
+            "_id": 0, "id": 1, "date": 1, "boat_time": 1, "return_boat_time": 1,
+            "charter_boat_id": 1, "charter_boat_name": 1, "charter_amount": 1,
+            "total_amount": 1, "paid_amount": 1, "paid_at": 1, "status": 1,
+            "name": 1, "email": 1, "phone": 1, "offer_type": 1, "participants": 1,
+            "created_at": 1,
+        },
+    ).sort("date", -1).to_list(length=500)
+
+    # Resolve a clean customer name (some legacy bookings have no top-level "name")
+    for b in items:
+        if not (b.get("name") or "").strip():
+            for p in (b.get("participants") or []):
+                if p.get("kind") == "adult":
+                    b["name"] = f"{p.get('name','').strip()} {p.get('surname','').strip()}".strip()
+                    break
+        b.pop("participants", None)  # don't ship raw participant docs to the client
+
+    summary = {
+        "count": len(items),
+        "total_revenue": sum(int(b.get("charter_amount") or 0) for b in items),
+        "paid_count": sum(1 for b in items if b.get("paid_at")),
+    }
+    return {"items": items, "summary": summary}
 
 
 async def _require_role(staff: dict, allowed: list):

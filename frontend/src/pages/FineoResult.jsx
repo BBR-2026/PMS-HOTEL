@@ -17,6 +17,7 @@ export default function FineoResult() {
   const [polls, setPolls] = useState(0);
   const [resumeBusy, setResumeBusy] = useState(false);
   const [refToken, setRefToken] = useState(null);
+  const [autoDownloaded, setAutoDownloaded] = useState(false);
   const tickRef = useRef(null);
 
   const resumeCheckout = async () => {
@@ -68,6 +69,28 @@ export default function FineoResult() {
     return () => clearInterval(tickRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookingId, intent]);
+
+  // Auto-trigger the reservation PDF download exactly once when payment is
+  // confirmed AND we have the reference token. We use a programmatic anchor
+  // click so the browser kicks off the download immediately without an extra
+  // user gesture — the customer can keep the file for the boarding gate.
+  useEffect(() => {
+    if (status !== "paid" || !refToken || autoDownloaded || !bookingId) return;
+    const url = `${process.env.REACT_APP_BACKEND_URL}/api/bookings/${bookingId}/reservation.pdf?ref=${refToken}`;
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.rel = "noopener";
+      a.download = `BBR-reservation-${bookingId.slice(0, 8).toUpperCase()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setAutoDownloaded(true);
+      toast.success("Téléchargement de votre billet…");
+    } catch (e) {
+      /* fallback: the visible "Télécharger" button below still works */
+    }
+  }, [status, refToken, autoDownloaded, bookingId]);
 
   // When paid, we stay on this page and show a clear success state with
   // the FineoPay reference. The customer receives the ticket by email via
@@ -176,13 +199,23 @@ export default function FineoResult() {
             <div className="flex flex-wrap items-center justify-center gap-3">
               {refToken && (
                 <a
+                  href={`${process.env.REACT_APP_BACKEND_URL}/api/bookings/${bookingId}/reservation.pdf?ref=${refToken}`}
+                  download={`BBR-reservation-${bookingId.slice(0, 8).toUpperCase()}.pdf`}
+                  className="inline-flex items-center gap-2 bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23]"
+                  data-testid="fineo-download-pdf-btn"
+                >
+                  Télécharger mon billet (PDF)
+                </a>
+              )}
+              {refToken && (
+                <a
                   href={`${process.env.REACT_APP_BACKEND_URL}/api/bookings/${bookingId}/ticket.png?ref=${refToken}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-2 bg-[#B8922A] text-white px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23]"
+                  className="inline-flex items-center gap-2 bg-white text-[#0A0A0A] border border-[#0A0A0A]/20 px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] hover:border-[#B8922A] hover:text-[#B8922A]"
                   data-testid="fineo-view-ticket-btn"
                 >
-                  Voir mon billet QR
+                  Voir mon QR
                 </a>
               )}
               <Link

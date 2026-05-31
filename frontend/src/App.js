@@ -16,6 +16,7 @@ import PaiementHub from "./pages/PaiementHub";
 import WifiPage from "./pages/WifiPage";
 import Enregistrement from "./pages/Enregistrement";
 import StaffRegistrations from "./pages/staff/StaffRegistrations";
+import StaffCharters from "./pages/staff/StaffCharters";
 import EventPrivatization from "./pages/EventPrivatization";
 import StaffLogin from "./pages/staff/StaffLogin";
 import StaffLayout from "./pages/staff/StaffLayout";
@@ -118,6 +119,7 @@ function App() {
               <Route path="campaigns" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCampaigns /></RoleGuard>} />
               <Route path="feedback" element={<RoleGuard allowed={MANAGER_PLUS}><StaffFeedback /></RoleGuard>} />
               <Route path="enregistrements" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRegistrations /></RoleGuard>} />
+              <Route path="privatisations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCharters /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>

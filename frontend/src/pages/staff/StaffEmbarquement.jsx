@@ -111,16 +111,47 @@ export default function StaffEmbarquement() {
           {bateaux.map((b) => (
             <div key={b.id} className="border border-[#0A0A0A]/10 p-4 bg-[#FAFAF7]" data-testid={`bateau-${b.id.slice(0, 8)}`}>
               <div className="flex items-start justify-between">
-                <div>
+                <div className="flex-1 min-w-0">
                   <div className="font-display-serif text-base text-[#0A0A0A]">{b.name}</div>
                   <div className="text-xs text-[#0A0A0A]/55 mt-1">{b.capacity} places · {b.status}</div>
                 </div>
                 {isAdmin && (
-                  <button onClick={() => deleteBoat(b.id)} className="text-[#0A0A0A]/30 hover:text-red-600" data-testid={`delete-bateau-${b.id.slice(0, 8)}`}>
+                  <button onClick={() => deleteBoat(b.id)} className="text-[#0A0A0A]/30 hover:text-red-600 shrink-0" data-testid={`delete-bateau-${b.id.slice(0, 8)}`}>
                     <Trash2 size={14} />
                   </button>
                 )}
               </div>
+              {isManager && (
+                <div className="mt-3 pt-3 border-t border-[#0A0A0A]/8">
+                  <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1">
+                    Tarif privatisation (FCFA)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step={5000}
+                      defaultValue={b.charter_price || 0}
+                      onBlur={async (e) => {
+                        const v = parseInt(e.target.value || 0);
+                        if (v === (b.charter_price || 0)) return;
+                        try {
+                          await api.patch(`/staff/bateaux/${b.id}`, { charter_price: v });
+                          toast.success("Tarif mis à jour");
+                          refresh();
+                        } catch {
+                          toast.error("Échec");
+                        }
+                      }}
+                      className="flex-1 border border-[#0A0A0A]/15 px-2 py-1.5 text-sm focus:border-[#B8922A] outline-none"
+                      data-testid={`charter-price-${b.id.slice(0, 8)}`}
+                    />
+                  </div>
+                  <div className="text-[0.6rem] text-[#0A0A0A]/45 mt-1">
+                    0 = privatisation désactivée pour ce bateau
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
