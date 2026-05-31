@@ -33,6 +33,9 @@ const ROLE_OPTIONS = [
   { value: "manager_pole", label: "Manager pôle — un pôle dédié" },
   { value: "management_general", label: "Management général — Consultation" },
   { value: "admin", label: "Administrateur — tout le dashboard" },
+  // Legacy values kept for backward compatibility with seed accounts.
+  { value: "receptionist", label: "Réception (legacy)" },
+  { value: "manager", label: "Manager (legacy)" },
 ];
 
 const POLE_OPTIONS = [
@@ -274,28 +277,28 @@ export default function StaffConfig() {
               <UserPlus size={13} /> Nouvel utilisateur
             </button>
           </div>          <div className="bg-white border border-[#0A0A0A]/8">
-            <div className="hidden md:grid grid-cols-12 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 px-5 py-3 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
+            <div className="hidden md:grid grid-cols-12 gap-3 text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 px-5 py-3 border-b border-[#0A0A0A]/10 bg-[#FAFAF7]">
               <div className="col-span-3">Nom</div>
-              <div className="col-span-4">Email</div>
-              <div className="col-span-3">Rôle</div>
+              <div className="col-span-3">Email</div>
+              <div className="col-span-4">Rôle</div>
               <div className="col-span-2 text-right">Actions</div>
             </div>
             {users.map((u) => (
               <div
                 key={u.id}
-                className="md:grid md:grid-cols-12 md:items-center flex flex-col items-start gap-3 md:gap-0 px-5 py-4 border-b border-[#0A0A0A]/5"
+                className="md:grid md:grid-cols-12 md:gap-3 md:items-center flex flex-col items-start gap-3 md:gap-0 px-5 py-4 border-b border-[#0A0A0A]/5"
                 data-testid={`user-row-${u.id}`}
               >
-                <div className="md:col-span-3 text-sm text-[#0A0A0A] w-full">{u.name}</div>
-                <div className="md:col-span-4 text-sm text-[#0A0A0A]/70 break-all w-full">{u.email}</div>
-                <div className="md:col-span-3 w-full md:w-auto space-y-2">
+                <div className="md:col-span-3 min-w-0 text-sm text-[#0A0A0A] w-full truncate" title={u.name}>{u.name}</div>
+                <div className="md:col-span-3 min-w-0 text-sm text-[#0A0A0A]/70 w-full truncate" title={u.email}>{u.email}</div>
+                <div className="md:col-span-4 min-w-0 w-full md:w-auto space-y-2">
                   <Select
                     value={u.role}
                     onValueChange={(v) => updateUserRole(u.id, v, u.pole_id)}
                     disabled={u.id === currentUser?.id}
                   >
-                    <SelectTrigger className="h-9 text-sm" data-testid={`user-role-${u.id}`}>
-                      <SelectValue />
+                    <SelectTrigger className="h-9 text-sm w-full min-w-0" data-testid={`user-role-${u.id}`}>
+                      <SelectValue className="truncate" />
                     </SelectTrigger>
                     <SelectContent>
                       {ROLE_OPTIONS.map((r) => (
@@ -308,7 +311,7 @@ export default function StaffConfig() {
                       value={u.pole_id || ""}
                       onValueChange={(v) => updateUserPole(u.id, v)}
                     >
-                      <SelectTrigger className="h-9 text-xs" data-testid={`user-pole-${u.id}`}>
+                      <SelectTrigger className="h-9 text-xs w-full min-w-0" data-testid={`user-pole-${u.id}`}>
                         <SelectValue placeholder="Sélectionner le pôle…" />
                       </SelectTrigger>
                       <SelectContent>
@@ -319,18 +322,18 @@ export default function StaffConfig() {
                     </Select>
                   )}
                 </div>
-                <div className="md:col-span-2 md:text-right w-full flex md:justify-end items-center gap-3">
+                <div className="md:col-span-2 md:text-right w-full flex md:justify-end items-center gap-1.5 flex-shrink-0">
                   {u.id !== currentUser?.id && (
                     <button
                       onClick={() => openSectionsEditor(u)}
-                      className="text-[#0A0A0A]/70 hover:text-[#B8922A] inline-flex items-center gap-1 text-[0.65rem] uppercase tracking-[0.18em]"
+                      className="relative text-[#0A0A0A]/70 hover:text-[#B8922A] hover:bg-[#B8922A]/5 inline-flex items-center justify-center h-9 w-9 border border-[#0A0A0A]/10 hover:border-[#B8922A]/40 transition-colors"
                       data-testid={`sections-user-${u.id}`}
                       title="Personnaliser les sections du dashboard"
+                      aria-label="Personnaliser les sections"
                     >
-                      <SlidersHorizontal size={11} />
-                      Sections
+                      <SlidersHorizontal size={13} />
                       {Array.isArray(u.nav_sections) && u.nav_sections.length > 0 && (
-                        <span className="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-[#B8922A]/15 text-[#B8922A] text-[0.6rem] font-medium">
+                        <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.05rem] h-[1.05rem] px-1 rounded-full bg-[#B8922A] text-white text-[0.55rem] font-semibold leading-none">
                           {u.nav_sections.length}
                         </span>
                       )}
@@ -339,10 +342,12 @@ export default function StaffConfig() {
                   {u.id !== currentUser?.id && (
                     <button
                       onClick={() => deleteUser(u.id)}
-                      className="text-red-600 hover:text-red-800 inline-flex items-center gap-1 text-[0.65rem] uppercase tracking-[0.18em]"
+                      className="text-red-600 hover:text-red-800 hover:bg-red-50 inline-flex items-center justify-center h-9 w-9 border border-red-200 transition-colors"
                       data-testid={`delete-user-${u.id}`}
+                      title="Supprimer l'utilisateur"
+                      aria-label="Supprimer"
                     >
-                      <Trash2 size={11} /> Supprimer
+                      <Trash2 size={13} />
                     </button>
                   )}
                 </div>
