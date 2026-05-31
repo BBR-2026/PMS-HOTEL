@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink, Database, Loader2, UploadCloud } from "lucide-react";
+import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink, Database, Loader2, UploadCloud, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
+import { NAV_SECTIONS_CATALOG } from "./StaffLayout";
 import {
   Select,
   SelectContent,
@@ -129,6 +130,43 @@ export default function StaffConfig() {
       toast.success("Utilisateur supprimé");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Suppression impossible");
+    }
+  };
+
+  // ----- Per-user sidebar sections override -----
+  const [sectionsEdit, setSectionsEdit] = useState(null); // { userId, selected: Set<string> }
+  const [sectionsBusy, setSectionsBusy] = useState(false);
+
+  const openSectionsEditor = (u) => {
+    setSectionsEdit({
+      userId: u.id,
+      name: u.name,
+      selected: new Set(Array.isArray(u.nav_sections) ? u.nav_sections : []),
+    });
+  };
+
+  const toggleSection = (key) => {
+    if (!sectionsEdit) return;
+    const next = new Set(sectionsEdit.selected);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    setSectionsEdit({ ...sectionsEdit, selected: next });
+  };
+
+  const saveSections = async () => {
+    if (!sectionsEdit) return;
+    setSectionsBusy(true);
+    try {
+      const arr = Array.from(sectionsEdit.selected);
+      await api.patch(`/staff/config/users/${sectionsEdit.userId}`, { nav_sections: arr });
+      toast.success(arr.length
+        ? "Sections personnalisées enregistrées"
+        : "Override retiré — rôle par défaut restauré");
+      setSectionsEdit(null);
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Sauvegarde impossible");
+    } finally {
+      setSectionsBusy(false);
     }
   };
 
@@ -281,7 +319,23 @@ export default function StaffConfig() {
                     </Select>
                   )}
                 </div>
-                <div className="md:col-span-2 md:text-right w-full">
+                <div className="md:col-span-2 md:text-right w-full flex md:justify-end items-center gap-3">
+                  {u.id !== currentUser?.id && (
+                    <button
+                      onClick={() => openSectionsEditor(u)}
+                      className="text-[#0A0A0A]/70 hover:text-[#B8922A] inline-flex items-center gap-1 text-[0.65rem] uppercase tracking-[0.18em]"
+                      data-testid={`sections-user-${u.id}`}
+                      title="Personnaliser les sections du dashboard"
+                    >
+                      <SlidersHorizontal size={11} />
+                      Sections
+                      {Array.isArray(u.nav_sections) && u.nav_sections.length > 0 && (
+                        <span className="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-[#B8922A]/15 text-[#B8922A] text-[0.6rem] font-medium">
+                          {u.nav_sections.length}
+                        </span>
+                      )}
+                    </button>
+                  )}
                   {u.id !== currentUser?.id && (
                     <button
                       onClick={() => deleteUser(u.id)}
@@ -632,6 +686,106 @@ export default function StaffConfig() {
             >
               Créer
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Sections override editor ===== */}
+      {sectionsEdit && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => !sectionsBusy && setSectionsEdit(null)} data-testid="sections-editor-overlay">
+          <div
+            className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="sections-editor"
+          >
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1 inline-flex items-center gap-1.5">
+                  <SlidersHorizontal size={12} /> Sections du dashboard
+                </div>
+                <h3 className="font-display-serif text-2xl text-[#0A0A0A]">{sectionsEdit.name}</h3>
+              </div>
+              <button
+                onClick={() => setSectionsEdit(null)}
+                disabled={sectionsBusy}
+                className="text-[#0A0A0A]/50 hover:text-[#0A0A0A] p-1"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-[0.78rem] text-[#0A0A0A]/60 mb-5">
+              Cochez les sections accessibles à cet utilisateur. Si <strong>aucune</strong> case n'est cochée,
+              ce sont les permissions par défaut du rôle qui s'appliquent.
+              <br/>
+              <span className="text-[0.7rem] text-[#0A0A0A]/50 italic">
+                Note : un utilisateur ne pourra jamais voir une section que son rôle n'autorise pas
+                (sécurité côté serveur). L'override <em>restreint</em> uniquement la vue.
+              </span>
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2 mb-5">
+              <button
+                onClick={() => setSectionsEdit({ ...sectionsEdit, selected: new Set(NAV_SECTIONS_CATALOG.map((s) => s.key)) })}
+                className="text-[0.62rem] uppercase tracking-[0.18em] px-3 py-1.5 border border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                data-testid="sections-select-all"
+              >
+                Tout cocher
+              </button>
+              <button
+                onClick={() => setSectionsEdit({ ...sectionsEdit, selected: new Set() })}
+                className="text-[0.62rem] uppercase tracking-[0.18em] px-3 py-1.5 border border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                data-testid="sections-clear"
+              >
+                Revenir au rôle par défaut
+              </button>
+              <span className="text-[0.7rem] text-[#0A0A0A]/55 ml-auto">
+                {sectionsEdit.selected.size} / {NAV_SECTIONS_CATALOG.length} sélectionnées
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[50vh] overflow-y-auto">
+              {NAV_SECTIONS_CATALOG.map((s) => {
+                const checked = sectionsEdit.selected.has(s.key);
+                return (
+                  <label
+                    key={s.key}
+                    className={`flex items-center gap-2.5 px-3 py-2 border cursor-pointer text-sm transition-colors ${
+                      checked
+                        ? "bg-[#B8922A]/8 border-[#B8922A]/40 text-[#0A0A0A]"
+                        : "bg-white border-[#0A0A0A]/10 text-[#0A0A0A]/70 hover:border-[#B8922A]/30"
+                    }`}
+                    data-testid={`sections-toggle-${s.key}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleSection(s.key)}
+                      className="accent-[#B8922A]"
+                    />
+                    <span>{s.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-[#0A0A0A]/8">
+              <button
+                onClick={() => setSectionsEdit(null)}
+                disabled={sectionsBusy}
+                className="text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/60 hover:text-[#0A0A0A] px-4 py-2"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveSections}
+                disabled={sectionsBusy}
+                className="bg-[#B8922A] text-white px-5 py-2 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center gap-2"
+                data-testid="sections-save"
+              >
+                {sectionsBusy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                Enregistrer
+              </button>
+            </div>
           </div>
         </div>
       )}

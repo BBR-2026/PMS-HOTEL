@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../lib/api";
 import { toast } from "sonner";
-import { QrCode, CheckCircle2, ScanLine, Camera, CameraOff, Keyboard, Sparkles, Wallet } from "lucide-react";
+import { QrCode, CheckCircle2, ScanLine, Camera, CameraOff, Keyboard, Sparkles, Wallet, UserCheck, Ship, Loader2 } from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
 
 const SCAN_REGION_ID = "qr-scan-region";
@@ -48,6 +48,10 @@ export default function StaffScanner() {
   const [mode, setMode] = useState("camera"); // 'camera' | 'manual'
   const [tokenInput, setTokenInput] = useState("");
   const [result, setResult] = useState(null);
+  const [regResult, setRegResult] = useState(null);  // registration pass scan result
+  const [todayCrossings, setTodayCrossings] = useState([]);
+  const [selectedCrossingId, setSelectedCrossingId] = useState("");
+  const [boardingBusy, setBoardingBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -81,13 +85,16 @@ export default function StaffScanner() {
     if (processingRef.current) return; // ignore subsequent frames
     processingRef.current = true;
     // Detect QR type. The QR can contain:
-    //  - {"type":"ticket","token":"…"}  (current compact format)
-    //  - {"type":"wallet","token":"…"}  (activities wallet)
-    //  - {"guest_token":"…",…}          (legacy full JSON payload)
-    //  - raw token string               (manual entry fallback)
+    //  - {"type":"ticket","token":"…"}        (booking ticket)
+    //  - {"type":"wallet","token":"…"}        (activities wallet)
+    //  - {"type":"registration","token":"…"}  (self-registration boarding pass)
+    //  - {"guest_token":"…",…}                (legacy full JSON payload)
+    //  - raw token string                     (manual entry fallback)
     let payload = decodedText.trim();
     let isWallet = false;
+    let isRegistration = false;
     let walletToken = null;
+    let regToken = null;
     let guestToken = null;
     if (payload.startsWith("{")) {
       try {
@@ -95,6 +102,9 @@ export default function StaffScanner() {
         if (obj.type === "wallet" && obj.token) {
           isWallet = true;
           walletToken = obj.token;
+        } else if (obj.type === "registration" && obj.token) {
+          isRegistration = true;
+          regToken = obj.token;
         } else if (obj.type === "ticket" && obj.token) {
           guestToken = obj.token;
         } else {
@@ -111,6 +121,11 @@ export default function StaffScanner() {
         navigate(`/staff/activites?token=${encodeURIComponent(walletToken)}`);
         return;
       }
+      if (isRegistration) {
+        await stopCamera();
+        await lookupRegistration(regToken);
+        return;
+      }
       await stopCamera();
       await lookup(guestToken || payload);
     } finally {
@@ -119,9 +134,32 @@ export default function StaffScanner() {
     }
   };
 
+  const lookupRegistration = async (token) => {
+    setLoading(true);
+    setResult(null);
+    setRegResult(null);
+    try {
+      const { data } = await api.get(`/staff/scan/registration/${encodeURIComponent(token)}`);
+      setRegResult(data);
+      // Load today's scheduled crossings for the dropdown (best-effort)
+      try {
+        const r = await api.get("/staff/traversees");
+        const list = Array.isArray(r.data) ? r.data : (r.data?.items || []);
+        const open = list.filter((c) => c.status !== "terminée" && c.status !== "annulée");
+        setTodayCrossings(open);
+        if (open.length) setSelectedCrossingId(open[0].id);
+      } catch { /* ignore */ }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Pass d'embarquement non reconnu");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const lookup = async (token) => {
     setLoading(true);
     setResult(null);
+    setRegResult(null);
     try {
       let qrToken = (token || "").trim();
       if (qrToken.startsWith("{")) {
@@ -129,6 +167,10 @@ export default function StaffScanner() {
           const obj = JSON.parse(qrToken);
           if (obj.type === "wallet" && obj.token) {
             navigate(`/staff/activites?token=${encodeURIComponent(obj.token)}`);
+            return;
+          }
+          if (obj.type === "registration" && obj.token) {
+            await lookupRegistration(obj.token);
             return;
           }
           if (obj.type === "ticket" && obj.token) {
@@ -140,12 +182,56 @@ export default function StaffScanner() {
           /* keep as-is */
         }
       }
-      const { data } = await api.get(`/staff/scan/${qrToken}`);
+      const { data } = await api.get(`/staff/scan/${qrToken}`).catch(async (e) => {
+        // 404 on the booking endpoint? Maybe it's a self-registration token.
+        if (e?.response?.status === 404) {
+          try {
+            const r2 = await api.get(`/staff/scan/registration/${qrToken}`);
+            return { data: { __isRegistration: true, payload: r2.data } };
+          } catch (e2) {
+            throw e; // re-throw original 404 to show "QR non reconnu"
+          }
+        }
+        throw e;
+      });
+      if (data && data.__isRegistration) {
+        // Hydrate registration result flow
+        setRegResult(data.payload);
+        try {
+          const r = await api.get("/staff/traversees");
+          const list = Array.isArray(r.data) ? r.data : (r.data?.items || []);
+          const open = list.filter((c) => c.status !== "terminée" && c.status !== "annulée");
+          setTodayCrossings(open);
+          if (open.length) setSelectedCrossingId(open[0].id);
+        } catch { /* ignore */ }
+        return;
+      }
       setResult(data);
     } catch (e) {
       toast.error(e.response?.data?.detail || "QR code non reconnu");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const boardRegistration = async () => {
+    if (!regResult || !selectedCrossingId || boardingBusy) return;
+    setBoardingBusy(true);
+    try {
+      await api.post(`/staff/traversees/${selectedCrossingId}/board-registration`, {
+        registration_id: regResult.id,
+      });
+      const crossing = todayCrossings.find((c) => c.id === selectedCrossingId);
+      const boatLabel = crossing
+        ? `${crossing.bateau?.name || "Bateau"} · ${crossing.depart_time}`
+        : "la traversée";
+      toast.success(`${regResult.first_name} ${regResult.last_name} ajouté à ${boatLabel}`);
+      // Refresh the reg result so the boarded_history pill appears
+      await lookupRegistration(regResult.id);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Embarquement impossible");
+    } finally {
+      setBoardingBusy(false);
     }
   };
 
@@ -360,20 +446,22 @@ export default function StaffScanner() {
     processingRef.current = false;
     setTokenInput("");
     setResult(null);
+    setRegResult(null);
+    setSelectedCrossingId("");
     // Stop the camera in the background — the useEffect will then restart it.
     stopCamera().catch(() => {});
   };
 
   // Auto-start camera when mode = camera and no result is shown
   useEffect(() => {
-    if (mode === "camera" && !cameraOn && !result) {
+    if (mode === "camera" && !cameraOn && !result && !regResult) {
       processingRef.current = false;
       startCamera();
     } else if (mode !== "camera" && cameraOn) {
       stopCamera();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, result]);
+  }, [mode, result, regResult]);
 
   return (
     <div className="p-4 md:p-8 lg:p-12 max-w-3xl mx-auto" data-testid="staff-scanner">
@@ -386,7 +474,7 @@ export default function StaffScanner() {
       </p>
 
       {/* Mode selector */}
-      {!result && (
+      {!result && !regResult && (
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setMode("camera")}
@@ -414,7 +502,7 @@ export default function StaffScanner() {
       )}
 
       {/* Camera mode */}
-      {!result && mode === "camera" && (
+      {!result && !regResult && mode === "camera" && (
         <div className="bg-white border border-[#B8922A]/30 p-4 sm:p-6" data-testid="scanner-camera-card">
           <div
             id={SCAN_REGION_ID}
@@ -441,7 +529,7 @@ export default function StaffScanner() {
       )}
 
       {/* Manual mode */}
-      {!result && mode === "manual" && (
+      {!result && !regResult && mode === "manual" && (
         <div className="bg-white border border-[#B8922A]/30 p-6 sm:p-10 text-center" data-testid="scanner-input-card">
           <ScanLine size={42} className="text-[#B8922A]/40 mx-auto mb-5" />
           <p className="text-[0.72rem] text-[#0A0A0A]/55 mb-4">
@@ -466,6 +554,97 @@ export default function StaffScanner() {
             data-testid="scanner-lookup-btn"
           >
             {loading ? "Recherche…" : "Vérifier le QR"}
+          </button>
+        </div>
+      )}
+
+      {/* Registration boarding pass result */}
+      {regResult && (
+        <div className="bg-white border border-[#B8922A]/40 p-5 sm:p-8" data-testid="scanner-reg-result">
+          <div className="flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
+            <UserCheck size={12} /> Pass d'embarquement
+          </div>
+          <h2 className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A] mb-1">
+            {regResult.first_name} {regResult.last_name}
+          </h2>
+          <p className="text-sm text-[#0A0A0A]/55 mb-4">
+            {regResult.nationality || "—"} · Réf. <span className="font-mono">{regResult.ref}</span>
+          </p>
+
+          <div className="grid sm:grid-cols-2 gap-3 mb-6 text-[0.8rem] text-[#0A0A0A]/80">
+            <div>
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-0.5">Expérience</div>
+              <div>{regResult.offer_label || "—"}</div>
+            </div>
+            <div>
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-0.5">Contact</div>
+              <div>{regResult.phone || "—"}</div>
+              <div className="text-[0.72rem] text-[#0A0A0A]/55">{regResult.email || ""}</div>
+            </div>
+          </div>
+
+          {/* Already boarded today? */}
+          {regResult.boarded_history && regResult.boarded_history.length > 0 && (
+            <div className="mb-5 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[0.78rem]" data-testid="reg-boarded-history">
+              <div className="font-medium mb-1 inline-flex items-center gap-1.5">
+                <CheckCircle2 size={13} /> Déjà embarqué
+              </div>
+              {regResult.boarded_history.slice(0, 3).map((b, i) => (
+                <div key={i} className="text-emerald-700/90">
+                  {formatDateTimeFR(b.boarded_at)}
+                  {b.client_name ? ` · ${b.client_name}` : ""}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Crossing picker */}
+          <div className="border border-[#B8922A]/20 p-4 bg-[#FAF7F2] mb-5">
+            <div className="flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-2">
+              <Ship size={12} /> Ajouter à une traversée du jour
+            </div>
+            {todayCrossings.length === 0 ? (
+              <div className="text-[0.8rem] text-[#0A0A0A]/55 italic">
+                Aucune traversée programmée aujourd'hui. Créez-en une depuis "Départs & embarquement".
+              </div>
+            ) : (
+              <>
+                <select
+                  value={selectedCrossingId}
+                  onChange={(e) => setSelectedCrossingId(e.target.value)}
+                  className="w-full bg-white border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+                  data-testid="reg-crossing-select"
+                >
+                  {todayCrossings.map((c) => {
+                    const cap = c.bateau?.capacity || 0;
+                    const left = Math.max(0, cap - (c.passenger_count || 0));
+                    const dirLabel = c.direction === "retour" ? "Retour" : "Aller";
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {c.bateau?.name || "Bateau"} · {dirLabel} · {c.depart_time} · {left}/{cap} places
+                      </option>
+                    );
+                  })}
+                </select>
+                <button
+                  onClick={boardRegistration}
+                  disabled={!selectedCrossingId || boardingBusy}
+                  className="btn-gold mt-4 w-full inline-flex items-center justify-center gap-2"
+                  data-testid="reg-board-btn"
+                >
+                  {boardingBusy ? <Loader2 size={14} className="animate-spin" /> : <Ship size={14} />}
+                  {boardingBusy ? "Embarquement…" : "Ajouter au bateau"}
+                </button>
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={reset}
+            className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 hover:text-[#B8922A] inline-flex items-center gap-2"
+            data-testid="reg-rescan-btn"
+          >
+            ↺ Scanner un autre QR
           </button>
         </div>
       )}

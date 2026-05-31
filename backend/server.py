@@ -1263,6 +1263,7 @@ async def login_staff(body: StaffLogin):
     public = {
         "id": user["id"], "name": user["name"], "email": user["email"],
         "role": user["role"], "pole_id": user.get("pole_id"),
+        "nav_sections": user.get("nav_sections") or None,
     }
     return TokenResponse(access_token=token, user=public)
 
@@ -6765,6 +6766,10 @@ class StaffUserCreate(BaseModel):
         "receptionist", "manager",
     ]
     pole_id: Optional[Literal["beach_club", "hebergement", "corporate", "activites_events", "le_kaai"]] = None
+    # Optional per-user override of the sections visible in the sidebar.
+    # When set (non-empty list), this fully replaces the role-defaults. When
+    # None or empty, the role's default matrix is used (backward compatible).
+    nav_sections: Optional[List[str]] = None
 
 
 class StaffUserUpdate(BaseModel):
@@ -6777,6 +6782,7 @@ class StaffUserUpdate(BaseModel):
         "receptionist", "manager",
     ]] = None
     pole_id: Optional[Literal["beach_club", "hebergement", "corporate", "activites_events", "le_kaai"]] = None
+    nav_sections: Optional[List[str]] = None
 
 
 @api.get("/staff/config/users")
@@ -6798,6 +6804,7 @@ async def create_staff_user(body: StaffUserCreate, staff=Depends(get_current_sta
         "email": body.email.lower(),
         "role": body.role,
         "pole_id": body.pole_id if body.role == "manager_pole" else None,
+        "nav_sections": body.nav_sections or None,
         "password_hash": hash_password(body.password),
         "created_at": now_iso(),
     }
@@ -6827,6 +6834,9 @@ async def update_staff_user(user_id: str, body: StaffUserUpdate, staff=Depends(g
         update["pole_id"] = body.pole_id
     if body.password is not None:
         update["password_hash"] = hash_password(body.password)
+    if body.nav_sections is not None:
+        # Empty list ⇒ clear override (fall back to role defaults).
+        update["nav_sections"] = body.nav_sections or None
     if not update:
         return {"ok": True}
     await db.staff.update_one({"id": user_id}, {"$set": update})

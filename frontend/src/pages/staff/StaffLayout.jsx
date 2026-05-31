@@ -45,37 +45,44 @@ const R_DASH = [...R_RES, ...R_OPS, ...R_ACT, "serveur_caisse", "verification"];
 const R_ADMIN_ONLY = ["admin"]; // strict admin-only config
 
 const NAV = [
-  { to: "/staff", end: true, icon: LayoutDashboard, label: "Tableau de bord", roles: R_DASH },
-  { to: "/staff/scanner", icon: QrCode, label: "Scanner QR", roles: R_SCAN },
+  { key: "dashboard", to: "/staff", end: true, icon: LayoutDashboard, label: "Tableau de bord", roles: R_DASH },
+  { key: "scanner", to: "/staff/scanner", icon: QrCode, label: "Scanner QR", roles: R_SCAN },
   { section: "Pôle", roles: R_MGMT },
-  { to: "/staff/pole/beach_club", icon: Waves, label: "Beach Club", roles: R_MGMT, poleId: "beach_club" },
-  { to: "/staff/pole/hebergement", icon: BedDouble, label: "Hébergement", roles: R_MGMT, poleId: "hebergement" },
-  { to: "/staff/pole/corporate", icon: Briefcase, label: "Corporate", roles: R_MGMT, poleId: "corporate" },
-  { to: "/staff/pole/activites_events", icon: CalendarHeart, label: "Activités & Événements", roles: R_MGMT, poleId: "activites_events" },
-  { to: "/staff/pole/le_kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: R_MGMT, poleId: "le_kaai" },
+  { key: "pole_beach_club", to: "/staff/pole/beach_club", icon: Waves, label: "Beach Club", roles: R_MGMT, poleId: "beach_club" },
+  { key: "pole_hebergement", to: "/staff/pole/hebergement", icon: BedDouble, label: "Hébergement", roles: R_MGMT, poleId: "hebergement" },
+  { key: "pole_corporate", to: "/staff/pole/corporate", icon: Briefcase, label: "Corporate", roles: R_MGMT, poleId: "corporate" },
+  { key: "pole_activites_events", to: "/staff/pole/activites_events", icon: CalendarHeart, label: "Activités & Événements", roles: R_MGMT, poleId: "activites_events" },
+  { key: "pole_le_kaai", to: "/staff/pole/le_kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: R_MGMT, poleId: "le_kaai" },
   { section: "Réservations", roles: R_RES },
-  { to: "/staff/reservations", icon: Ticket, label: "Toutes les réservations", roles: R_RES },
-  { to: "/staff/paiements", icon: Wallet, label: "Paiements", roles: R_MGMT },
-  { to: "/staff/clients", icon: Users, label: "Clients", roles: R_MGMT },
-  { to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: R_MGMT },
-  { to: "/staff/recus", icon: ReceiptText, label: "Reçus de paiement", roles: R_MGMT },
+  { key: "reservations", to: "/staff/reservations", icon: Ticket, label: "Toutes les réservations", roles: R_RES },
+  { key: "paiements", to: "/staff/paiements", icon: Wallet, label: "Paiements", roles: R_MGMT },
+  { key: "clients", to: "/staff/clients", icon: Users, label: "Clients", roles: R_MGMT },
+  { key: "revenue", to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: R_MGMT },
+  { key: "recus", to: "/staff/recus", icon: ReceiptText, label: "Reçus de paiement", roles: R_MGMT },
   { section: "Opérations", roles: R_OPS },
-  { to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: R_OPS },
-  { to: "/staff/embarquements-historique", icon: Anchor, label: "Historique embarquements", roles: R_MGMT },
-  { to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: R_OPS },
+  { key: "embarquement", to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: R_OPS },
+  { key: "embarquements_historique", to: "/staff/embarquements-historique", icon: Anchor, label: "Historique embarquements", roles: R_MGMT },
+  { key: "traversees_historique", to: "/staff/traversees/historique", icon: History, label: "Historique traversées", roles: R_OPS },
   { section: "Consommation sur place", roles: R_ACT },
-  { to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: R_ACT },
+  { key: "consommation", to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: R_ACT },
   { section: "Administration", roles: R_ADMIN },
-  { to: "/staff/notifications", icon: Bell, label: "Notifications SMS/WhatsApp", roles: R_MGMT },
-  { to: "/staff/campaigns", icon: Megaphone, label: "Campagnes e-mail", roles: R_MGMT },
-  { to: "/staff/feedback", icon: MessageSquare, label: "Retour expérience", roles: R_MGMT },
-  { to: "/staff/enregistrements", icon: UserCheck, label: "Enregistrements", roles: R_MGMT },
-  { to: "/staff/privatisations", icon: Ship, label: "Privatisations", roles: R_MGMT },
-  { to: "/staff/corporate", icon: Building2, label: "Demandes Corporate", roles: R_MGMT },
-  { to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: R_MGMT },
-  { to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: R_MGMT },
-  { to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },
+  { key: "notifications", to: "/staff/notifications", icon: Bell, label: "Notifications SMS/WhatsApp", roles: R_MGMT },
+  { key: "campaigns", to: "/staff/campaigns", icon: Megaphone, label: "Campagnes e-mail", roles: R_MGMT },
+  { key: "feedback", to: "/staff/feedback", icon: MessageSquare, label: "Retour expérience", roles: R_MGMT },
+  { key: "enregistrements", to: "/staff/enregistrements", icon: UserCheck, label: "Enregistrements", roles: R_MGMT },
+  { key: "privatisations", to: "/staff/privatisations", icon: Ship, label: "Privatisations", roles: R_MGMT },
+  { key: "corporate_inquiries", to: "/staff/corporate", icon: Building2, label: "Demandes Corporate", roles: R_MGMT },
+  { key: "catalogue_activites", to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: R_MGMT },
+  { key: "evenements_speciaux", to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: R_MGMT },
+  { key: "config", to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },
 ];
+
+// Public catalogue exposed to the admin Config screen so it can render the
+// matrix of sections to enable/disable per user. Kept alphabetic-friendly
+// via the same order as NAV.
+export const NAV_SECTIONS_CATALOG = NAV
+  .filter((i) => i.key)
+  .map((i) => ({ key: i.key, label: i.label }));
 
 const ROLE_LABEL_FR = {
   admin: "Administrateur",
@@ -90,13 +97,44 @@ const ROLE_LABEL_FR = {
 };
 
 function SidebarContent({ user, onNavigate, onLogout }) {
-  // Manager pôle: hide all pole links except the one assigned to the user.
-  const filteredNav = NAV.filter((item) => {
+  // Per-user nav_sections override: when set, ONLY the listed keys are shown
+  // (regardless of role defaults). Empty / undefined => role defaults apply.
+  const allowedKeys = Array.isArray(user?.nav_sections) && user.nav_sections.length
+    ? new Set(user.nav_sections)
+    : null;
+
+  // Step 1: build the list of items the user is allowed to see.
+  const visibleItems = NAV.filter((item) => {
+    // Section headers — keep as markers, decision based on following items.
+    if (item.section) return true;
+    // Hide poles not assigned to a manager_pole.
     if (user?.role === "manager_pole" && item.poleId && item.poleId !== user.pole_id) {
       return false;
     }
+    // Role gate first.
+    if (!can(user, item.roles)) return false;
+    // Then per-user override (when active).
+    if (allowedKeys && item.key && !allowedKeys.has(item.key)) return false;
     return true;
   });
+
+  // Step 2: drop section headers that are not followed by any visible item.
+  const trimmed = [];
+  visibleItems.forEach((item, idx) => {
+    if (item.section) {
+      // Look ahead to the next section (or end) and check if there's an item.
+      let hasChild = false;
+      for (let j = idx + 1; j < visibleItems.length; j++) {
+        if (visibleItems[j].section) break;
+        hasChild = true;
+        break;
+      }
+      if (!hasChild) return;
+      if (!can(user, item.roles)) return;
+    }
+    trimmed.push(item);
+  });
+
   return (
     <>
       <div className="px-4 py-6 border-b border-[#B8922A]/20 flex items-center justify-center">
@@ -108,16 +146,14 @@ function SidebarContent({ user, onNavigate, onLogout }) {
         />
       </div>
       <nav className="flex-1 overflow-y-auto py-4">
-        {filteredNav.map((item, idx) => {
+        {trimmed.map((item, idx) => {
           if (item.section) {
-            if (!can(user, item.roles)) return null;
             return (
-              <div key={idx} className="px-6 mt-5 mb-2 text-[0.55rem] uppercase tracking-[0.32em] text-[#B8922A]/70">
+              <div key={`sec-${idx}`} className="px-6 mt-5 mb-2 text-[0.55rem] uppercase tracking-[0.32em] text-[#B8922A]/70">
                 {item.section}
               </div>
             );
           }
-          if (!can(user, item.roles)) return null;
           const Icon = item.icon;
           return (
             <NavLink

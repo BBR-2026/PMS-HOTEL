@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field
 
@@ -154,7 +154,14 @@ def build_boarding_pass_pdf(reg: dict, public_base_url: str = "") -> bytes:
 
     # QR block
     try:
-        qr_payload = f"BBR-REG:{reg['id']}:{reg['pass_token']}"
+        # Compact JSON payload so the on-site scanner can recognise the QR
+        # alongside the existing ticket/wallet formats. Kept small (~75 chars)
+        # to maintain low module density for camera scanning.
+        import json as _json
+        qr_payload = _json.dumps(
+            {"type": "registration", "token": reg["pass_token"], "ref": ref},
+            separators=(",", ":"),
+        )
         qr_bytes = _make_qr_png(qr_payload)
         qr_buf = io.BytesIO(qr_bytes)
         qr_img = Image(qr_buf, width=5.5 * cm, height=5.5 * cm)
@@ -373,6 +380,105 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         if res.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Enregistrement introuvable")
         return {"ok": True}
+
+    # ============== Scanner support (boarding from a registration QR) ==============
+    @router.get("/staff/scan/registration/{token}")
+    async def staff_scan_registration(token: str, staff=Depends(get_current_staff)):
+        """Lookup a registration by its `pass_token`.
+
+        Tolerant to case + 8-char reference prefix (when staff types the
+        printed `ref` rather than the full 32-hex token, e.g. from a
+        damaged QR).
+        """
+        await require_role(staff, [
+            "admin", "manager", "manager_pole", "management_general",
+            "hotesse", "receptionist", "logistique", "verification",
+        ])
+        raw = (token or "").strip()
+        low = raw.lower()
+        reg = await db.registrations.find_one(
+            {"pass_token": {"$in": [raw, low]}}, {"_id": 0, "pass_token": 0},
+        )
+        if not reg:
+            # Fallback: short 8-char REF (e.g. "AB12CD34") matches id prefix
+            import re as _re
+            if _re.fullmatch(r"[0-9a-fA-F-]{4,}", raw):
+                pat = _re.compile(f"^{_re.escape(raw.lower())}")
+                reg = await db.registrations.find_one(
+                    {"id": {"$regex": pat}}, {"_id": 0, "pass_token": 0},
+                )
+        if not reg:
+            raise HTTPException(status_code=404, detail="Pass d'embarquement non reconnu")
+        # Find existing boarding entries to display history
+        boarded = await db.traversee_passengers.find(
+            {"registration_id": reg["id"]}, {"_id": 0},
+        ).sort("boarded_at", -1).to_list(length=20)
+        ref = (reg.get("id") or "")[:8].upper()
+        return {
+            "type": "registration",
+            "id": reg["id"],
+            "ref": ref,
+            "first_name": reg.get("first_name"),
+            "last_name": reg.get("last_name"),
+            "email": reg.get("email"),
+            "phone": reg.get("phone"),
+            "nationality": reg.get("nationality"),
+            "offer_id": reg.get("offer_id"),
+            "offer_label": reg.get("offer_label"),
+            "created_at": reg.get("created_at"),
+            "boarded_history": boarded,
+        }
+
+    @router.post("/staff/traversees/{tid}/board-registration")
+    async def board_registration(
+        tid: str,
+        body: dict = Body(...),
+        staff=Depends(get_current_staff),
+    ):
+        """Add a self-registration as a passenger on a crossing (1 guest)."""
+        await require_role(staff, [
+            "admin", "manager", "manager_pole",
+            "hotesse", "receptionist", "logistique",
+        ])
+        registration_id = (body or {}).get("registration_id")
+        if not registration_id:
+            raise HTTPException(status_code=400, detail="registration_id requis")
+        reg = await db.registrations.find_one({"id": registration_id}, {"_id": 0})
+        if not reg:
+            raise HTTPException(status_code=404, detail="Enregistrement introuvable")
+        crossing = await db.traversees.find_one({"id": tid})
+        if not crossing:
+            raise HTTPException(status_code=404, detail="Traversée introuvable")
+        bateau = await db.bateaux.find_one({"id": crossing.get("bateau_id")}, {"_id": 0})
+        existing = await db.traversee_passengers.find({"traversee_id": tid}).to_list(length=500)
+        booked = sum(int(p.get("guests", 1) or 1) for p in existing)
+        if bateau and booked + 1 > int(bateau.get("capacity", 0) or 0):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Capacité dépassée ({bateau.get('capacity')})",
+            )
+        # Reject if same registration was already boarded on this traversée
+        for p in existing:
+            if p.get("registration_id") == reg["id"]:
+                raise HTTPException(status_code=400, detail="Passager déjà embarqué sur cette traversée")
+        client_name = f"{reg.get('first_name', '')} {reg.get('last_name', '')}".strip()
+        ref = (reg.get("id") or "")[:8].upper()
+        doc = {
+            "id": str(uuid.uuid4()),
+            "traversee_id": tid,
+            "booking_id": None,
+            "registration_id": reg["id"],
+            "registration_ref": ref,
+            "guests": 1,
+            "client_name": client_name,
+            "offer_name": reg.get("offer_label") or "Enregistrement",
+            "source": "registration",
+            "boarded_at": datetime.now(timezone.utc).isoformat(),
+            "boarded_by": staff.get("email") if isinstance(staff, dict) else None,
+        }
+        await db.traversee_passengers.insert_one({**doc})
+        doc.pop("_id", None)
+        return {"ok": True, "guests_boarded": 1, "passenger": doc}
 
     def _build_filter(q: Optional[str], period: Optional[str], offer_id: Optional[str]) -> dict:
         filt: dict = {}
