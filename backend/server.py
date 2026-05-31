@@ -2615,6 +2615,44 @@ async def admin_get_wipe_sections(staff=Depends(get_current_staff)):
     return {"sections": out}
 
 
+@api.post("/staff/admin/migrate-data-urls")
+async def admin_migrate_data_urls(staff=Depends(get_current_staff)):
+    """One-shot migration: any ``data:image/...`` URL stored in special_events
+    or offer_overrides is converted to a public ``/api/media/{id}`` URL so
+    emails can render the image. Idempotent (re-running is safe)."""
+    await _require_role(staff, ["admin"])
+    from routers.media import ensure_public_url
+
+    base = FINEO_PUBLIC_BASE_URL.rstrip("/")
+    migrated = {"special_events": 0, "offer_overrides": 0}
+
+    async for ev in db.special_events.find({"image_url": {"$regex": "^data:"}}):
+        new_url = await ensure_public_url(db, ev["image_url"])
+        if new_url and new_url.startswith("/api/media/"):
+            new_url = f"{base}{new_url}"
+        if new_url:
+            await db.special_events.update_one(
+                {"id": ev["id"]}, {"$set": {"image_url": new_url}},
+            )
+            migrated["special_events"] += 1
+
+    async for ov in db.offer_overrides.find({"image_url": {"$regex": "^data:"}}):
+        new_url = await ensure_public_url(db, ov["image_url"])
+        if new_url and new_url.startswith("/api/media/"):
+            new_url = f"{base}{new_url}"
+        if new_url:
+            await db.offer_overrides.update_one(
+                {"offer_id": ov["offer_id"]}, {"$set": {"image_url": new_url}},
+            )
+            migrated["offer_overrides"] += 1
+            # Refresh in-memory OFFERS so the public site reflects immediately
+            if ov.get("offer_id") in OFFERS:
+                OFFERS[ov["offer_id"]]["image_url"] = new_url
+
+    logging.warning("Admin %s migrated %s data: URLs", staff.get("email"), migrated)
+    return {"ok": True, "migrated": migrated}
+
+
 @api.post("/staff/admin/wipe-test-data")
 async def admin_wipe_test_data(body: WipeTestDataBody, staff=Depends(get_current_staff)):
     """Admin-only nuclear button to wipe transactional data while keeping
@@ -8415,16 +8453,28 @@ async def _resolve_campaign_hero(body: "CampaignCreateBody") -> Optional[str]:
     1. Explicit ``hero_image_url`` provided by the admin
     2. The image of the bound special event (when ``offer_type='special_event'``)
     3. ``None`` → falls back to OFFER_HERO_IMAGES[offer_type] in the renderer
+
+    The returned URL is guaranteed to be a publicly fetchable URL (any
+    ``data:`` URL is migrated to ``/api/media/{id}`` on the fly because Gmail
+    / Outlook block inline ``data:`` images in email bodies).
     """
+    from routers.media import ensure_public_url
+    candidate: Optional[str] = None
     if (body.hero_image_url or "").strip():
-        return body.hero_image_url.strip()
-    if body.offer_type == "special_event" and body.special_event_id:
+        candidate = body.hero_image_url.strip()
+    elif body.offer_type == "special_event" and body.special_event_id:
         ev = await db.special_events.find_one(
             {"id": body.special_event_id}, {"_id": 0, "image_url": 1},
         )
         if ev and (ev.get("image_url") or "").strip():
-            return ev["image_url"].strip()
-    return None
+            candidate = ev["image_url"].strip()
+    if not candidate:
+        return None
+    public_url = await ensure_public_url(db, candidate)
+    # Make it absolute (email clients need fully-qualified URLs)
+    if public_url and public_url.startswith("/api/media/"):
+        return f"{FINEO_PUBLIC_BASE_URL.rstrip('/')}{public_url}"
+    return public_url
 
 
 @api.post("/staff/campaigns")
@@ -8691,6 +8741,17 @@ app.include_router(api)
 
 # ===== Self-service guest registration module =====
 from routers import registrations as _registrations_mod  # noqa: E402
+from routers import media as _media_mod  # noqa: E402
+
+app.include_router(
+    _media_mod.build_router(
+        db=db,
+        require_role=_require_role,
+        get_current_staff=get_current_staff,
+        public_base_url=FINEO_PUBLIC_BASE_URL,
+    ),
+    prefix="/api",
+)
 
 app.include_router(
     _registrations_mod.build_router(

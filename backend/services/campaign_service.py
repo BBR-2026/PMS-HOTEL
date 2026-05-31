@@ -154,6 +154,27 @@ async def send_campaign_now(db, campaign_id: str) -> dict:
     failed_count = 0
     sent_emails: set[str] = set(camp.get("sent_emails", []) or [])
 
+    # Auto-migrate any data: URL hero to a public /api/media/ URL — Gmail /
+    # Outlook block inline data: images in email bodies.
+    raw_hero = camp.get("hero_image_url")
+    if raw_hero and raw_hero.startswith("data:"):
+        try:
+            from routers.media import ensure_public_url
+            from os import environ as _env
+            migrated = await ensure_public_url(db, raw_hero,
+                                               uploaded_by=camp.get("created_by"))
+            if migrated and migrated.startswith("/api/media/"):
+                base = _env.get("FINEO_PUBLIC_BASE_URL", "").rstrip("/")
+                migrated = f"{base}{migrated}" if base else migrated
+            await db.email_campaigns.update_one(
+                {"id": campaign_id},
+                {"$set": {"hero_image_url": migrated}},
+            )
+            camp["hero_image_url"] = migrated
+        except Exception as ex:
+            log.warning("Hero data: URL migration failed for %s: %s", campaign_id, ex)
+            camp["hero_image_url"] = None  # fall back to generic offer hero
+
     for rcp in camp.get("recipients", []):
         e = (rcp.get("email") or "").lower().strip()
         if not e or e in sent_emails or not _is_valid_email(e):

@@ -109,16 +109,17 @@ export default function StaffSpecialEvents() {
     }
     setUploadingImage(true);
     try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+      // Upload to backend → stored in DB, served via /api/media/{id}.
+      // This is critical: data: URLs are blocked by Gmail / Outlook in emails.
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/staff/uploads/image", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
-      setForm((f) => ({ ...f, image_url: dataUrl }));
-      toast.success("Image chargée");
-    } catch {
-      toast.error("Impossible de lire l'image");
+      setForm((f) => ({ ...f, image_url: data.url }));
+      toast.success("Image téléversée");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Impossible de téléverser l'image");
     } finally {
       setUploadingImage(false);
     }

@@ -498,22 +498,30 @@ export default function StaffConfig() {
                             accept="image/*"
                             className="hidden"
                             data-testid={`image-upload-${o.id}`}
-                            onChange={(ev) => {
+                            onChange={async (ev) => {
                               const f = ev.target.files?.[0];
                               if (!f) return;
                               if (!f.type.startsWith("image/")) {
                                 toast.error("Le fichier doit être une image");
+                                ev.target.value = "";
                                 return;
                               }
                               if (f.size > 5 * 1024 * 1024) {
                                 toast.error(`Image trop volumineuse (${(f.size / 1024 / 1024).toFixed(1)} Mo). Max 5 Mo.`);
+                                ev.target.value = "";
                                 return;
                               }
-                              const reader = new FileReader();
-                              reader.onload = () => updateOfferField(o.id, "image_url", reader.result);
-                              reader.onerror = () => toast.error("Lecture du fichier impossible");
-                              reader.readAsDataURL(f);
-                              // Reset the input so re-selecting the same file triggers onChange
+                              try {
+                                const fd = new FormData();
+                                fd.append("file", f);
+                                const { data } = await api.post("/staff/uploads/image", fd, {
+                                  headers: { "Content-Type": "multipart/form-data" },
+                                });
+                                updateOfferField(o.id, "image_url", data.url);
+                                toast.success("Image téléversée");
+                              } catch (err) {
+                                toast.error(err.response?.data?.detail || "Échec de l'upload");
+                              }
                               ev.target.value = "";
                             }}
                           />
@@ -971,6 +979,8 @@ function MaintenancePanel() {
         </div>
       </div>
 
+      <MigrateDataUrlsCard />
+
       <div className="grid sm:grid-cols-2 gap-3 mb-6" data-testid="wipe-sections-grid">
         {sections.map((s) => (
           <div
@@ -1066,3 +1076,61 @@ function MaintenancePanel() {
     </div>
   );
 }
+
+// ===== Migrate data: URLs card =====
+function MigrateDataUrlsCard() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const run = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const { data } = await api.post("/staff/admin/migrate-data-urls");
+      setResult(data.migrated);
+      const total = (data.migrated?.special_events || 0) + (data.migrated?.offer_overrides || 0);
+      if (total > 0) {
+        toast.success(`${total} image(s) migrée(s) avec succès`);
+      } else {
+        toast.success("Rien à migrer — toutes les images sont déjà en URL publique");
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Échec de la migration");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6" data-testid="migrate-data-urls-card">
+      <div className="flex items-start gap-3">
+        <RefreshCw className="text-blue-500 shrink-0 mt-0.5" size={20} />
+        <div className="flex-1">
+          <div className="font-medium text-blue-900 mb-1">Réparer les images d'emails</div>
+          <div className="text-[0.78rem] text-blue-800/85 leading-relaxed mb-3">
+            Si vos campagnes envoient des emails sans image (icône cassée
+            chez Outlook / Gmail), c'est parce que l'image a été téléversée
+            avant le correctif. Cliquez ci-dessous pour <strong>convertir toutes les
+            images stockées en data: URL en URL publique HTTPS</strong>.
+            Action idempotente, sans risque.
+          </div>
+          <button
+            onClick={run}
+            disabled={busy}
+            className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 text-[0.7rem] uppercase tracking-[0.22em] hover:bg-blue-700 disabled:opacity-50"
+            data-testid="migrate-data-urls-btn"
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            Lancer la migration
+          </button>
+          {result && (
+            <div className="mt-3 text-[0.75rem] text-blue-900">
+              Migrées : événements spéciaux ({result.special_events}) · offres ({result.offer_overrides})
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
