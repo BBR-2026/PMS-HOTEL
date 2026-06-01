@@ -19,12 +19,16 @@ import {
 
 const TIER_COLORS = {
   superieure: "#B8922A",
-  suite: "#16A34A",
+  suite_jardin: "#16A34A",
+  suite_lagune: "#0EA5E9",
+  suite: "#16A34A", // legacy
 };
 
 const TIER_LABEL = {
   superieure: "Chambre Supérieure",
-  suite: "Suite",
+  suite_jardin: "Suite côté jardin",
+  suite_lagune: "Suite côté lagune",
+  suite: "Suite", // legacy
 };
 
 const ROOM_STATUS_LABEL = {
@@ -137,7 +141,8 @@ export default function StaffHebergement() {
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[0.6rem] sm:text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ background: TIER_COLORS.superieure }}></span> Supérieure</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ background: TIER_COLORS.suite }}></span> Suite</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ background: TIER_COLORS.suite_jardin }}></span> Suite jardin</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ background: TIER_COLORS.suite_lagune }}></span> Suite lagune</span>
           <span className="flex items-center gap-1.5 text-red-700"><span className="w-2.5 h-2.5 bg-red-500"></span> Surbookée</span>
         </div>
       </div>
@@ -576,7 +581,11 @@ function OccupancyPanel({ occupancy, selectedDay, onAssignClick }) {
   const t = occupancy.totals || {};
   const byTier = occupancy.by_tier || [];
   const supRooms = (occupancy.rooms || []).filter((r) => r.tier === "superieure" && r.id);
-  const suiteRooms = (occupancy.rooms || []).filter((r) => r.tier === "suite" && r.id);
+  const jardinRooms = (occupancy.rooms || []).filter((r) => r.tier === "suite_jardin" && r.id);
+  const laguneRooms = (occupancy.rooms || []).filter((r) => r.tier === "suite_lagune" && r.id);
+  // Legacy: any room still tagged with the old "suite" tier (pre-split) — kept
+  // visible so the staff doesn't lose track of historical inventory.
+  const legacySuiteRooms = (occupancy.rooms || []).filter((r) => r.tier === "suite" && r.id);
   const pendingArrivals = (occupancy.rooms || []).filter((r) => !r.id && r.booking);
 
   return (
@@ -650,9 +659,21 @@ function OccupancyPanel({ occupancy, selectedDay, onAssignClick }) {
       )}
 
       <RoomGroup title="Chambres Supérieures (1001-1020)" rooms={supRooms} onAssignClick={onAssignClick} />
-      <div className="mt-5">
-        <RoomGroup title="Suites" rooms={suiteRooms} onAssignClick={onAssignClick} />
-      </div>
+      {jardinRooms.length > 0 && (
+        <div className="mt-5">
+          <RoomGroup title="Suites côté jardin" rooms={jardinRooms} onAssignClick={onAssignClick} />
+        </div>
+      )}
+      {laguneRooms.length > 0 && (
+        <div className="mt-5">
+          <RoomGroup title="Suites côté lagune" rooms={laguneRooms} onAssignClick={onAssignClick} />
+        </div>
+      )}
+      {legacySuiteRooms.length > 0 && (
+        <div className="mt-5">
+          <RoomGroup title="Suites (héritées)" rooms={legacySuiteRooms} onAssignClick={onAssignClick} />
+        </div>
+      )}
     </div>
   );
 }

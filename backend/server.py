@@ -119,11 +119,18 @@ OFFERS = {
                 "inventory": 20,
             },
             {
-                "id": "suite",
-                "name_fr": "Suite",
-                "name_en": "Suite",
-                "price": 445000,
-                "inventory": 6,
+                "id": "suite_jardin",
+                "name_fr": "Suite côté jardin",
+                "name_en": "Garden-view Suite",
+                "price": 420000,
+                "inventory": 3,
+            },
+            {
+                "id": "suite_lagune",
+                "name_fr": "Suite côté lagune",
+                "name_en": "Lagoon-view Suite",
+                "price": 470000,
+                "inventory": 3,
             },
         ],
     },
@@ -235,19 +242,21 @@ OFFERS = {
 
 # ============== PHYSICAL ROOM INVENTORY (Hébergement) ==============
 # Each physical room belongs to a tier and has a stable identifier that the
-# staff sees (room number for "superieure", suite name for "suite").
+# staff sees (room number for "superieure", suite name for "suite_jardin" /
+# "suite_lagune" — split by view: 3 garden-side + 3 lagoon-side).
 HEBERGEMENT_ROOMS = [
     # Supérieures — aile A (étage 1)
     *[{"id": f"R{n}", "label": str(n), "tier": "superieure"} for n in range(1001, 1011)],
     # Supérieures — aile B (étage 2)
     *[{"id": f"R{n}", "label": str(n), "tier": "superieure"} for n in range(1011, 1021)],
-    # Suites — 6 chambres signature nommées
-    {"id": "SUITE_MAKENA", "label": "Makena", "tier": "suite"},
-    {"id": "SUITE_MOHELI", "label": "Moheli", "tier": "suite"},
-    {"id": "SUITE_KALEMA", "label": "Kalema", "tier": "suite"},
-    {"id": "SUITE_MAUPITI", "label": "Maupiti", "tier": "suite"},
-    {"id": "SUITE_NZURI", "label": "N'Zuri", "tier": "suite"},
-    {"id": "SUITE_MANDA", "label": "Manda", "tier": "suite"},
+    # Suites côté jardin — 3 chambres signature (vue jardin tropical)
+    {"id": "SUITE_MAKENA", "label": "Makena", "tier": "suite_jardin"},
+    {"id": "SUITE_MOHELI", "label": "Moheli", "tier": "suite_jardin"},
+    {"id": "SUITE_KALEMA", "label": "Kalema", "tier": "suite_jardin"},
+    # Suites côté lagune — 3 chambres signature (vue lagune premium)
+    {"id": "SUITE_MAUPITI", "label": "Maupiti", "tier": "suite_lagune"},
+    {"id": "SUITE_NZURI", "label": "N'Zuri", "tier": "suite_lagune"},
+    {"id": "SUITE_MANDA", "label": "Manda", "tier": "suite_lagune"},
 ]
 HEBERGEMENT_ROOMS_BY_ID = {r["id"]: r for r in HEBERGEMENT_ROOMS}
 HEBERGEMENT_DEFAULT_CHECKIN = "14:00"   # 2pm hotel-wide check-in
@@ -7123,6 +7132,54 @@ async def backfill_booking_poles():
             logging.info("Backfilled `pole` field on %d existing bookings", updated)
     except Exception as e:
         logging.warning("Pole backfill failed: %s", e)
+
+
+@app.on_event("startup")
+async def migrate_hebergement_suite_split():
+    """One-shot migration: split the legacy single "suite" tier (445k FCFA) into
+    "suite_jardin" (420k FCFA) and "suite_lagune" (470k FCFA).
+
+    Affects three places:
+      1. `offer_overrides` document for hebergement (if it still has the
+         legacy 2-tier shape) — replaces room_tiers with the new 3-tier list.
+      2. Physical room catalog stored on disk constants (handled by code
+         defaults — no DB row, nothing to migrate here).
+      3. Past bookings keep their historical `room_tier`/`total_amount`
+         untouched (any "suite" value displays its denormalized
+         `room_tier_name`, so the invoice trail stays accurate).
+
+    Idempotent: re-runs return immediately when the new shape is detected.
+    """
+    try:
+        ov = await db.offer_overrides.find_one({"offer_id": "hebergement"}, {"_id": 0})
+        if not ov:
+            # No override — the code defaults already carry the 3-tier shape.
+            logging.info("hebergement: no override doc, defaults already 3-tier.")
+            return
+        tiers = ov.get("room_tiers") or []
+        tier_ids = {t.get("id") for t in tiers}
+        # Already migrated?
+        if "suite_jardin" in tier_ids and "suite_lagune" in tier_ids:
+            return
+        # Build the canonical 3-tier list. Preserve any custom price already set
+        # on `superieure`; fall back to code defaults for the two new tiers.
+        defaults = {t["id"]: t for t in OFFERS["hebergement"]["room_tiers"]}
+        superieure = next((t for t in tiers if t.get("id") == "superieure"), defaults["superieure"])
+        new_tiers = [
+            {**defaults["superieure"], **superieure, "id": "superieure"},
+            dict(defaults["suite_jardin"]),
+            dict(defaults["suite_lagune"]),
+        ]
+        await db.offer_overrides.update_one(
+            {"offer_id": "hebergement"},
+            {"$set": {
+                "room_tiers": new_tiers,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        logging.info("Migrated hebergement override to 3-tier (suite_jardin + suite_lagune).")
+    except Exception as e:
+        logging.warning("Hebergement suite split migration failed: %s", e)
 
 
 
