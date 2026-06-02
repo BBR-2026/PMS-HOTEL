@@ -9650,6 +9650,18 @@ app.include_router(
     prefix="/api",
 )
 
+# Public photo gallery — albums auto-derived from OFFERS + published events.
+from routers import gallery as _gallery_mod  # noqa: E402
+app.include_router(
+    _gallery_mod.build_gallery_router(
+        db=db,
+        OFFERS=OFFERS,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    ),
+    prefix="/api",
+)
+
 
 
 

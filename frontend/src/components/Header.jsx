@@ -41,6 +41,17 @@ export default function Header() {
               {p.name_fr}
             </NavLink>
           ))}
+          <NavLink
+            to="/galerie"
+            className={({ isActive }) =>
+              `text-[0.7rem] uppercase tracking-[0.22em] transition-colors ${
+                isActive ? "text-[#B8922A]" : "text-[#0A0A0A]/65 hover:text-[#B8922A]"
+              }`
+            }
+            data-testid="nav-galerie"
+          >
+            Galerie
+          </NavLink>
         </nav>
 
         <button

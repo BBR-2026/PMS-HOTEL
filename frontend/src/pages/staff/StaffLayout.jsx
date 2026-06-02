@@ -27,6 +27,7 @@ import {
   Building2,
   Ship,
   UserCheck,
+  Camera,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -74,6 +75,7 @@ const NAV = [
   { key: "corporate_inquiries", to: "/staff/corporate", icon: Building2, label: "Demandes Corporate", roles: R_MGMT },
   { key: "catalogue_activites", to: "/staff/configuration/activites", icon: Waves, label: "Catalogue activités", roles: R_MGMT },
   { key: "evenements_speciaux", to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: R_MGMT },
+  { key: "galerie", to: "/staff/galerie", icon: Camera, label: "Galerie photo", roles: R_MGMT },
   { key: "config", to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },
 ];
 

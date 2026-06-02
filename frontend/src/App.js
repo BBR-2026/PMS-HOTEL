@@ -43,6 +43,9 @@ import StaffSpecialEvents from "./pages/staff/StaffSpecialEvents";
 import StaffPolePage from "./pages/staff/StaffPolePage";
 import StaffPayments from "./pages/staff/StaffPayments";
 import PolePage from "./pages/PolePage";
+import Gallery from "./pages/Gallery";
+import GalleryAlbum from "./pages/GalleryAlbum";
+import StaffGallery from "./pages/staff/StaffGallery";
 import RoleGuard from "./components/RoleGuard";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
@@ -89,6 +92,8 @@ function App() {
               <Route path="/payment/fineo/result" element={<FineoResult />} />
               <Route path="/booking/special-event/:eventId" element={<BookingTunnel />} />
               <Route path="/events" element={<EventPrivatization />} />
+              <Route path="/galerie" element={<Gallery />} />
+              <Route path="/galerie/:albumId" element={<GalleryAlbum />} />
             </Route>
             <Route path="/retour-experience" element={<Feedback />} />
             <Route path="/accueil" element={<Accueil />} />
@@ -124,6 +129,7 @@ function App() {
               <Route path="enregistrements" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRegistrations /></RoleGuard>} />
               <Route path="privatisations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCharters /></RoleGuard>} />
               <Route path="corporate" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCorporateInquiries /></RoleGuard>} />
+              <Route path="galerie" element={<RoleGuard allowed={MANAGER_PLUS}><StaffGallery /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>

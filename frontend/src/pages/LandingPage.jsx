@@ -153,6 +153,38 @@ export default function LandingPage() {
               <PoleCard key={p.id} pole={p} index={i} />
             ))}
           </div>
+
+          {/* Gallery teaser — pushes users into the public photo gallery */}
+          <a
+            href="/galerie"
+            data-testid="gallery-teaser"
+            className="group relative block mt-12 lg:mt-16 border border-[#B8922A]/40 bg-[#0A0A0A] overflow-hidden"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-5 min-h-[200px] md:min-h-[220px]">
+              <div className="md:col-span-2 relative overflow-hidden">
+                <img
+                  src="https://images.unsplash.com/photo-1519046904884-53103b34b206?w=1200&q=80"
+                  alt="Galerie photo"
+                  className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity duration-700"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/40 to-[#0A0A0A]" />
+              </div>
+              <div className="md:col-span-3 p-8 md:p-10 flex flex-col justify-center text-white">
+                <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">
+                  Notre galerie
+                </div>
+                <h3 className="font-display-serif text-3xl md:text-4xl tracking-tight leading-tight mb-3">
+                  Revivez vos moments BBR
+                </h3>
+                <p className="text-white/65 text-sm md:text-base leading-relaxed mb-4 max-w-xl">
+                  Découvrez les albums photos de chaque expérience signature et téléchargez vos clichés préférés.
+                </p>
+                <span className="inline-flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.28em] text-[#B8922A] group-hover:gap-3 transition-all">
+                  Découvrir la galerie →
+                </span>
+              </div>
+            </div>
+          </a>
         </div>
       </section>
     </div>
