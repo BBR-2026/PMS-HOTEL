@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CreditCard, Wifi, Star, UserCheck } from "lucide-react";
+import { CreditCard, Wifi, Star, UserCheck, Camera } from "lucide-react";
 
 const BBR_LOGO = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png";
 
@@ -7,7 +7,8 @@ const TILES = [
   { to: "/accueil/enregistrement", icon: UserCheck,  num: "01", title: "M'enregistrer", subtitle: "Recevez votre pass d'embarquement personnalisé" },
   { to: "/accueil/paiement",       icon: CreditCard, num: "02", title: "Effectuer un paiement", subtitle: "Réglez votre consommation à l'un de nos points de vente" },
   { to: "/accueil/wifi",           icon: Wifi,       num: "03", title: "Se connecter au Wi-Fi", subtitle: "Accédez gratuitement à notre réseau" },
-  { to: "/retour-experience",      icon: Star,       num: "04", title: "Partager votre expérience", subtitle: "Votre avis nous aide à nous améliorer" },
+  { to: "/galerie",                icon: Camera,     num: "04", title: "Galerie photo", subtitle: "Revivez et téléchargez vos moments BBr" },
+  { to: "/retour-experience",      icon: Star,       num: "05", title: "Partager votre expérience", subtitle: "Votre avis nous aide à nous améliorer" },
 ];
 
 export default function Accueil() {
@@ -26,7 +27,7 @@ export default function Accueil() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 w-full max-w-5xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5 w-full max-w-6xl">
           {TILES.map((t) => {
             const Icon = t.icon;
             return (
