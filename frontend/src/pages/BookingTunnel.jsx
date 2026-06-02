@@ -110,22 +110,18 @@ export default function BookingTunnel() {
     api.get(`/availability/${offerId}/${iso}`).then((r) => setAvailability(r.data)).catch(() => {});
   }, [selectedDate, offerId, isSpecialEvent, offer]);
 
-  // Keep participants array in sync with adults/children counts.
-  // Preserves existing entries by kind (adults first, then children) and
-  // appends empty entries when the count grows, trims when it shrinks.
+  // Keep participants array in sync with adults count only.
+  // Children are no longer collected as participants — they're counted via `children`
+  // and attached to the booker's (first adult) ticket on the backend.
   useEffect(() => {
     setParticipants((prev) => {
       const prevAdults = prev.filter((p) => p.kind === "adult");
-      const prevChildren = prev.filter((p) => p.kind === "child");
       const nextAdults = Array.from({ length: adults }, (_, i) =>
         prevAdults[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "adult" }
       );
-      const nextChildren = Array.from({ length: children }, (_, i) =>
-        prevChildren[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "child" }
-      );
-      return [...nextAdults, ...nextChildren];
+      return nextAdults;
     });
-  }, [adults, children]);
+  }, [adults]);
 
   const isOvernight = !!offer?.is_overnight;
   const roomTiers = offer?.room_tiers || [];
@@ -195,15 +191,17 @@ export default function BookingTunnel() {
     );
   }
 
+  // Validation: booker (participants[0]) must provide email + phone.
+  // Other adults only need name + surname + nationality.
   const participantsValid =
-    participants.length === totalGuests &&
+    participants.length === adults &&
+    adults >= 1 &&
     participants.every(
-      (p) =>
+      (p, i) =>
         p.name.trim() &&
         p.surname.trim() &&
         p.nationality.trim() &&
-        p.phone.trim() &&
-        /\S+@\S+\.\S+/.test(p.email)
+        (i > 0 || (p.phone.trim() && /\S+@\S+\.\S+/.test(p.email)))
     );
   const contactValid =
     participantsValid &&
@@ -248,13 +246,15 @@ export default function BookingTunnel() {
         rooms: hasTiers ? rooms : 1,
         adults,
         children,
-        participants: participants.map((p) => ({
+        participants: participants.map((p, i) => ({
           name: p.name.trim(),
           surname: p.surname.trim(),
-          email: p.email.trim().toLowerCase(),
-          phone: p.phone.trim(),
+          // Email & phone are only required on the booker (first adult). For
+          // other adults the backend will fall back to the booker's contact.
+          email: i === 0 ? p.email.trim().toLowerCase() : (p.email || "").trim().toLowerCase() || null,
+          phone: i === 0 ? p.phone.trim() : (p.phone || "").trim() || null,
           nationality: p.nationality.trim(),
-          kind: p.kind,
+          kind: "adult",
         })),
         boat_time: contact.boat_time,
         return_boat_time: isOvernight ? contact.return_boat_time : null,
@@ -615,16 +615,25 @@ export default function BookingTunnel() {
                 </h2>
                 <div className="gold-divider mb-6 sm:mb-8" />
 
-                {/* Participants */}
+                {/* Children attached info (no per-child form) */}
+                {children > 0 && (
+                  <div className="mb-5 sm:mb-6 border border-[#B8922A]/30 bg-[#FBF8EF] px-4 py-3 sm:px-5 sm:py-4">
+                    <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] font-medium mb-1">
+                      Enfants accompagnés
+                    </div>
+                    <div className="text-[0.82rem] text-[#0A0A0A]/75 leading-relaxed">
+                      <strong>{children} enfant{children > 1 ? "s" : ""}</strong> rattaché{children > 1 ? "s" : ""} au billet du réservant. Aucune coordonnée à saisir.
+                    </div>
+                  </div>
+                )}
+
+                {/* Participants — 1 ticket par adulte. Booker (1er adulte) renseigne email + téléphone. */}
                 <div className="space-y-5 sm:space-y-6">
                   {participants.map((p, i) => {
                     const isFirst = i === 0;
-                    const adultIndex = participants.slice(0, i + 1).filter((x) => x.kind === "adult").length;
-                    const childIndex = participants.slice(0, i + 1).filter((x) => x.kind === "child").length;
-                    const label =
-                      p.kind === "adult"
-                        ? `${t.booking.adults.replace(/s$/, "")} ${adultIndex}${isFirst ? ` · ${t.booking.primaryContact}` : ""}`
-                        : `${t.booking.children.replace(/s$/, "")} ${childIndex}`;
+                    const label = isFirst
+                      ? `Réservant · ${t.booking.primaryContact}${children > 0 ? ` + ${children} enfant${children > 1 ? "s" : ""}` : ""}`
+                      : `Adulte ${i + 1}`;
                     const update = (field) => (e) => {
                       const next = [...participants];
                       next[i] = { ...next[i], [field]: e.target.value };
@@ -652,20 +661,24 @@ export default function BookingTunnel() {
                             onChange={update("name")}
                             testId={`participant-${i}-name`}
                           />
-                          <Field
-                            type="email"
-                            label={t.booking.email}
-                            value={p.email}
-                            onChange={update("email")}
-                            testId={`participant-${i}-email`}
-                          />
-                          <Field
-                            type="tel"
-                            label={t.booking.phone}
-                            value={p.phone}
-                            onChange={update("phone")}
-                            testId={`participant-${i}-phone`}
-                          />
+                          {isFirst && (
+                            <>
+                              <Field
+                                type="email"
+                                label={t.booking.email}
+                                value={p.email}
+                                onChange={update("email")}
+                                testId={`participant-${i}-email`}
+                              />
+                              <Field
+                                type="tel"
+                                label={t.booking.phone}
+                                value={p.phone}
+                                onChange={update("phone")}
+                                testId={`participant-${i}-phone`}
+                              />
+                            </>
+                          )}
                           <div className="md:col-span-2">
                             <NationalityAutocomplete
                               label={t.booking.nationality}
@@ -932,19 +945,44 @@ export default function BookingTunnel() {
                       {participants.map((p, i) => (
                         <li key={i} className="flex items-start justify-between gap-6">
                           <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
-                            {p.kind === "adult" ? t.booking.adults.replace(/s$/, "") : t.booking.children.replace(/s$/, "")}{" "}
-                            {participants.slice(0, i + 1).filter((x) => x.kind === p.kind).length}
+                            {i === 0 ? "Réservant" : `Adulte ${i + 1}`}
                           </span>
                           <span className="text-sm text-[#0A0A0A] text-right">
                             {p.surname} {p.name} · {p.nationality}
-                            <span className="block text-[0.72rem] text-[#0A0A0A]/50 mt-0.5">
-                              {p.email} · {p.phone}
-                            </span>
+                            {i === 0 && (
+                              <span className="block text-[0.72rem] text-[#0A0A0A]/50 mt-0.5">
+                                {p.email} · {p.phone}
+                              </span>
+                            )}
                           </span>
                         </li>
                       ))}
+                      {children > 0 && (
+                        <li className="flex items-start justify-between gap-6 pt-1">
+                          <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
+                            Enfants
+                          </span>
+                          <span className="text-sm text-[#0A0A0A] text-right">
+                            {children} enfant{children > 1 ? "s" : ""} (rattaché{children > 1 ? "s" : ""} au réservant)
+                          </span>
+                        </li>
+                      )}
                     </ul>
                   </div>
+
+                  {/* Check-in / Check-out reminder for overnight bookings */}
+                  {isOvernight && (
+                    <div className="border border-[#B8922A]/25 bg-[#FBF8EF] px-4 py-3 sm:px-5 sm:py-4">
+                      <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] font-medium mb-1">
+                        Horaires de l'hôtel
+                      </div>
+                      <div className="text-[0.82rem] text-[#0A0A0A]/75 leading-relaxed">
+                        <strong>Check-in :</strong> à partir de <strong>14h00</strong>
+                        <span className="mx-2 text-[#0A0A0A]/30">·</span>
+                        <strong>Check-out :</strong> avant <strong>12h00</strong>
+                      </div>
+                    </div>
+                  )}
 
                   {contact.special_requests && <SummaryRow label={t.booking.specialRequests} value={contact.special_requests} />}
                   <div className="pt-5 border-t border-[#0A0A0A]/10 flex justify-between items-baseline">
@@ -971,7 +1009,7 @@ export default function BookingTunnel() {
 
             {step === 5 && bookingResp && (
               <div data-testid="booking-step-5" className="max-w-3xl">
-                {bookingResp.status === "confirmed" ? (
+                {bookingResp.status === "confirmed" || bookingResp.status === "pending_cash_payment" ? (
                   <ConfirmationView booking={bookingResp} t={t} lang={lang} navigate={navigate} />
                 ) : (
                   <PaymentView booking={bookingResp} onPay={handlePay} paying={paying} t={t} isOvernight={isOvernight} />
@@ -1089,6 +1127,30 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
         {" · "}#{booking.id.slice(0, 8).toUpperCase()}
       </p>
 
+      {/* Prominent confirmation notice — visible before any payment choice */}
+      <div className="mb-7 sm:mb-8 max-w-3xl">
+        <div className="border-l-4 border-[#B8922A] bg-[#FBF8EF] px-5 py-4 sm:px-6 sm:py-5">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-[#B8922A] text-white flex items-center justify-center flex-shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[0.65rem] uppercase tracking-[0.24em] text-[#B8922A] font-semibold mb-1">
+                Confirmation immédiate
+              </div>
+              <p className="text-base sm:text-lg font-medium text-[#0A0A0A] leading-snug">
+                Vous allez recevoir votre billet d'embarquement par e-mail dans quelques minutes.
+              </p>
+              <p className="text-[0.82rem] sm:text-[0.85rem] text-[#0A0A0A]/65 mt-2 leading-relaxed">
+                Pensez à vérifier vos courriers indésirables (spam). Si vous ne recevez rien, contactez notre équipe :{" "}
+                <a href="tel:+22501234567" className="text-[#B8922A] font-medium hover:underline">+225 01 23 45 67</a>
+                {" "}·{" "}
+                <a href="mailto:contact@boulaybeachresort.com" className="text-[#B8922A] font-medium hover:underline">contact@boulaybeachresort.com</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
       {isFree ? (
         <div className="bg-[#FAFAF7] border border-[#B8922A]/30 p-6 sm:p-8 md:p-10 max-w-xl">
           <div className="text-[0.7rem] uppercase tracking-[0.4em] text-[#B8922A] mb-3">
@@ -1289,6 +1351,24 @@ function ConfirmationView({ booking, t, lang, navigate }) {
           {total} {total > 1 ? t.booking.qrCodesPlural : t.booking.qrCodesSingular}
         </p>
       </div>
+
+      {/* Cash pending banner — visible only when waiting for staff to collect cash on arrival */}
+      {booking.status === "pending_cash_payment" && (
+        <div className="max-w-xl mx-auto mb-8 border-l-4 border-amber-500 bg-amber-50 px-5 py-4" data-testid="cash-pending-banner">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-amber-500 text-white flex items-center justify-center flex-shrink-0 text-lg font-bold">!</div>
+            <div className="flex-1">
+              <div className="text-[0.65rem] uppercase tracking-[0.24em] text-amber-700 font-semibold mb-1">
+                Reçu provisoire · Paiement en espèces
+              </div>
+              <p className="text-sm text-amber-900 leading-relaxed">
+                Ce reçu est <strong>provisoire</strong>. Vous recevrez votre <strong>billet définitif avec QR code d'embarquement</strong> par e-mail
+                dès que notre équipe aura encaissé le règlement à votre arrivée.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Deposit summary banner — only shown when paid with deposit */}
       {booking.payment_method === "deposit" && booking.deposit_pct && (

@@ -24,6 +24,7 @@ const POLE_LABEL = {
 };
 const STATUS_FR = {
   pending: "En attente",
+  pending_cash_payment: "Espèces — à encaisser",
   confirmed: "Confirmée",
   arrived: "Arrivée",
   completed: "Terminée",
@@ -31,6 +32,7 @@ const STATUS_FR = {
 };
 const STATUS_COLOR = {
   pending: "bg-[#FAFAF7] text-[#0A0A0A]/55 border-[#0A0A0A]/15",
+  pending_cash_payment: "bg-amber-50 text-amber-700 border-amber-300",
   confirmed: "bg-[#B8922A]/10 text-[#B8922A] border-[#B8922A]/30",
   arrived: "bg-green-50 text-green-700 border-green-200",
   completed: "bg-blue-50 text-blue-700 border-blue-200",
@@ -128,6 +130,21 @@ function ActionDrawer({ booking, onClose, onChanged }) {
     } finally { setBusy(false); }
   };
 
+  const confirmCash = async () => {
+    if (!window.confirm("Confirmer que l'argent en espèces a bien été encaissé ? Le client recevra son billet définitif par email.")) return;
+    setBusy(true);
+    try {
+      await api.post(`/staff/bookings/${booking.id}/confirm-cash-payment`);
+      toast.success("Encaissement confirmé · billet définitif envoyé au client");
+      onChanged();
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur lors de la confirmation");
+    } finally { setBusy(false); }
+  };
+
+  const isPendingCash = booking.status === "pending_cash_payment";
+
   const guestName = (booking.participants && booking.participants[0])
     ? `${booking.participants[0].surname || ""} ${booking.participants[0].name || ""}`.trim()
     : booking.phone;
@@ -193,8 +210,35 @@ function ActionDrawer({ booking, onClose, onChanged }) {
             )}
           </div>
 
-          {/* Payment action */}
-          {!isPaid && !isCancelled && (
+          {/* Cash pending validation — dedicated UI taking precedence over the manual mark-paid block */}
+          {isPendingCash && !isCancelled && (
+            <div className="border-t border-[#0A0A0A]/8 pt-5">
+              <div className="bg-amber-50 border border-amber-300 px-4 py-3 mb-4">
+                <div className="text-[0.6rem] uppercase tracking-[0.22em] text-amber-700 font-semibold mb-1">
+                  Reçu provisoire envoyé · paiement en espèces en attente
+                </div>
+                <p className="text-[0.78rem] text-amber-900/85 leading-relaxed">
+                  Le client a reçu un reçu provisoire par email. Confirmez l'encaissement
+                  lorsque vous aurez perçu les <strong>{formatXOF(booking.total_amount || 0)}</strong> en espèces ;
+                  il recevra alors son billet définitif avec QR code d'embarquement.
+                </p>
+              </div>
+              <button
+                onClick={confirmCash}
+                disabled={busy}
+                className="w-full py-3 bg-green-600 text-white text-[0.7rem] uppercase tracking-[0.22em] hover:bg-green-700 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                data-testid="confirm-cash-btn"
+              >
+                <CheckCircle2 size={14} /> Confirmer l'encaissement
+              </button>
+              <p className="text-[0.62rem] text-[#0A0A0A]/45 mt-2 text-center">
+                Action irréversible — déclenche l'envoi du billet définitif.
+              </p>
+            </div>
+          )}
+
+          {/* Payment action — hidden when a cash-pending validation is the only path */}
+          {!isPaid && !isCancelled && !isPendingCash && (
             <div className="border-t border-[#0A0A0A]/8 pt-5">
               <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-3">Enregistrer le paiement</div>
               <div className="grid grid-cols-3 gap-1.5 mb-4">

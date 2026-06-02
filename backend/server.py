@@ -386,10 +386,12 @@ class TokenResponse(BaseModel):
 class Participant(BaseModel):
     name: str
     surname: str
-    email: EmailStr
-    phone: str
+    # email/phone only required on the booker (first adult) — backend enforces.
+    # Children are no longer collected as participants (counted via booking.children).
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
     nationality: str
-    kind: Literal["adult", "child"]
+    kind: Literal["adult", "child"] = "adult"
 
 
 class BookingCreate(BaseModel):
@@ -1886,22 +1888,36 @@ async def create_booking(body: BookingCreate):
     if total_guests <= 0:
         raise HTTPException(status_code=400, detail="At least one guest required")
 
-    # Validate participants match the adult/child counts
-    if len(body.participants) != total_guests:
+    # New flow: only adults are collected as participants (1 ticket per adult).
+    # Children are counted via `body.children` and attached to the booker's ticket.
+    # Legacy flow (one entry per guest, adult OR child) still accepted to preserve
+    # backward compatibility with any older API consumer.
+    p_count = len(body.participants)
+    if p_count == body.adults:
+        # New shape — all entries must be adults.
+        if any(p.kind == "child" for p in body.participants):
+            raise HTTPException(status_code=400, detail="Children should not be sent as participants")
+    elif p_count == total_guests:
+        adult_count = sum(1 for p in body.participants if p.kind == "adult")
+        child_count = sum(1 for p in body.participants if p.kind == "child")
+        if adult_count != body.adults or child_count != body.children:
+            raise HTTPException(
+                status_code=400,
+                detail="Participants adult/child distribution does not match",
+            )
+    else:
         raise HTTPException(
             status_code=400,
-            detail=f"Expected {total_guests} participants, received {len(body.participants)}",
+            detail=f"Expected {body.adults} adult participants, received {p_count}",
         )
-    adult_count = sum(1 for p in body.participants if p.kind == "adult")
-    child_count = sum(1 for p in body.participants if p.kind == "child")
-    if adult_count != body.adults or child_count != body.children:
-        raise HTTPException(
-            status_code=400,
-            detail="Participants adult/child distribution does not match",
-        )
-    for p in body.participants:
-        if not p.name.strip() or not p.surname.strip() or not p.nationality.strip() or not p.phone.strip():
-            raise HTTPException(status_code=400, detail="All participant fields are required")
+
+    for i, p in enumerate(body.participants):
+        if not p.name.strip() or not p.surname.strip() or not p.nationality.strip():
+            raise HTTPException(status_code=400, detail="Nom, prénom et nationalité sont obligatoires pour chaque adulte")
+        # Booker (first adult) must provide email + phone — used for confirmation
+        if i == 0 and p.kind == "adult":
+            if not (p.email or "").strip() or not (p.phone or "").strip():
+                raise HTTPException(status_code=400, detail="Email et téléphone obligatoires pour le réservant")
 
     # capacity check
     cap_filter = {"offer_type": body.offer_type, "date": body.date, "status": {"$ne": "cancelled"}}
@@ -2008,8 +2024,8 @@ async def create_booking(body: BookingCreate):
         {
             "name": p.name.strip(),
             "surname": p.surname.strip(),
-            "email": p.email.lower(),
-            "phone": p.phone.strip(),
+            "email": (p.email or "").lower(),
+            "phone": (p.phone or "").strip(),
             "nationality": p.nationality.strip(),
             "kind": p.kind,
         }
@@ -2056,8 +2072,14 @@ async def create_booking(body: BookingCreate):
 
 @api.post("/bookings/{booking_id}/pay")
 async def pay_booking(booking_id: str, body: PayBooking):
-    """FINEO placeholder - validates reference token, generates one QR per guest.
-    Each QR encodes a complete JSON payload with all booking information."""
+    """FINEO placeholder - validates reference token, generates one QR per ADULT.
+    Children are counted on the booker's ticket (no longer get a dedicated QR).
+
+    Cash payments produce a TEMPORARY "EN ATTENTE" receipt — the booking stays
+    in `pending_cash_payment` state until a staff member explicitly confirms
+    the cash collection via /staff/bookings/{id}/confirm-cash-payment. The
+    customer then receives a second email with the final styled QR ticket.
+    """
     booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -2071,6 +2093,9 @@ async def pay_booking(booking_id: str, body: PayBooking):
     else:
         offer = OFFERS[booking["offer_type"]]
     participants = booking.get("participants", [])
+    # Only adults receive a ticket. Children count is appended to the booker.
+    adult_participants = [p for p in participants if p.get("kind", "adult") == "adult"]
+    children_count = int(booking.get("children", 0))
 
     # Compute paid amount (full vs deposit). Deposit is only valid for overnight offers.
     total_amount = int(booking.get("total_amount", 0))
@@ -2086,9 +2111,11 @@ async def pay_booking(booking_id: str, body: PayBooking):
         paid_amount = total_amount
     balance_due = total_amount - paid_amount
 
-    # Card / mobile-money / deposit payments produce the luxury styled gold QR.
-    # Only true cash payments keep the plain receipt.
-    styled_qr = body.payment_method in ("fineo", "card", "mobile_money", "deposit")
+    # Card / mobile-money / deposit / fineo → styled gold QR + immediate confirmation.
+    # Cash payments → cream "EN ATTENTE" receipt without QR, booking stays
+    # pending_cash_payment until staff confirms.
+    is_cash_pending = body.payment_method == "cash"
+    styled_qr = not is_cash_pending
     base_payload = {
         "v": 1,
         "issuer": "Boulay Beach Resort",
@@ -2112,36 +2139,33 @@ async def pay_booking(booking_id: str, body: PayBooking):
     }
 
     qr_codes = []
-    adult_i = 0
-    child_i = 0
-    for p in participants:
+    for adult_i, p in enumerate(adult_participants, start=1):
         token = uuid.uuid4().hex
-        if p["kind"] == "adult":
-            adult_i += 1
-            idx = adult_i
-            label_fr = f"Adulte #{idx}"
-            label_en = f"Adult #{idx}"
+        is_booker = adult_i == 1
+        # Booker gets a richer label that mentions the children he/she is carrying.
+        if is_booker and children_count > 0:
+            label_fr = f"Réservant · +{children_count} enfant{'s' if children_count > 1 else ''}"
+            label_en = f"Booker · +{children_count} child{'ren' if children_count > 1 else ''}"
+        elif is_booker:
+            label_fr = "Réservant"
+            label_en = "Booker"
         else:
-            child_i += 1
-            idx = child_i
-            label_fr = f"Enfant #{idx}"
-            label_en = f"Child #{idx}"
+            label_fr = f"Adulte #{adult_i}"
+            label_en = f"Adult #{adult_i}"
         guest_payload = {
             **base_payload,
-            "guest_kind": p["kind"],
-            "guest_index": idx,
+            "guest_kind": "adult",
+            "guest_index": adult_i,
             "guest_label": label_fr,
             "guest_name": p["name"],
             "guest_surname": p["surname"],
-            "guest_email": p.get("email", ""),
-            "guest_phone": p.get("phone", ""),
+            "guest_email": p.get("email", "") or booking.get("email", ""),
+            "guest_phone": p.get("phone", "") or booking.get("phone", ""),
             "guest_nationality": p["nationality"],
             "guest_token": token,
+            "children_attached": children_count if is_booker else 0,
         }
         payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
-        # Compact QR payload — only the ticket token. The full guest payload stays in DB (qr_payload)
-        # for auditing. This keeps the encoded QR small enough to be scanned by mobile cameras even
-        # when rendered in styled gold + rounded modules with H-level error correction.
         compact_qr = json.dumps(
             {"type": "ticket", "token": token, "ref": booking_id[:8].upper()},
             ensure_ascii=False, separators=(",", ":"),
@@ -2150,18 +2174,18 @@ async def pay_booking(booking_id: str, body: PayBooking):
         entry = {
             "label_fr": label_fr,
             "label_en": label_en,
-            "kind": p["kind"],
+            "kind": "adult",
             "guest_name": p["name"],
             "guest_surname": p["surname"],
-            "guest_email": p.get("email", ""),
-            "guest_phone": p.get("phone", ""),
+            "guest_email": p.get("email", "") or booking.get("email", ""),
+            "guest_phone": p.get("phone", "") or booking.get("phone", ""),
             "guest_nationality": p["nationality"],
             "qr_token": token,
             "qr_payload": payload_str,
             "qr_code": make_qr(compact_qr, styled=styled_qr),
+            "children_attached": children_count if is_booker else 0,
         }
         if styled_qr:
-            # Card / mobile-money payments: composite ticket with brown details + gold QR
             entry["ticket_image"] = make_ticket_image(
                 offer_id=booking["offer_type"],
                 offer_name=offer["name_fr"],
@@ -2174,7 +2198,6 @@ async def pay_booking(booking_id: str, body: PayBooking):
                 hero_url=offer.get("image_url") or None,
             )
         else:
-            # Cash payments: cream "temporary receipt" with no QR shown
             entry["ticket_image"] = make_cash_receipt_image(
                 offer_id=booking["offer_type"],
                 offer_name=offer["name_fr"],
@@ -2190,7 +2213,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
     paid_at = now_iso()
 
     # ---------- Wallet creation (activity payment QR) ----------
-    primary = next((p for p in participants if p["kind"] == "adult"), participants[0] if participants else {})
+    primary = adult_participants[0] if adult_participants else (participants[0] if participants else {})
     owner_name = f"{primary.get('name','')} {primary.get('surname','')}".strip() or "Invité"
     wallet_token = str(uuid.uuid4())
     booking_ref_short = booking_id[:8].upper()
@@ -2220,33 +2243,33 @@ async def pay_booking(booking_id: str, body: PayBooking):
         ),
     }
 
-    await db.bookings.update_one(
-        {"id": booking_id},
-        {"$set": {
-            "status": "confirmed",
-            "qr_codes": qr_codes,
-            "wallet_qr": wallet_qr,
-            "wallet_token": wallet_token,
-            "paid_at": paid_at,
-            "payment_method": body.payment_method,
-            "paid_amount": int(paid_amount),
-            "balance_due": int(balance_due),
-            "deposit_pct": deposit_pct,
-        }},
-    )
-    booking["status"] = "confirmed"
-    booking["qr_codes"] = qr_codes
-    booking["wallet_qr"] = wallet_qr
-    booking["wallet_token"] = wallet_token
-    booking["paid_at"] = paid_at
-    booking["payment_method"] = body.payment_method
-    booking["paid_amount"] = int(paid_amount)
-    booking["balance_due"] = int(balance_due)
-    booking["deposit_pct"] = deposit_pct
-    # Fiscal receipt for the booking payment (only if money was actually charged)
-    if int(paid_amount) > 0:
+    # Booking status branches: cash → pending validation, others → immediately confirmed.
+    new_status = "pending_cash_payment" if is_cash_pending else "confirmed"
+    update_doc = {
+        "status": new_status,
+        "qr_codes": qr_codes,
+        "wallet_qr": wallet_qr,
+        "wallet_token": wallet_token,
+        "payment_method": body.payment_method,
+        "deposit_pct": deposit_pct,
+    }
+    if is_cash_pending:
+        # Cash collection not yet confirmed by staff. paid_at + paid_amount stay null.
+        update_doc["paid_at"] = None
+        update_doc["paid_amount"] = 0
+        update_doc["balance_due"] = total_amount
+        update_doc["cash_temp_issued_at"] = paid_at
+    else:
+        update_doc["paid_at"] = paid_at
+        update_doc["paid_amount"] = int(paid_amount)
+        update_doc["balance_due"] = int(balance_due)
+    await db.bookings.update_one({"id": booking_id}, {"$set": update_doc})
+    booking.update(update_doc)
+
+    # Fiscal receipt is only emitted when money is actually collected (not for
+    # cash-pending state — the staff confirmation endpoint emits it later).
+    if not is_cash_pending and int(paid_amount) > 0:
         try:
-            primary = next((p for p in participants if p.get("kind") == "adult"), None) or (participants[0] if participants else {})
             label = (
                 f"Acompte {deposit_pct}% — {offer['name_fr']} ({booking['date']})"
                 if body.payment_method == "deposit" and deposit_pct
@@ -2275,20 +2298,20 @@ async def pay_booking(booking_id: str, body: PayBooking):
 
     # Outbound Twilio notification — never blocks. The QR ticket PNG is
     # embedded as a data URI so WhatsApp can render it as a media message.
-    try:
-        first_qr = (qr_codes or [{}])[0]
-        qr_url = first_qr.get("ticket_image", "")
-        if qr_url and not qr_url.startswith(("http://", "https://")):
-            # Encode in URL fragment-friendly form for WhatsApp media: we host
-            # via the public booking endpoint so Twilio can fetch the PNG.
-            qr_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking['reference_token']}"
-        await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
-    except Exception as ex:
-        logging.warning("Twilio booking_paid notification failed: %s", ex)
+    # Skipped for cash-pending: client gets the temporary receipt via email only.
+    if not is_cash_pending:
+        try:
+            first_qr = (qr_codes or [{}])[0]
+            qr_url = first_qr.get("ticket_image", "")
+            if qr_url and not qr_url.startswith(("http://", "https://")):
+                qr_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking['reference_token']}"
+            await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
+        except Exception as ex:
+            logging.warning("Twilio booking_paid notification failed: %s", ex)
 
-    # SendGrid email — sent in parallel with WhatsApp/SMS, attaches the QR PNG.
+    # SendGrid email — sent in parallel with WhatsApp/SMS.
     try:
-        await _send_booking_confirmation_email(booking)
+        await _send_booking_confirmation_email(booking, temporary=is_cash_pending)
     except Exception as ex:
         logging.warning("SendGrid booking_paid email failed: %s", ex)
     return booking
@@ -4375,6 +4398,132 @@ async def update_booking_payment(
         update["paid_at"] = None
     await db.bookings.update_one({"id": booking_id}, {"$set": update})
     return {"ok": True}
+
+
+@api.post("/staff/bookings/{booking_id}/confirm-cash-payment")
+async def confirm_cash_payment(booking_id: str, staff=Depends(get_current_staff)):
+    """Validates a cash booking after the staff has physically collected the
+    money. Replaces the cream "provisoire" receipt by the styled gold QR
+    ticket, books the wallet, emits the fiscal receipt and sends the second
+    confirmation email with the final boarding pass attached.
+    Idempotent — re-running on an already-confirmed booking returns 400.
+    """
+    await _require_role(staff, ["hotesse", "receptionist", "manager", "manager_pole", "admin"])
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.get("payment_method") != "cash":
+        raise HTTPException(status_code=400, detail="Cette réservation n'est pas un paiement en espèces")
+    if booking.get("status") != "pending_cash_payment":
+        raise HTTPException(status_code=400, detail="Encaissement déjà confirmé ou réservation non éligible")
+
+    if booking["offer_type"] == "special_event":
+        offer = await _resolve_special_event_offer(booking.get("special_event_id") or "")
+    else:
+        offer = OFFERS[booking["offer_type"]]
+    participants = booking.get("participants", [])
+    adult_participants = [p for p in participants if p.get("kind", "adult") == "adult"]
+    children_count = int(booking.get("children", 0))
+    total_amount = int(booking.get("total_amount", 0))
+    booking_ref_short = booking_id[:8].upper()
+
+    # Regenerate styled QR tickets — one per adult, booker carries children info.
+    qr_codes = []
+    for adult_i, p in enumerate(adult_participants, start=1):
+        # Preserve the original qr_token issued when the booking was paid so the
+        # token printed on the cream receipt still resolves to the same QR.
+        existing = next(
+            (q for q in (booking.get("qr_codes") or []) if q.get("guest_name") == p["name"] and q.get("guest_surname") == p["surname"]),
+            None,
+        )
+        token = (existing or {}).get("qr_token") or uuid.uuid4().hex
+        is_booker = adult_i == 1
+        if is_booker and children_count > 0:
+            label_fr = f"Réservant · +{children_count} enfant{'s' if children_count > 1 else ''}"
+            label_en = f"Booker · +{children_count} child{'ren' if children_count > 1 else ''}"
+        elif is_booker:
+            label_fr, label_en = "Réservant", "Booker"
+        else:
+            label_fr, label_en = f"Adulte #{adult_i}", f"Adult #{adult_i}"
+        compact_qr = json.dumps(
+            {"type": "ticket", "token": token, "ref": booking_ref_short},
+            ensure_ascii=False, separators=(",", ":"),
+        )
+        token_short = token[:10].upper()
+        qr_codes.append({
+            "label_fr": label_fr,
+            "label_en": label_en,
+            "kind": "adult",
+            "guest_name": p["name"],
+            "guest_surname": p["surname"],
+            "guest_email": p.get("email", "") or booking.get("email", ""),
+            "guest_phone": p.get("phone", "") or booking.get("phone", ""),
+            "guest_nationality": p["nationality"],
+            "qr_token": token,
+            "qr_code": make_qr(compact_qr, styled=True),
+            "ticket_image": make_ticket_image(
+                offer_id=booking["offer_type"],
+                offer_name=offer["name_fr"],
+                date_iso=booking["date"],
+                boat_time=booking.get("boat_time", ""),
+                owner_name=f"{p['name']} {p['surname']}",
+                qr_payload=compact_qr,
+                ref_code=token_short,
+                lang="fr",
+                hero_url=offer.get("image_url") or None,
+            ),
+            "children_attached": children_count if is_booker else 0,
+        })
+
+    paid_at = now_iso()
+    update = {
+        "status": "confirmed",
+        "qr_codes": qr_codes,
+        "paid_at": paid_at,
+        "paid_amount": total_amount,
+        "balance_due": 0,
+        "cash_confirmed_at": paid_at,
+        "cash_confirmed_by": (staff.get("email") if isinstance(staff, dict) else None),
+    }
+    await db.bookings.update_one({"id": booking_id}, {"$set": update})
+    booking.update(update)
+
+    # Fiscal receipt
+    try:
+        primary = adult_participants[0] if adult_participants else {}
+        await _create_receipt(
+            source="booking",
+            source_id=booking_id,
+            customer_name=f"{primary.get('surname','').strip()} {primary.get('name','').strip()}".strip() or "—",
+            customer_email=primary.get("email") or booking.get("email", ""),
+            customer_phone=primary.get("phone") or booking.get("phone", ""),
+            lines=[{
+                "description": f"{offer['name_fr']} — {booking['date']}",
+                "quantity": 1, "unit_price": total_amount, "total": total_amount,
+            }],
+            payment_method="cash",
+            issued_by=(staff.get("email") if isinstance(staff, dict) else "staff"),
+            issued_by_role=(staff.get("role") if isinstance(staff, dict) else "staff"),
+            metadata={"offer_type": booking["offer_type"], "cash_confirmed": True},
+        )
+    except Exception as ex:
+        logging.warning("Cash-confirm: receipt creation failed: %s", ex)
+
+    # Twilio + SendGrid notifications (definitive ticket)
+    try:
+        qr_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking['reference_token']}"
+        await twilio_service.notify_booking_paid(db, booking, qr_image_url=qr_url)
+    except Exception as ex:
+        logging.warning("Cash-confirm: Twilio notification failed: %s", ex)
+    try:
+        # Send the definitive email (purpose=booking_paid). The dedup check
+        # only skips if the SAME purpose was already sent — temporary email
+        # uses purpose=booking_pending_cash, so this one goes through.
+        await _send_booking_confirmation_email(booking, temporary=False)
+    except Exception as ex:
+        logging.warning("Cash-confirm: confirmation email failed: %s", ex)
+
+    return {"ok": True, "status": "confirmed", "paid_at": paid_at}
 
 
 @api.get("/staff/payments/summary")
@@ -7139,37 +7288,42 @@ async def migrate_hebergement_suite_split():
     """One-shot migration: split the legacy single "suite" tier (445k FCFA) into
     "suite_jardin" (420k FCFA) and "suite_lagune" (470k FCFA).
 
-    Affects three places:
-      1. `offer_overrides` document for hebergement (if it still has the
-         legacy 2-tier shape) — replaces room_tiers with the new 3-tier list.
-      2. Physical room catalog stored on disk constants (handled by code
-         defaults — no DB row, nothing to migrate here).
-      3. Past bookings keep their historical `room_tier`/`total_amount`
-         untouched (any "suite" value displays its denormalized
-         `room_tier_name`, so the invoice trail stays accurate).
+    Affects the `offer_overrides` document for hebergement if it still has the
+    legacy 2-tier shape — replaces room_tiers with the new 3-tier list.
+    Past bookings keep their historical `room_tier`/`total_amount` untouched
+    (any "suite" value displays its denormalized `room_tier_name`).
 
     Idempotent: re-runs return immediately when the new shape is detected.
+    Self-contained tier definitions so it works even after the boot-time
+    `apply_offer_overrides_on_boot()` has mutated the in-memory OFFERS dict.
     """
+    canonical_tiers = [
+        {"id": "superieure", "name_fr": "Chambre Supérieure", "name_en": "Superior Room",
+         "price": 200000, "inventory": 20},
+        {"id": "suite_jardin", "name_fr": "Suite côté jardin", "name_en": "Garden-view Suite",
+         "price": 420000, "inventory": 3},
+        {"id": "suite_lagune", "name_fr": "Suite côté lagune", "name_en": "Lagoon-view Suite",
+         "price": 470000, "inventory": 3},
+    ]
     try:
         ov = await db.offer_overrides.find_one({"offer_id": "hebergement"}, {"_id": 0})
         if not ov:
-            # No override — the code defaults already carry the 3-tier shape.
             logging.info("hebergement: no override doc, defaults already 3-tier.")
             return
         tiers = ov.get("room_tiers") or []
         tier_ids = {t.get("id") for t in tiers}
-        # Already migrated?
         if "suite_jardin" in tier_ids and "suite_lagune" in tier_ids:
-            return
-        # Build the canonical 3-tier list. Preserve any custom price already set
-        # on `superieure`; fall back to code defaults for the two new tiers.
-        defaults = {t["id"]: t for t in OFFERS["hebergement"]["room_tiers"]}
-        superieure = next((t for t in tiers if t.get("id") == "superieure"), defaults["superieure"])
-        new_tiers = [
-            {**defaults["superieure"], **superieure, "id": "superieure"},
-            dict(defaults["suite_jardin"]),
-            dict(defaults["suite_lagune"]),
-        ]
+            return  # already migrated
+        # Preserve any custom price/inventory already set on `superieure`.
+        existing_sup = next((t for t in tiers if t.get("id") == "superieure"), None)
+        new_tiers = [dict(t) for t in canonical_tiers]
+        if existing_sup:
+            new_tiers[0].update({
+                "price": existing_sup.get("price", new_tiers[0]["price"]),
+                "inventory": existing_sup.get("inventory", new_tiers[0]["inventory"]),
+                "name_fr": existing_sup.get("name_fr", new_tiers[0]["name_fr"]),
+                "name_en": existing_sup.get("name_en", new_tiers[0]["name_en"]),
+            })
         await db.offer_overrides.update_one(
             {"offer_id": "hebergement"},
             {"$set": {
@@ -7177,6 +7331,9 @@ async def migrate_hebergement_suite_split():
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }},
         )
+        # Also refresh the in-memory OFFERS dict so the running process serves
+        # the new tiers immediately (no second restart needed).
+        OFFERS["hebergement"]["room_tiers"] = new_tiers
         logging.info("Migrated hebergement override to 3-tier (suite_jardin + suite_lagune).")
     except Exception as e:
         logging.warning("Hebergement suite split migration failed: %s", e)
@@ -7247,13 +7404,21 @@ def _offer_label_fr(offer_type: str) -> str:
     }.get(offer_type, (offer_type or "Réservation").replace("_", " ").title())
 
 
-async def _send_booking_confirmation_email(booking: dict) -> None:
-    """Send the post-payment confirmation email with QR PNG attached."""
+async def _send_booking_confirmation_email(booking: dict, temporary: bool = False) -> None:
+    """Send the post-payment confirmation email with QR PNG attached.
+
+    When `temporary=True` (cash pending validation), the email subject and body
+    flag the booking as "EN ATTENTE DE VALIDATION" and the QR attachment is
+    replaced by the cream temporary receipt (already in qr_codes[].ticket_image).
+    A second confirmation email (with the final styled QR) is sent later by
+    `confirm_cash_payment()` once the staff validates the cash collection.
+    """
     if not email_service.SENDGRID_ENABLED:
         return
     if not booking or not booking.get("email"):
         return
-    if await _email_sent_already("booking_paid", booking.get("id", "")):
+    purpose = "booking_pending_cash" if temporary else "booking_paid"
+    if await _email_sent_already(purpose, booking.get("id", "")):
         return
     name = (booking.get("name") or "").strip()
     if not name:
@@ -7280,6 +7445,25 @@ async def _send_booking_confirmation_email(booking: dict) -> None:
         boat_time=boat, amount_label=amount_label, ticket_url=ticket_url,
         offer_type=booking.get("offer_type", ""),
     )
+    if temporary:
+        # Patch the rendered template with a clearly-marked "PROVISOIRE" wrapper.
+        tpl["subject"] = f"[EN ATTENTE] Reçu provisoire — {ref}"
+        warning_banner = (
+            '<div style="background:#FFF3CD;border-left:4px solid #B8922A;padding:14px 18px;'
+            'margin:0 0 18px 0;color:#664D03;">'
+            '<strong style="font-size:14px;">Paiement en espèces — validation à l\'arrivée</strong>'
+            '<div style="font-size:13px;margin-top:6px;line-height:1.5;">'
+            'Vous trouverez ci-joint un <strong>reçu provisoire</strong>. '
+            'Votre billet définitif (avec QR code d\'embarquement) vous sera envoyé '
+            'par e-mail dès que notre équipe aura encaissé le règlement à votre arrivée.'
+            '</div></div>'
+        )
+        tpl["html"] = warning_banner + tpl["html"]
+        tpl["plain"] = (
+            "EN ATTENTE — Paiement en espèces\n"
+            "Ceci est un reçu provisoire. Le billet définitif avec QR d'embarquement "
+            "vous sera envoyé après encaissement à votre arrivée.\n\n" + tpl["plain"]
+        )
 
     # Attach the QR ticket PNG + the styled booking confirmation PDF. Both are
     # best-effort: the email is still sent if either generation fails.
@@ -7287,30 +7471,33 @@ async def _send_booking_confirmation_email(booking: dict) -> None:
     try:
         png_bytes = await _build_ticket_png(booking)
         if png_bytes:
+            fname = (f"BBR-recu-provisoire-{ref}.png" if temporary else f"BBR-billet-{ref}.png")
             attachments.append({
                 "content": png_bytes,
-                "filename": f"BBR-billet-{ref}.png",
+                "filename": fname,
                 "mime": "image/png",
                 "disposition": "attachment",
             })
     except Exception as ex:
         logging.warning("Could not attach ticket PNG to email: %s", ex)
-    try:
-        pdf_bytes = await _build_booking_confirmation_pdf(booking)
-        if pdf_bytes:
-            attachments.append({
-                "content": pdf_bytes,
-                "filename": f"BBR-reservation-{ref}.pdf",
-                "mime": "application/pdf",
-                "disposition": "attachment",
-            })
-    except Exception as ex:
-        logging.warning("Could not attach reservation PDF to email: %s", ex)
+    # No styled PDF for cash-pending state (only the provisional receipt).
+    if not temporary:
+        try:
+            pdf_bytes = await _build_booking_confirmation_pdf(booking)
+            if pdf_bytes:
+                attachments.append({
+                    "content": pdf_bytes,
+                    "filename": f"BBR-reservation-{ref}.pdf",
+                    "mime": "application/pdf",
+                    "disposition": "attachment",
+                })
+        except Exception as ex:
+            logging.warning("Could not attach reservation PDF to email: %s", ex)
 
     await email_service.send_email(
         db, to_email=booking["email"], to_name=name,
         subject=tpl["subject"], html=tpl["html"], plain=tpl["plain"],
-        purpose="booking_paid", booking_id=booking.get("id"),
+        purpose=purpose, booking_id=booking.get("id"),
         attachments=attachments,
     )
 
