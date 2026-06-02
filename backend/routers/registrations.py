@@ -338,9 +338,16 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         limit: int = Query(50, ge=1, le=500),
         q: Optional[str] = None,
         period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        date: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
         offer_id: Optional[str] = None,
         staff=Depends(get_current_staff),
     ):
+        """List registrations.
+
+        `date` (YYYY-MM-DD) takes precedence over `period` — both narrow the
+        result set by `created_at`, but `date` matches a single calendar day
+        (UTC) while `period` is a rolling window.
+        """
         await require_role(staff, ["admin", "manager", "manager_pole", "management_general", "hotesse"])
         filt = {}
         if q:
@@ -351,7 +358,12 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             ]
         if offer_id:
             filt["offer_id"] = offer_id
-        if period and period != "all":
+        if date:
+            # Single-day filter: created_at between YYYY-MM-DDT00:00:00 and
+            # next day 00:00:00 (UTC). String comparison is safe because the
+            # stored timestamp is an ISO-8601 string starting with the date.
+            filt["created_at"] = {"$gte": f"{date}T00:00:00", "$lt": f"{date}T23:59:59.999999"}
+        elif period and period != "all":
             now = datetime.now(timezone.utc)
             if period == "day":
                 since = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -480,7 +492,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         doc.pop("_id", None)
         return {"ok": True, "guests_boarded": 1, "passenger": doc}
 
-    def _build_filter(q: Optional[str], period: Optional[str], offer_id: Optional[str]) -> dict:
+    def _build_filter(q: Optional[str], period: Optional[str], offer_id: Optional[str], date: Optional[str] = None) -> dict:
         filt: dict = {}
         if q:
             rx = {"$regex": q, "$options": "i"}
@@ -490,7 +502,9 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             ]
         if offer_id:
             filt["offer_id"] = offer_id
-        if period and period != "all":
+        if date:
+            filt["created_at"] = {"$gte": f"{date}T00:00:00", "$lt": f"{date}T23:59:59.999999"}
+        elif period and period != "all":
             now = datetime.now(timezone.utc)
             if period == "day":
                 since = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -507,11 +521,12 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
     async def staff_export_csv(
         q: Optional[str] = None,
         period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        date: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
         offer_id: Optional[str] = None,
         staff=Depends(get_current_staff),
     ):
         await require_role(staff, ["admin", "manager", "manager_pole", "management_general"])
-        filt = _build_filter(q, period, offer_id)
+        filt = _build_filter(q, period, offer_id, date)
         items = await db.registrations.find(filt, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
         buf = io.StringIO()
         w = csv.writer(buf, delimiter=";")
@@ -534,6 +549,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
     async def staff_export_xlsx(
         q: Optional[str] = None,
         period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        date: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
         offer_id: Optional[str] = None,
         staff=Depends(get_current_staff),
     ):
@@ -541,7 +557,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
 
-        filt = _build_filter(q, period, offer_id)
+        filt = _build_filter(q, period, offer_id, date)
         items = await db.registrations.find(filt, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
         wb = Workbook()
         ws = wb.active
@@ -576,6 +592,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
     async def staff_export_pdf(
         q: Optional[str] = None,
         period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        date: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
         offer_id: Optional[str] = None,
         staff=Depends(get_current_staff),
     ):
@@ -588,7 +605,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         )
         from reportlab.lib.styles import ParagraphStyle
 
-        filt = _build_filter(q, period, offer_id)
+        filt = _build_filter(q, period, offer_id, date)
         items = await db.registrations.find(filt, {"_id": 0, "pass_token": 0}).sort("created_at", -1).to_list(length=10000)
 
         gold = colors.HexColor(COLOR_GOLD)

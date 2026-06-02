@@ -12,6 +12,7 @@ export default function StaffRegistrations() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("all");
+  const [specificDate, setSpecificDate] = useState("");
   const [offerId, setOfferId] = useState("");
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,9 @@ export default function StaffRegistrations() {
         params: {
           page, limit,
           q: query || undefined,
-          period: period !== "all" ? period : undefined,
+          // A specific date takes precedence over a rolling period.
+          date: specificDate || undefined,
+          period: !specificDate && period !== "all" ? period : undefined,
           offer_id: offerId || undefined,
         },
       });
@@ -47,7 +50,7 @@ export default function StaffRegistrations() {
   // Reload whenever page or filters change. eslint-disable: load is intentionally
   // referenced from a closure that captures the filters — that's fine here.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [page, period, offerId]);
+  useEffect(() => { load(); }, [page, period, specificDate, offerId]);
 
   const onSearch = (e) => {
     e.preventDefault();
@@ -69,7 +72,8 @@ export default function StaffRegistrations() {
   const download = (format) => {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
-    if (period !== "all") params.set("period", period);
+    if (specificDate) params.set("date", specificDate);
+    else if (period !== "all") params.set("period", period);
     if (offerId) params.set("offer_id", offerId);
     const qs = params.toString();
     const url = `${api.defaults.baseURL}/staff/registrations/export.${format}${qs ? `?${qs}` : ""}`;
@@ -133,7 +137,7 @@ export default function StaffRegistrations() {
         </div>
       </div>
 
-      {/* Period + Offer filters */}
+      {/* Period + Specific Date + Offer filters */}
       <div className="flex flex-wrap items-center gap-2 mb-5">
         <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mr-1">Période :</span>
         {[
@@ -144,9 +148,10 @@ export default function StaffRegistrations() {
         ].map((p) => (
           <button
             key={p.v}
-            onClick={() => { setPage(1); setPeriod(p.v); }}
-            className={`px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border transition-colors ${
-              period === p.v
+            onClick={() => { setPage(1); setSpecificDate(""); setPeriod(p.v); }}
+            disabled={!!specificDate}
+            className={`px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              !specificDate && period === p.v
                 ? "bg-[#B8922A] text-white border-[#B8922A]"
                 : "bg-white text-[#0A0A0A]/70 border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
             }`}
@@ -155,6 +160,14 @@ export default function StaffRegistrations() {
             {p.label}
           </button>
         ))}
+        <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 ml-3 mr-1">Date précise :</span>
+        <input
+          type="date"
+          value={specificDate}
+          onChange={(e) => { setPage(1); setSpecificDate(e.target.value); }}
+          className="px-3 py-1.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+          data-testid="filter-date"
+        />
         <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 ml-3 mr-1">Offre :</span>
         <select
           value={offerId}
@@ -167,9 +180,9 @@ export default function StaffRegistrations() {
             <option key={o.id} value={o.id}>{o.label}</option>
           ))}
         </select>
-        {(period !== "all" || offerId) && (
+        {(period !== "all" || specificDate || offerId) && (
           <button
-            onClick={() => { setPage(1); setPeriod("all"); setOfferId(""); }}
+            onClick={() => { setPage(1); setPeriod("all"); setSpecificDate(""); setOfferId(""); }}
             className="ml-2 text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 hover:text-[#B8922A]"
             data-testid="clear-filters"
           >

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import api, { API, getStaffToken } from "../../lib/api";
 import { format, parseISO } from "date-fns";
 import { fr as frLocale } from "date-fns/locale";
-import { Anchor, FileDown, ChevronLeft, ChevronRight, Ship, Clock, CheckCircle2, Activity, Users } from "lucide-react";
+import { Anchor, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, Ship, Clock, CheckCircle2, Activity, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -53,47 +53,65 @@ export default function StaffTraverseesHistory() {
   const [period, setPeriod] = useState("week");
   const [ref, setRef] = useState(today);
   const [status, setStatus] = useState("");
+  const [bateauId, setBateauId] = useState("");
+  const [startedOnly, setStartedOnly] = useState(false);
+  const [bateaux, setBateaux] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+
+  // Load bateaux list once for the filter dropdown
+  useEffect(() => {
+    api.get("/staff/bateaux")
+      .then((r) => setBateaux(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setBateaux([]));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ period, date: ref });
     if (status) params.set("status", status);
+    if (bateauId) params.set("bateau_id", bateauId);
+    if (startedOnly) params.set("started_only", "true");
     api.get(`/staff/traversees/history?${params}`)
       .then((r) => setData(r.data))
       .catch(() => toast.error("Erreur de chargement"))
       .finally(() => setLoading(false));
-  }, [period, ref, status]);
+  }, [period, ref, status, bateauId, startedOnly]);
 
-  const downloadPdf = async () => {
+  const downloadReport = async (format) => {
     setDownloading(true);
     try {
       const token = getStaffToken();
       const params = new URLSearchParams({ period, date: ref });
       if (status) params.set("status", status);
-      const res = await fetch(`${API}/staff/traversees/history/report.pdf?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (bateauId) params.set("bateau_id", bateauId);
+      // Exports default to en_cours+terminé (started_only=true) unless an
+      // explicit status filter is active. This matches the brief: extract
+      // only crossings that have effectively departed.
+      if (!status) params.set("started_only", "true");
+      const url = `${API}/staff/traversees/history/report.${format}?${params}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
-        toast.error("Export PDF impossible");
+        toast.error(`Export ${format.toUpperCase()} impossible`);
         return;
       }
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `bbr-traversees-${period}-${ref}.pdf`;
+      a.href = objUrl;
+      a.download = `bbr-traversees-${period}-${ref}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
-      toast.success("Rapport téléchargé");
+      URL.revokeObjectURL(objUrl);
+      toast.success(`Rapport ${format.toUpperCase()} téléchargé`);
     } finally {
       setDownloading(false);
     }
   };
+  const downloadPdf = () => downloadReport("pdf");
+  const downloadXlsx = () => downloadReport("xlsx");
 
   const chartData = useMemo(() => {
     if (!data) return [];
@@ -118,14 +136,24 @@ export default function StaffTraverseesHistory() {
     <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto" data-testid="staff-traversees-history">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
         <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A]">Historique des traversées</h1>
-        <button
-          onClick={downloadPdf}
-          disabled={downloading || !data}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#B8922A] text-white text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] transition-colors disabled:opacity-50 self-start sm:self-auto"
-          data-testid="download-pdf-btn"
-        >
-          <FileDown size={13} /> {downloading ? "Génération…" : "Rapport PDF"}
-        </button>
+        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <button
+            onClick={downloadXlsx}
+            disabled={downloading || !data}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white text-[#0A0A0A] border border-[#0A0A0A]/20 text-[0.7rem] uppercase tracking-[0.22em] hover:border-[#B8922A] hover:text-[#B8922A] transition-colors disabled:opacity-50"
+            data-testid="download-xlsx-btn"
+          >
+            <FileSpreadsheet size={13} /> {downloading ? "…" : "Export Excel"}
+          </button>
+          <button
+            onClick={downloadPdf}
+            disabled={downloading || !data}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#B8922A] text-white text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] transition-colors disabled:opacity-50"
+            data-testid="download-pdf-btn"
+          >
+            <FileDown size={13} /> {downloading ? "…" : "Rapport PDF"}
+          </button>
+        </div>
       </div>
       <p className="text-sm text-[#0A0A0A]/55 mb-6">Vue agrégée des traversées (programmées, en cours, terminées).</p>
 
@@ -180,6 +208,41 @@ export default function StaffTraverseesHistory() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Second filter row — boat + "started only" toggle, kept distinct for legibility */}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Bateau :</span>
+        <select
+          value={bateauId}
+          onChange={(e) => setBateauId(e.target.value)}
+          className="px-3 py-1.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white min-w-[200px]"
+          data-testid="bateau-filter"
+        >
+          <option value="">— Tous les bateaux —</option>
+          {bateaux.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/65 cursor-pointer ml-2">
+          <input
+            type="checkbox"
+            checked={startedOnly}
+            onChange={(e) => setStartedOnly(e.target.checked)}
+            className="accent-[#B8922A]"
+            data-testid="started-only-toggle"
+          />
+          Uniquement les traversées départies
+        </label>
+        {(bateauId || startedOnly) && (
+          <button
+            onClick={() => { setBateauId(""); setStartedOnly(false); }}
+            className="text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 hover:text-[#B8922A]"
+            data-testid="clear-extra-filters"
+          >
+            ✕ Réinitialiser
+          </button>
+        )}
       </div>
 
       {data && (

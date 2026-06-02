@@ -536,6 +536,22 @@ OFFER_HERO_URLS = {
 
 BBR_LOGO_URL = "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2p8ulkeu_LOGO_BBr_VF_Plan_de_travail_1-removebg-preview.png"
 _LOGO_CACHE: dict = {}
+_LOGO_BYTES_CACHE: dict = {}
+
+
+def _fetch_logo_bytes() -> Optional[bytes]:
+    """Fetch + cache the raw PNG bytes of the BBR logo for ReportLab usage."""
+    if BBR_LOGO_URL in _LOGO_BYTES_CACHE:
+        return _LOGO_BYTES_CACHE[BBR_LOGO_URL]
+    try:
+        req = urllib.request.Request(BBR_LOGO_URL, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+        _LOGO_BYTES_CACHE[BBR_LOGO_URL] = data
+        return data
+    except Exception as e:
+        logging.warning("Failed to fetch BBr logo bytes: %s", e)
+        return None
 
 
 def _fetch_logo():
@@ -3266,11 +3282,23 @@ def _resolve_period_range(period: str, ref: str) -> tuple:
     raise HTTPException(status_code=400, detail="period must be day|week|month")
 
 
-async def _fetch_history(date_from: str, date_to: str, status: Optional[str] = None) -> dict:
-    """Aggregate crossings + passenger counts in a date range. date_to is exclusive."""
+async def _fetch_history(date_from: str, date_to: str, status: Optional[str] = None, bateau_id: Optional[str] = None, started_only: bool = False) -> dict:
+    """Aggregate crossings + passenger counts in a date range. date_to is exclusive.
+
+    Filters:
+      • status — explicit single status (`programmé`/`en_cours`/`terminé`)
+      • bateau_id — restrict to a specific boat
+      • started_only — only include crossings that have actually started
+        (status in `en_cours` or `terminé`). Mutually exclusive in spirit with
+        `status="programmé"` (which yields an empty set).
+    """
     q: dict = {"date": {"$gte": date_from, "$lt": date_to}}
     if status:
         q["status"] = status
+    elif started_only:
+        q["status"] = {"$in": ["en_cours", "terminé"]}
+    if bateau_id:
+        q["bateau_id"] = bateau_id
     crossings = await db.traversees.find(q, {"_id": 0}).sort([("date", 1), ("depart_time", 1)]).to_list(length=5000)
     bateaux = await db.bateaux.find({}, {"_id": 0}).to_list(length=200)
     boat_by_id = {b["id"]: b for b in bateaux}
@@ -3335,16 +3363,19 @@ async def traversees_history(
     period: str = "day",
     date: Optional[str] = None,
     status: Optional[str] = None,
+    bateau_id: Optional[str] = None,
+    started_only: bool = False,
     staff=Depends(get_current_staff),
 ):
     """Crossings history with stats. period=day|week|month, date=YYYY-MM-DD (default today),
-    status=programmé|en_cours|terminé (optional filter)."""
+    status=programmé|en_cours|terminé (optional filter), bateau_id=optional boat scope,
+    started_only=true to exclude programmées (uniquement en_cours+terminé)."""
     await _require_role(staff, ["receptionist", "manager", "admin"])
     ref = date or datetime.now(timezone.utc).date().isoformat()
     date_from, date_to, label = _resolve_period_range(period, ref)
     if status and status not in ("programmé", "en_cours", "terminé"):
         raise HTTPException(status_code=400, detail="Invalid status")
-    payload = await _fetch_history(date_from, date_to, status)
+    payload = await _fetch_history(date_from, date_to, status, bateau_id, started_only)
     return {
         "period": period,
         "reference_date": ref,
@@ -3352,6 +3383,8 @@ async def traversees_history(
         "date_from": date_from,
         "date_to": date_to,
         "status_filter": status,
+        "bateau_id": bateau_id,
+        "started_only": started_only,
         **payload,
     }
 
@@ -3361,15 +3394,23 @@ async def traversees_history_pdf(
     period: str = "day",
     date: Optional[str] = None,
     status: Optional[str] = None,
+    bateau_id: Optional[str] = None,
+    started_only: bool = True,
     staff=Depends(get_current_staff),
 ):
-    """Generate a luxury-styled PDF report of the crossings for the given period."""
+    """Generate a luxury-styled PDF report of the crossings for the given period.
+
+    By default (`started_only=true`) the export only contains crossings that
+    have actually departed (status en_cours or terminé) — matches the
+    operational request "exporter à partir du moment où la traversée est
+    considérée comme en cours".
+    """
     await _require_role(staff, ["receptionist", "manager", "admin"])
     ref = date or datetime.now(timezone.utc).date().isoformat()
     date_from, date_to, label = _resolve_period_range(period, ref)
     if status and status not in ("programmé", "en_cours", "terminé"):
         raise HTTPException(status_code=400, detail="Invalid status")
-    data = await _fetch_history(date_from, date_to, status)
+    data = await _fetch_history(date_from, date_to, status, bateau_id, started_only)
 
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -3527,6 +3568,126 @@ async def traversees_history_pdf(
     return StreamingResponse(
         buf,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api.get("/staff/traversees/history/report.xlsx")
+async def traversees_history_xlsx(
+    period: str = "day",
+    date: Optional[str] = None,
+    status: Optional[str] = None,
+    bateau_id: Optional[str] = None,
+    started_only: bool = True,
+    staff=Depends(get_current_staff),
+):
+    """Excel export of the crossings history. Same filters as the PDF report.
+    Defaults to `started_only=true` so only departed crossings are listed.
+    """
+    await _require_role(staff, ["receptionist", "manager", "admin"])
+    ref = date or datetime.now(timezone.utc).date().isoformat()
+    date_from, date_to, label = _resolve_period_range(period, ref)
+    if status and status not in ("programmé", "en_cours", "terminé"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    data = await _fetch_history(date_from, date_to, status, bateau_id, started_only)
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    wb = Workbook()
+    gold_fill = PatternFill("solid", fgColor="B8922A")
+    soft_fill = PatternFill("solid", fgColor="FAFAF7")
+    white_font = Font(color="FFFFFF", bold=True, size=11)
+    thin = Side(border_style="thin", color="EAE2C9")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # ---------- Sheet 1: Synthèse ----------
+    ws = wb.active
+    ws.title = "Synthèse"
+    ws.append(["Boulay Beach Resort — Historique des traversées"])
+    ws["A1"].font = Font(bold=True, size=14, color="0A0A0A")
+    period_label = {"day": "Journalier", "week": "Hebdomadaire", "month": "Mensuel"}.get(period, period)
+    ws.append([f"{period_label} · {label}" + (f" · Statut: {status}" if status else "") + (f" · Bateau: {bateau_id}" if bateau_id else "")])
+    ws.append([])
+    ws.append(["Total", "Programmées", "En cours", "Terminées", "Passagers"])
+    for c in ws[4]:
+        c.font = white_font
+        c.fill = gold_fill
+        c.alignment = Alignment(horizontal="center")
+    ws.append([
+        data["total"],
+        data["by_status"].get("programmé", 0),
+        data["by_status"].get("en_cours", 0),
+        data["by_status"].get("terminé", 0),
+        data["total_guests"],
+    ])
+    for c in ws[5]:
+        c.alignment = Alignment(horizontal="center")
+        c.font = Font(bold=True, size=12)
+    for w, col in zip([14, 14, 14, 14, 14], "ABCDE"):
+        ws.column_dimensions[col].width = w
+
+    # ---------- Sheet 2: Par bateau ----------
+    ws2 = wb.create_sheet("Par bateau")
+    headers = ["Bateau", "Total", "Terminées", "Passagers"]
+    ws2.append(headers)
+    for c in ws2[1]:
+        c.font = white_font
+        c.fill = gold_fill
+        c.alignment = Alignment(horizontal="center")
+    for b in data["by_boat"]:
+        ws2.append([b["bateau_name"], b["total"], b["terminé"], b["guests"]])
+    for w, col in zip([32, 10, 12, 12], "ABCD"):
+        ws2.column_dimensions[col].width = w
+
+    # ---------- Sheet 3: Par jour ----------
+    ws3 = wb.create_sheet("Par jour")
+    headers = ["Jour", "Total", "Programmées", "En cours", "Terminées", "Passagers"]
+    ws3.append(headers)
+    for c in ws3[1]:
+        c.font = white_font
+        c.fill = gold_fill
+        c.alignment = Alignment(horizontal="center")
+    for d in data["by_day"]:
+        ws3.append([d["date"], d["total"], d.get("programmé", 0), d.get("en_cours", 0), d.get("terminé", 0), d.get("guests", 0)])
+    for w, col in zip([14, 10, 14, 12, 12, 12], "ABCDEF"):
+        ws3.column_dimensions[col].width = w
+
+    # ---------- Sheet 4: Détail traversées ----------
+    ws4 = wb.create_sheet("Détail")
+    headers = ["Date", "Bateau", "Heure", "Direction", "Statut", "Passagers (lignes)", "Convives (total)"]
+    ws4.append(headers)
+    for c in ws4[1]:
+        c.font = white_font
+        c.fill = gold_fill
+        c.alignment = Alignment(horizontal="center")
+    for i, c in enumerate(data["items"], start=2):
+        ws4.append([
+            c.get("date", ""),
+            c.get("bateau_name", "—"),
+            c.get("depart_time", ""),
+            "Aller" if c.get("direction", "aller") == "aller" else "Retour",
+            c.get("status", ""),
+            c.get("passenger_count", 0),
+            c.get("guests", 0),
+        ])
+        if i % 2 == 0:
+            for cell in ws4[i]:
+                cell.fill = soft_fill
+    for cell in list(ws4.rows):
+        for c in cell:
+            c.border = border
+    for w, col in zip([12, 28, 10, 12, 14, 18, 16], "ABCDEFG"):
+        ws4.column_dimensions[col].width = w
+    ws4.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"bbr-traversees-{period}-{ref}.xlsx"
+    from fastapi.responses import Response as _Response
+    return _Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -6688,7 +6849,7 @@ async def export_receipt_pdf(receipt_id: str, staff=Depends(get_current_staff)):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
     from fastapi.responses import StreamingResponse
 
     styles = _pdf_styles()
@@ -6696,6 +6857,20 @@ async def export_receipt_pdf(receipt_id: str, staff=Depends(get_current_staff)):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
     elements = []
+    # BBR logo header — best-effort fetch from CDN with byte cache.
+    logo_bytes = _fetch_logo_bytes()
+    if logo_bytes:
+        try:
+            img = RLImage(io.BytesIO(logo_bytes))
+            iw, ih = img.imageWidth, img.imageHeight
+            target_h = 1.8 * cm
+            img.drawHeight = target_h
+            img.drawWidth = target_h * iw / max(ih, 1)
+            img.hAlign = "CENTER"
+            elements.append(img)
+            elements.append(Spacer(1, 0.2 * cm))
+        except Exception:
+            pass
     elements.append(Paragraph("Boulay Beach Resort", styles["h1"]))
     elements.append(Paragraph("Reçu de paiement", styles["sub"]))
 
@@ -7585,6 +7760,20 @@ async def _build_booking_confirmation_pdf(booking: dict) -> Optional[bytes]:
         )
 
         elements = []
+        # BBR logo header — same cached fetch as the receipt PDF.
+        logo_bytes = _fetch_logo_bytes()
+        if logo_bytes:
+            try:
+                from reportlab.platypus import Image as RLImage
+                _logo = RLImage(io.BytesIO(logo_bytes))
+                _lh = 1.8 * cm
+                _logo.drawHeight = _lh
+                _logo.drawWidth = _lh * _logo.imageWidth / max(_logo.imageHeight, 1)
+                _logo.hAlign = "CENTER"
+                elements.append(_logo)
+                elements.append(Spacer(1, 0.2 * cm))
+            except Exception:
+                pass
         # Brand header
         elements.append(Paragraph("Boulay Beach Resort", styles["h1"]))
         elements.append(Paragraph("Confirmation de réservation", styles["sub"]))
@@ -9050,9 +9239,51 @@ async def staff_feedback_list(limit: int = 200, staff=Depends(get_current_staff)
 async def staff_feedback_analytics(staff=Depends(get_current_staff)):
     """Aggregated metrics: counts per experience type, average rating per
     criterion, NPS-style breakdown of overall rating, weekly trend & most-
-    appreciated keywords."""
+    appreciated keywords.
+
+    The "global score" (`avg_globale`) is computed **per-client then averaged**:
+    for each feedback document, we first compute the mean of the 6 criteria
+    (accueil, service, restauration, ambiance, propreté, expérience_globale),
+    then we average those per-client means. Pooling all rows for a single
+    criterion would skew results when clients fill different criteria
+    differently — the current method correctly weights each client equally.
+    """
     await _require_role(staff, ["admin", "manager", "management_general"])
+    # Common $addFields stage: build the per-row "client_score" as the mean
+    # of the 6 criteria (ignoring 0 / null with $filter), then reuse it
+    # in every downstream aggregation.
+    criteria_fields = [
+        "$accueil_arrivee", "$service_amabilite", "$restauration_boissons",
+        "$ambiance_cadre", "$proprete_confort", "$experience_globale",
+    ]
+    add_client_score = {
+        "$addFields": {
+            "_valid_scores": {
+                "$filter": {
+                    "input": criteria_fields,
+                    "as": "v",
+                    "cond": {"$and": [
+                        {"$ne": ["$$v", None]},
+                        {"$gt": ["$$v", 0]},
+                    ]},
+                },
+            },
+        },
+    }
+    add_mean = {
+        "$addFields": {
+            "client_score": {
+                "$cond": [
+                    {"$gt": [{"$size": "$_valid_scores"}, 0]},
+                    {"$avg": "$_valid_scores"},
+                    None,
+                ],
+            },
+        },
+    }
+
     pipeline = [
+        add_client_score, add_mean,
         {"$group": {
             "_id": None,
             "total": {"$sum": 1},
@@ -9061,7 +9292,9 @@ async def staff_feedback_analytics(staff=Depends(get_current_staff)):
             "avg_restau":  {"$avg": "$restauration_boissons"},
             "avg_ambiance": {"$avg": "$ambiance_cadre"},
             "avg_proprete": {"$avg": "$proprete_confort"},
-            "avg_globale": {"$avg": "$experience_globale"},
+            # avg_globale = per-client average of 6 criteria, then averaged
+            # (was previously the simple avg of `experience_globale` only)
+            "avg_globale": {"$avg": "$client_score"},
         }},
     ]
     agg = await db.experience_feedback.aggregate(pipeline).to_list(length=1)
@@ -9069,10 +9302,12 @@ async def staff_feedback_analytics(staff=Depends(get_current_staff)):
     overall.pop("_id", None)
 
     by_type_cursor = db.experience_feedback.aggregate([
+        add_client_score, add_mean,
         {"$group": {
             "_id": "$experience_type",
             "count": {"$sum": 1},
-            "avg_globale": {"$avg": "$experience_globale"},
+            # Per-client mean averaged within each experience_type
+            "avg_globale": {"$avg": "$client_score"},
             "avg_accueil": {"$avg": "$accueil_arrivee"},
             "avg_service": {"$avg": "$service_amabilite"},
             "avg_restau":  {"$avg": "$restauration_boissons"},
@@ -9098,11 +9333,12 @@ async def staff_feedback_analytics(staff=Depends(get_current_staff)):
     horizon = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     trend_cursor = db.experience_feedback.aggregate([
         {"$match": {"created_at": {"$gte": horizon}}},
+        add_client_score, add_mean,
         {"$addFields": {"day": {"$substr": ["$created_at", 0, 10]}}},
         {"$group": {
             "_id": "$day",
             "count": {"$sum": 1},
-            "avg_globale": {"$avg": "$experience_globale"},
+            "avg_globale": {"$avg": "$client_score"},
         }},
         {"$sort": {"_id": 1}},
     ])
