@@ -1303,11 +1303,11 @@ function ExclusivityPanel() {
     const fd = new FormData();
     fd.append("file", file);
     try {
-      const { data } = await api.post("/media/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const { data } = await api.post("/staff/uploads/image", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setConfig((c) => ({ ...c, image_url: data.url }));
       toast.success("Image téléversée");
     } catch (e) {
-      toast.error("Échec du téléversement");
+      toast.error(e.response?.data?.detail || "Échec du téléversement");
     }
   };
 
