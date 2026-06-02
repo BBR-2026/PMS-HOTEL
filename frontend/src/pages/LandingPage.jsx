@@ -63,11 +63,63 @@ function PoleCard({ pole, index }) {
   );
 }
 
+function ExclusivityHero({ feature }) {
+  if (!feature || !feature.enabled) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+      className="relative overflow-hidden border border-[#B8922A]/50 bg-[#0A0A0A] mb-10 lg:mb-12 shadow-md"
+      data-testid="exclusivity-hero"
+    >
+      <a href={feature.href || "#"} className="grid grid-cols-1 md:grid-cols-2 min-h-[280px] md:min-h-[340px] group">
+        <div className="relative overflow-hidden bg-[#1a1a1a]">
+          {feature.image_url ? (
+            <img
+              src={feature.image_url}
+              alt={feature.title}
+              className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-[1.05]"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#B8922A]/20 to-[#0A0A0A]" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/40 via-transparent to-transparent md:bg-gradient-to-l" />
+        </div>
+        <div className="relative p-8 md:p-10 lg:p-12 flex flex-col justify-center text-white">
+          <div className="inline-flex items-center gap-2 self-start mb-4 px-3 py-1 bg-[#B8922A] text-white text-[0.6rem] uppercase tracking-[0.32em] font-semibold rounded-sm">
+            ✦ En exclusivité
+          </div>
+          <h2 className="font-display-serif text-3xl md:text-4xl lg:text-5xl tracking-tight leading-tight mb-3">
+            {feature.title}
+          </h2>
+          {feature.subtitle && (
+            <p className="text-[#B8922A] text-base md:text-lg font-light mb-3">
+              {feature.subtitle}
+            </p>
+          )}
+          {feature.description && (
+            <p className="text-white/75 text-sm md:text-base leading-relaxed mb-5 max-w-md">
+              {feature.description}
+            </p>
+          )}
+          <div className="inline-flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.28em] text-[#B8922A] group-hover:gap-3 transition-all">
+            {feature.cta_label || "Découvrir"} <ArrowRight size={14} />
+          </div>
+        </div>
+      </a>
+    </motion.div>
+  );
+}
+
 export default function LandingPage() {
   const [poles, setPoles] = useState([]);
+  const [exclusivity, setExclusivity] = useState(null);
 
   useEffect(() => {
     api.get("/poles").then((r) => setPoles(r.data || [])).catch(() => {});
+    api.get("/exclusivity").then((r) => setExclusivity(r.data || null)).catch(() => {});
   }, []);
 
   return (
@@ -90,6 +142,8 @@ export default function LandingPage() {
               Choisissez votre univers et laissez-vous porter par l'expérience Life is here.
             </p>
           </div>
+
+          <ExclusivityHero feature={exclusivity} />
 
           <div
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr gap-6 lg:gap-8 items-stretch"

@@ -262,6 +262,15 @@ export default function StaffConfig() {
         >
           <Database size={11} /> Maintenance
         </button>
+        <button
+          onClick={() => setTab("exclusivity")}
+          className={`px-4 sm:px-5 py-3 text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.22em] border-b-2 transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${
+            tab === "exclusivity" ? "border-[#B8922A] text-[#B8922A]" : "border-transparent text-[#0A0A0A]/60 hover:text-[#0A0A0A]"
+          }`}
+          data-testid="tab-exclusivity"
+        >
+          ✦ En exclusivité
+        </button>
       </div>
 
       {loading ? (
@@ -613,6 +622,8 @@ export default function StaffConfig() {
         <IntegrationsPanel />
       ) : tab === "maintenance" ? (
         <MaintenancePanel />
+      ) : tab === "exclusivity" ? (
+        <ExclusivityPanel />
       ) : null}
 
       {/* Create user modal */}
@@ -1232,6 +1243,248 @@ function MaintenancePanel() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ===== Exclusivity feature panel (homepage spotlight) =====
+function ExclusivityPanel() {
+  const [config, setConfig] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setBusy(true);
+    try {
+      const [{ data: cfg }, { data: evs }] = await Promise.all([
+        api.get("/staff/exclusivity"),
+        api.get("/staff/special-events", { params: { status: "published" } }).catch(() => ({ data: { items: [] } })),
+      ]);
+      setConfig(cfg);
+      const list = Array.isArray(evs) ? evs : (evs?.items || []);
+      setEvents(list.filter((e) => e.status === "published"));
+    } catch (e) {
+      toast.error("Erreur de chargement");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    if (!config) return;
+    setSaving(true);
+    try {
+      const payload = {
+        enabled: !!config.enabled,
+        title: config.title || "",
+        subtitle: config.subtitle || "",
+        description: config.description || "",
+        image_url: config.image_url || "",
+        cta_label: config.cta_label || "Découvrir",
+        link_type: config.link_type || "special_event",
+        link_target_id: config.link_target_id || "",
+        link_url: config.link_url || "",
+      };
+      await api.put("/staff/exclusivity", payload);
+      toast.success(config.enabled ? "Pôle « En exclusivité » activé sur la landing" : "Configuration enregistrée");
+      await load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Échec de la sauvegarde");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleImageUpload = async (file) => {
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const { data } = await api.post("/media/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setConfig((c) => ({ ...c, image_url: data.url }));
+      toast.success("Image téléversée");
+    } catch (e) {
+      toast.error("Échec du téléversement");
+    }
+  };
+
+  if (busy || !config) return <div className="text-sm text-[#0A0A0A]/50">Chargement…</div>;
+
+  return (
+    <div className="space-y-6 max-w-3xl" data-testid="exclusivity-panel">
+      <div className="bg-white border border-[#0A0A0A]/10 p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div>
+            <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">Bannière du site</div>
+            <h3 className="font-display-serif text-2xl text-[#0A0A0A]">Pôle « En exclusivité »</h3>
+            <p className="text-[0.78rem] text-[#0A0A0A]/55 mt-1.5 leading-relaxed max-w-xl">
+              S'affiche tout en haut de la liste des pôles sur la page d'accueil publique,
+              juste avant le Beach Club. Idéal pour mettre en avant un événement ponctuel.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2 cursor-pointer self-start">
+            <input
+              type="checkbox"
+              checked={!!config.enabled}
+              onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
+              className="accent-[#B8922A] w-4 h-4"
+              data-testid="exclusivity-enabled"
+            />
+            <span className="text-[0.7rem] uppercase tracking-[0.22em] text-[#0A0A0A]">
+              {config.enabled ? "Actif" : "Inactif"}
+            </span>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <Field label="Titre principal" value={config.title} onChange={(v) => setConfig({ ...config, title: v })} testId="excl-title" />
+          <Field label="Sous-titre" value={config.subtitle || ""} onChange={(v) => setConfig({ ...config, subtitle: v })} testId="excl-subtitle" />
+          <div className="md:col-span-2">
+            <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Description</label>
+            <textarea
+              value={config.description || ""}
+              onChange={(e) => setConfig({ ...config, description: e.target.value })}
+              rows={3}
+              className="w-full mt-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm resize-none"
+              data-testid="excl-description"
+            />
+          </div>
+          <Field label="Texte du bouton CTA" value={config.cta_label || ""} onChange={(v) => setConfig({ ...config, cta_label: v })} testId="excl-cta" />
+          <div>
+            <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Image principale (URL)</label>
+            <input
+              type="text"
+              value={config.image_url || ""}
+              onChange={(e) => setConfig({ ...config, image_url: e.target.value })}
+              placeholder="https://..."
+              className="w-full mt-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+              data-testid="excl-image-url"
+            />
+            <label className="mt-2 inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/60 hover:text-[#B8922A] cursor-pointer">
+              <UploadCloud size={12} /> Téléverser depuis l'ordinateur
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e.target.files?.[0])} data-testid="excl-image-upload" />
+            </label>
+          </div>
+          {config.image_url && (
+            <div className="md:col-span-2">
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Aperçu</div>
+              <img src={config.image_url} alt="" className="w-full max-h-48 object-cover border border-[#0A0A0A]/10" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white border border-[#0A0A0A]/10 p-5 sm:p-6">
+        <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">Destination du bouton</div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-4">
+          {[
+            { v: "special_event", label: "Événement spécial" },
+            { v: "offer", label: "Offre" },
+            { v: "activity", label: "Activité" },
+            { v: "custom", label: "URL personnalisée" },
+          ].map((opt) => (
+            <button
+              key={opt.v}
+              onClick={() => setConfig({ ...config, link_type: opt.v, link_target_id: "", link_url: "" })}
+              className={`px-3 py-2 text-[0.65rem] uppercase tracking-[0.18em] border transition-all ${
+                config.link_type === opt.v
+                  ? "bg-[#B8922A] text-white border-[#B8922A]"
+                  : "bg-white text-[#0A0A0A]/70 border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+              }`}
+              data-testid={`excl-link-type-${opt.v}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {config.link_type === "special_event" && (
+          <div>
+            <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Événement spécial à mettre en avant</label>
+            <select
+              value={config.link_target_id || ""}
+              onChange={(e) => setConfig({ ...config, link_target_id: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+              data-testid="excl-event-target"
+            >
+              <option value="">— Choisir un événement publié —</option>
+              {events.map((e) => (
+                <option key={e.id} value={e.id}>{e.title}</option>
+              ))}
+            </select>
+            {events.length === 0 && (
+              <p className="text-[0.7rem] text-amber-700 mt-2">
+                Aucun événement publié. Créez-en un dans <strong>Événements spéciaux</strong>.
+              </p>
+            )}
+          </div>
+        )}
+        {config.link_type === "offer" && (
+          <div>
+            <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">Offre catalogue</label>
+            <select
+              value={config.link_target_id || ""}
+              onChange={(e) => setConfig({ ...config, link_target_id: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+              data-testid="excl-offer-target"
+            >
+              <option value="">— Choisir une offre —</option>
+              <option value="pass_day">Pass Day</option>
+              <option value="sunset">Sunset Experience</option>
+              <option value="hebergement">Hébergement</option>
+              <option value="kayak">Kayak</option>
+              <option value="brunch">Brunch</option>
+            </select>
+          </div>
+        )}
+        {config.link_type === "activity" && (
+          <Field label="Identifiant d'activité" value={config.link_target_id || ""} onChange={(v) => setConfig({ ...config, link_target_id: v })} testId="excl-activity-target" />
+        )}
+        {config.link_type === "custom" && (
+          <Field label="URL externe complète" value={config.link_url || ""} onChange={(v) => setConfig({ ...config, link_url: v })} testId="excl-link-url" />
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-6 py-2.5 bg-[#B8922A] text-white text-[0.7rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center gap-2"
+          data-testid="excl-save"
+        >
+          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+          {config.enabled ? "Enregistrer et activer" : "Enregistrer"}
+        </button>
+        {config.href && (
+          <a
+            href={config.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[0.7rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] inline-flex items-center gap-1"
+          >
+            <ExternalLink size={11} /> Tester le lien
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===== Reusable field helper for the exclusivity panel =====
+function Field({ label, value, onChange, testId }) {
+  return (
+    <div>
+      <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A]">{label}</label>
+      <input
+        type="text"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full mt-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+        data-testid={testId}
+      />
     </div>
   );
 }

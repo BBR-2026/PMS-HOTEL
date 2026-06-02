@@ -20,6 +20,10 @@ const EMPTY = {
   active_to: "",
   cta_label: "Réserver ma place",
   status: "draft",
+  event_kind: "single_day",
+  start_date: "",
+  end_date: "",
+  programme: [],
 };
 
 const STATUS_FR = { draft: "Brouillon", published: "Publié", archived: "Archivé" };
@@ -49,6 +53,170 @@ function ChipList({ items, onRemove, testid }) {
           </button>
         </span>
       ))}
+    </div>
+  );
+}
+
+// ===== Multi-day programme builder =====
+function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
+  const [newItem, setNewItem] = useState({ date: "", title: "", description: "", price_adult: 0, price_child: 0 });
+
+  const sorted = [...(programme || [])].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+  const addItem = () => {
+    if (!newItem.date) { toast.error("Choisissez une date"); return; }
+    if (!newItem.title.trim()) { toast.error("Titre du mini-événement requis"); return; }
+    if (startDate && newItem.date < startDate) { toast.error("Date avant le début de l'événement"); return; }
+    if (endDate && newItem.date > endDate) { toast.error("Date après la fin de l'événement"); return; }
+    onChange([...programme, { ...newItem }]);
+    setNewItem({ date: "", title: "", description: "", price_adult: 0, price_child: 0 });
+  };
+
+  const update = (idx, key, value) => {
+    const next = [...programme];
+    next[idx] = { ...next[idx], [key]: value };
+    onChange(next);
+  };
+  const remove = (idx) => onChange(programme.filter((_, i) => i !== idx));
+
+  return (
+    <div data-testid="programme-builder">
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A]">
+          Programme · {sorted.length} étape{sorted.length > 1 ? "s" : ""}
+        </label>
+        {(!startDate || !endDate) && (
+          <span className="text-[0.65rem] text-amber-700">Définissez d'abord la période ↑</span>
+        )}
+      </div>
+
+      {sorted.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {sorted.map((item, idx) => {
+            const realIdx = programme.indexOf(item);
+            return (
+              <div key={`${item.date}-${idx}`} className="grid grid-cols-12 gap-2 items-start bg-[#FAFAF7] p-3 border border-[#0A0A0A]/8" data-testid={`programme-item-${idx}`}>
+                <div className="col-span-12 sm:col-span-2">
+                  <input
+                    type="date"
+                    value={item.date}
+                    onChange={(e) => update(realIdx, "date", e.target.value)}
+                    min={startDate}
+                    max={endDate}
+                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-3">
+                  <input
+                    value={item.title}
+                    onChange={(e) => update(realIdx, "title", e.target.value)}
+                    placeholder="Titre"
+                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-4">
+                  <input
+                    value={item.description || ""}
+                    onChange={(e) => update(realIdx, "description", e.target.value)}
+                    placeholder="Description courte"
+                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="col-span-5 sm:col-span-1">
+                  <input
+                    type="number" min={0}
+                    value={item.price_adult}
+                    onChange={(e) => update(realIdx, "price_adult", parseInt(e.target.value, 10) || 0)}
+                    placeholder="Adulte"
+                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="col-span-5 sm:col-span-1">
+                  <input
+                    type="number" min={0}
+                    value={item.price_child}
+                    onChange={(e) => update(realIdx, "price_child", parseInt(e.target.value, 10) || 0)}
+                    placeholder="Enfant"
+                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1 flex justify-end">
+                  <button type="button" onClick={() => remove(realIdx)} className="text-red-600 hover:text-red-800 p-1" data-testid={`programme-remove-${idx}`}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="grid grid-cols-12 gap-2 items-end border border-dashed border-[#B8922A]/40 bg-[#FBF8EF] p-3">
+        <div className="col-span-12 sm:col-span-2">
+          <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Date</label>
+          <input
+            type="date"
+            value={newItem.date}
+            onChange={(e) => setNewItem({ ...newItem, date: e.target.value })}
+            min={startDate}
+            max={endDate}
+            disabled={!startDate || !endDate}
+            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none disabled:bg-[#0A0A0A]/5"
+            data-testid="programme-new-date"
+          />
+        </div>
+        <div className="col-span-12 sm:col-span-3">
+          <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Titre</label>
+          <input
+            value={newItem.title}
+            onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
+            placeholder="ex. Soirée d'ouverture"
+            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+            data-testid="programme-new-title"
+          />
+        </div>
+        <div className="col-span-12 sm:col-span-4">
+          <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Description courte</label>
+          <input
+            value={newItem.description}
+            onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+            placeholder="DJ set, brunch live, etc."
+            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+            data-testid="programme-new-description"
+          />
+        </div>
+        <div className="col-span-6 sm:col-span-1">
+          <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Adulte</label>
+          <input
+            type="number" min={0}
+            value={newItem.price_adult}
+            onChange={(e) => setNewItem({ ...newItem, price_adult: parseInt(e.target.value, 10) || 0 })}
+            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+            data-testid="programme-new-price-adult"
+          />
+        </div>
+        <div className="col-span-6 sm:col-span-1">
+          <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Enfant</label>
+          <input
+            type="number" min={0}
+            value={newItem.price_child}
+            onChange={(e) => setNewItem({ ...newItem, price_child: parseInt(e.target.value, 10) || 0 })}
+            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+            data-testid="programme-new-price-child"
+          />
+        </div>
+        <div className="col-span-12 sm:col-span-1">
+          <button
+            type="button"
+            onClick={addItem}
+            disabled={!startDate || !endDate}
+            className="w-full px-3 py-1.5 text-[0.6rem] uppercase tracking-[0.18em] bg-[#B8922A] text-white hover:bg-[#9d7a23] disabled:opacity-50"
+            data-testid="programme-add"
+          >
+            + Étape
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -96,6 +264,10 @@ export default function StaffSpecialEvents() {
       active_to: ev.active_to || "",
       cta_label: ev.cta_label || "Réserver ma place",
       status: ev.status || "draft",
+      event_kind: ev.event_kind || "single_day",
+      start_date: ev.start_date || "",
+      end_date: ev.end_date || "",
+      programme: ev.programme || [],
     });
     setDateInput(""); setTimeInput(""); setReturnTimeInput("");
   };
@@ -138,12 +310,28 @@ export default function StaffSpecialEvents() {
 
   const save = async () => {
     if (!form.title.trim()) { toast.error("Le titre est requis"); return; }
-    if (form.event_dates.length === 0) { toast.error("Ajoutez au moins une date"); return; }
+    if (form.event_kind === "single_day") {
+      if (form.event_dates.length === 0) { toast.error("Ajoutez au moins une date"); return; }
+    } else {
+      if (!form.start_date || !form.end_date) { toast.error("Dates de début et de fin requises"); return; }
+      if (form.start_date > form.end_date) { toast.error("La date de début doit précéder la date de fin"); return; }
+      if (form.programme.length === 0) { toast.error("Ajoutez au moins une étape au programme"); return; }
+      const bad = form.programme.find((p) => p.date < form.start_date || p.date > form.end_date);
+      if (bad) { toast.error(`La date ${bad.date} dépasse l'intervalle de l'événement`); return; }
+    }
     if (form.boat_times.length === 0) { toast.error("Ajoutez au moins un horaire bateau aller"); return; }
     setSaving(true);
     try {
       const payload = { ...form };
       ["active_from", "active_to"].forEach((k) => { if (!payload[k]) delete payload[k]; });
+      if (payload.event_kind === "multi_day") {
+        // Backend synthesizes event_dates from programme, but we send them too
+        // for resilience: the booking tunnel uses event_dates as the source of truth.
+        payload.event_dates = Array.from(new Set(payload.programme.map((p) => p.date))).sort();
+      }
+      // Note: when switching from multi_day → single_day, leftover start_date/
+      // end_date/programme stay in the DB but become inert since the public
+      // event resolution branches on event_kind.
       if (editing?._isNew) {
         await api.post("/staff/special-events", payload);
         toast.success("Événement créé");
@@ -360,20 +548,69 @@ export default function StaffSpecialEvents() {
                 <textarea rows={3} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white resize-none" data-testid="event-description" />
               </div>
 
-              {/* Dates */}
+              {/* Event kind toggle */}
               <div>
-                <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Date(s) de l'événement *</label>
-                <div className="flex gap-2">
-                  <input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} className="px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-date-input" />
-                  <button type="button" onClick={() => addToList("event_dates", dateInput, setDateInput)} className="px-3 py-2 text-[0.65rem] uppercase tracking-[0.22em] border border-[#B8922A] text-[#B8922A] hover:bg-[#B8922A]/5" data-testid="event-date-add">+ Ajouter</button>
+                <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Type d'événement *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { v: "single_day", label: "Une journée (ou dates ponctuelles)" },
+                    { v: "multi_day",  label: "Sur une période (plusieurs jours)" },
+                  ].map((k) => (
+                    <button
+                      key={k.v}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, event_kind: k.v }))}
+                      className={`px-4 py-3 text-[0.7rem] uppercase tracking-[0.18em] border transition-all text-left ${
+                        form.event_kind === k.v
+                          ? "bg-[#B8922A] text-white border-[#B8922A]"
+                          : "bg-white text-[#0A0A0A]/70 border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                      }`}
+                      data-testid={`event-kind-${k.v}`}
+                    >
+                      {k.label}
+                    </button>
+                  ))}
                 </div>
-                <ChipList items={form.event_dates.map(fmtDateFR)} onRemove={(v) => {
-                  // recover ISO from FR
-                  const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-                  const iso = m ? `${m[3]}-${m[2]}-${m[1]}` : v;
-                  removeFromList("event_dates", iso);
-                }} testid="event-dates-chips" />
               </div>
+
+              {/* Single-day mode: list of bookable dates */}
+              {form.event_kind === "single_day" && (
+                <div>
+                  <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Date(s) de l'événement *</label>
+                  <div className="flex gap-2">
+                    <input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} className="px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-date-input" />
+                    <button type="button" onClick={() => addToList("event_dates", dateInput, setDateInput)} className="px-3 py-2 text-[0.65rem] uppercase tracking-[0.22em] border border-[#B8922A] text-[#B8922A] hover:bg-[#B8922A]/5" data-testid="event-date-add">+ Ajouter</button>
+                  </div>
+                  <ChipList items={form.event_dates.map(fmtDateFR)} onRemove={(v) => {
+                    const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+                    const iso = m ? `${m[3]}-${m[2]}-${m[1]}` : v;
+                    removeFromList("event_dates", iso);
+                  }} testid="event-dates-chips" />
+                </div>
+              )}
+
+              {/* Multi-day mode: period range + programme builder */}
+              {form.event_kind === "multi_day" && (
+                <div className="space-y-4 border-l-2 border-[#B8922A]/40 pl-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Début de l'événement *</label>
+                      <input type="date" value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-start-date" />
+                    </div>
+                    <div>
+                      <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Fin de l'événement *</label>
+                      <input type="date" value={form.end_date} onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))} className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-end-date" />
+                    </div>
+                  </div>
+
+                  <ProgrammeBuilder
+                    programme={form.programme}
+                    startDate={form.start_date}
+                    endDate={form.end_date}
+                    onChange={(prog) => setForm((f) => ({ ...f, programme: prog }))}
+                  />
+                </div>
+              )}
 
               {/* Boat times */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

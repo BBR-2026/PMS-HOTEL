@@ -430,15 +430,33 @@ class EventPrivatization(BaseModel):
     message: Optional[str] = ""
 
 
+class ProgrammeItem(BaseModel):
+    """A mini-event within a multi-day special event (one entry per day).
+    `date` must fall between the event's `start_date` and `end_date` inclusive.
+    """
+    date: str  # YYYY-MM-DD
+    title: str = Field(min_length=1, max_length=120)
+    description: Optional[str] = ""
+    price_adult: int = Field(default=0, ge=0)
+    price_child: int = Field(default=0, ge=0)
+
+
 class SpecialEventCreate(BaseModel):
     """Bookable themed event (e.g. NYE, Valentine's, Easter Brunch).
     Only one event can be `is_featured=True` at a time — see /staff/special-events/{id}/feature.
+
+    Two flavours:
+      • `event_kind="single_day"` — uses `event_dates` (legacy behaviour). Customer
+        picks any of the listed dates and pays `price_adult`/`price_child`.
+      • `event_kind="multi_day"` — uses `start_date`, `end_date` and `programme`.
+        Each programme item is a mini-event on a specific date with its own
+        title/description/price. Customer picks any programme date to book.
     """
     title: str = Field(min_length=1, max_length=120)
     subtitle: Optional[str] = ""
     description: Optional[str] = ""
     image_url: Optional[str] = ""  # http URL or "data:image/...;base64,..."
-    event_dates: List[str] = Field(default_factory=list)  # YYYY-MM-DD
+    event_dates: List[str] = Field(default_factory=list)  # YYYY-MM-DD (single_day mode)
     boat_times: List[str] = Field(default_factory=list)
     return_boat_times: List[str] = Field(default_factory=list)
     price_adult: int = Field(default=0, ge=0)
@@ -448,6 +466,11 @@ class SpecialEventCreate(BaseModel):
     active_to: Optional[str] = None  # YYYY-MM-DD
     cta_label: Optional[str] = "Réserver ma place"
     status: Literal["draft", "published", "archived"] = "draft"
+    # Multi-day support
+    event_kind: Literal["single_day", "multi_day"] = "single_day"
+    start_date: Optional[str] = None  # YYYY-MM-DD (multi_day mode)
+    end_date: Optional[str] = None    # YYYY-MM-DD (multi_day mode)
+    programme: List[ProgrammeItem] = Field(default_factory=list)
 
 
 class SpecialEventUpdate(BaseModel):
@@ -465,6 +488,32 @@ class SpecialEventUpdate(BaseModel):
     active_to: Optional[str] = None
     cta_label: Optional[str] = None
     status: Optional[Literal["draft", "published", "archived"]] = None
+    # Multi-day support
+    event_kind: Optional[Literal["single_day", "multi_day"]] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    programme: Optional[List[ProgrammeItem]] = None
+
+
+# ===== Exclusivity feature (homepage spotlight) =====
+class ExclusivityFeature(BaseModel):
+    """Single document that controls the "En exclusivité" hero card displayed
+    above the Beach Club pôle on the public landing.
+    """
+    enabled: bool = False
+    title: str = ""
+    subtitle: Optional[str] = ""
+    description: Optional[str] = ""
+    image_url: Optional[str] = ""
+    cta_label: Optional[str] = "Découvrir"
+    # Type of resource the card points to:
+    #   • special_event : link_target_id = id of a published special_event
+    #   • offer         : link_target_id = offer key (pass_day, sunset, ...)
+    #   • activity      : link_target_id = id of an activity catalog entry
+    #   • custom        : link_url is used verbatim
+    link_type: Literal["special_event", "offer", "activity", "custom"] = "special_event"
+    link_target_id: Optional[str] = None
+    link_url: Optional[str] = None
 
 
 # ----- Helpers -----
@@ -1815,9 +1864,14 @@ async def availability(offer_id: str, when: str):
 
 
 # ----- Bookings (guest flow, no auth) -----
-async def _resolve_special_event_offer(event_id: str) -> dict:
+async def _resolve_special_event_offer(event_id: str, booking_date: Optional[str] = None) -> dict:
     """Load the event from db.special_events and return an OFFERS-shaped dict.
     Raises 400/404 if the event is missing, archived, or out of activation window.
+
+    For multi-day events, when `booking_date` is provided and matches a
+    programme item, the per-day prices and label override the event-level
+    fallback. This keeps the booking total consistent with what's shown on
+    the public booking tunnel for that specific day.
     """
     if not event_id:
         raise HTTPException(status_code=400, detail="special_event_id is required for special_event bookings")
@@ -1831,19 +1885,37 @@ async def _resolve_special_event_offer(event_id: str) -> dict:
         raise HTTPException(status_code=400, detail="Special event booking is not yet open")
     if ev.get("active_to") and today > ev["active_to"]:
         raise HTTPException(status_code=400, detail="Special event booking window is closed")
+    # Per-day overrides for multi-day programmes
+    title = ev.get("title") or "Événement Spécial"
+    price_adult = int(ev.get("price_adult", 0))
+    price_child = int(ev.get("price_child", 0))
+    description = ev.get("description") or ""
+    if ev.get("event_kind") == "multi_day" and booking_date:
+        item = next((p for p in (ev.get("programme") or []) if p.get("date") == booking_date), None)
+        if item:
+            title = f"{title} — {item.get('title') or ''}".strip(" —")
+            description = (item.get("description") or description)
+            price_adult = int(item.get("price_adult", price_adult))
+            price_child = int(item.get("price_child", price_child))
+    # Compute the bookable dates list — single_day uses event_dates as-is,
+    # multi_day uses the programme dates (fallback to event_dates).
+    bookable_dates = list(ev.get("event_dates") or [])
+    if ev.get("event_kind") == "multi_day":
+        prog_dates = sorted({p.get("date") for p in (ev.get("programme") or []) if p.get("date")})
+        bookable_dates = prog_dates or bookable_dates
     return {
         "id": "special_event",
         "event_id": ev["id"],
-        "name_fr": ev.get("title") or "Événement Spécial",
-        "name_en": ev.get("title") or "Special Event",
+        "name_fr": title,
+        "name_en": title,
         "schedule_fr": ev.get("subtitle") or "",
         "schedule_en": ev.get("subtitle") or "",
-        "tagline_fr": ev.get("description") or "",
-        "tagline_en": ev.get("description") or "",
-        "price_adult": int(ev.get("price_adult", 0)),
-        "price_child": int(ev.get("price_child", 0)),
+        "tagline_fr": description,
+        "tagline_en": description,
+        "price_adult": price_adult,
+        "price_child": price_child,
         "max_capacity": int(ev.get("capacity", 0)),
-        "event_dates": list(ev.get("event_dates") or []),
+        "event_dates": bookable_dates,
         "boat_times": list(ev.get("boat_times") or []),
         "return_boat_times": list(ev.get("return_boat_times") or []),
         "image_url": ev.get("image_url") or "",
@@ -1854,7 +1926,7 @@ async def _resolve_special_event_offer(event_id: str) -> dict:
 async def create_booking(body: BookingCreate):
     is_special = body.offer_type == "special_event"
     if is_special:
-        offer = await _resolve_special_event_offer(body.special_event_id or "")
+        offer = await _resolve_special_event_offer(body.special_event_id or "", body.date)
     else:
         if body.offer_type not in OFFERS:
             raise HTTPException(status_code=400, detail="Invalid offer")
@@ -2105,7 +2177,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
         raise HTTPException(status_code=400, detail="Booking already processed")
 
     if booking["offer_type"] == "special_event":
-        offer = await _resolve_special_event_offer(booking.get("special_event_id") or "")
+        offer = await _resolve_special_event_offer(booking.get("special_event_id") or "", booking.get("date"))
     else:
         offer = OFFERS[booking["offer_type"]]
     participants = booking.get("participants", [])
@@ -2408,7 +2480,8 @@ async def get_booking_reservation_pdf(booking_id: str, ref: str):
 def _public_event(ev: dict) -> dict:
     """Strip internal fields before returning an event to public consumers."""
     today = datetime.now(timezone.utc).date().isoformat()
-    return {
+    kind = ev.get("event_kind") or "single_day"
+    out = {
         "id": ev["id"],
         "title": ev.get("title", ""),
         "subtitle": ev.get("subtitle", ""),
@@ -2425,8 +2498,17 @@ def _public_event(ev: dict) -> dict:
         "cta_label": ev.get("cta_label") or "Réserver ma place",
         "is_featured": bool(ev.get("is_featured")),
         "status": ev.get("status", "draft"),
+        "event_kind": kind,
+        "start_date": ev.get("start_date"),
+        "end_date": ev.get("end_date"),
+        "programme": ev.get("programme") or [],
         "today": today,
     }
+    # For multi-day events, synthesize event_dates from the programme if not
+    # already set, so the booking tunnel keeps working transparently.
+    if kind == "multi_day" and not out["event_dates"] and out["programme"]:
+        out["event_dates"] = sorted({p.get("date") for p in out["programme"] if p.get("date")})
+    return out
 
 
 def _event_is_currently_active(ev: dict, today: str) -> bool:
@@ -2471,6 +2553,120 @@ async def get_featured_special_event():
         booked_per_date[d] = booked_per_date.get(d, 0) + int(b.get("adults", 0)) + int(b.get("children", 0))
     out["seats_per_date"] = {d: max(0, int(ev.get("capacity", 0)) - booked_per_date.get(d, 0)) for d in upcoming_dates}
     return {"event": out}
+
+
+# ============== Exclusivity feature (homepage spotlight) ==============
+async def _resolve_exclusivity_link(doc: dict) -> dict:
+    """Compute the public-facing href of the exclusivity card based on link_type.
+    Always returns a `href` (possibly None) without leaking internal data.
+    """
+    if not doc:
+        return {"href": None, "resolved": None}
+    lt = doc.get("link_type", "custom")
+    target = doc.get("link_target_id") or ""
+    href = None
+    resolved = None
+    if lt == "special_event" and target:
+        ev = await db.special_events.find_one(
+            {"id": target, "status": "published"}, {"_id": 0, "id": 1, "title": 1, "image_url": 1},
+        )
+        if ev:
+            href = f"/booking/special_event/{ev['id']}"
+            resolved = {"id": ev["id"], "title": ev.get("title"), "image_url": ev.get("image_url")}
+    elif lt == "offer" and target:
+        if target in OFFERS:
+            href = f"/booking/{target}"
+            resolved = {"id": target, "title": OFFERS[target]["name_fr"]}
+    elif lt == "activity" and target:
+        href = f"/accueil/paiement?activity={target}"
+        resolved = {"id": target}
+    elif lt == "custom":
+        href = (doc.get("link_url") or "").strip() or None
+    return {"href": href, "resolved": resolved}
+
+
+@api.get("/exclusivity")
+async def get_public_exclusivity():
+    """Public — returns the currently-enabled exclusivity card config (or empty).
+
+    Used by the landing page to inject the card before the Beach Club pôle.
+    """
+    doc = await db.config.find_one({"_id": "exclusivity_feature"}) or {}
+    if not doc.get("enabled"):
+        return {"enabled": False}
+    link = await _resolve_exclusivity_link(doc)
+    return {
+        "enabled": True,
+        "title": doc.get("title") or "",
+        "subtitle": doc.get("subtitle") or "",
+        "description": doc.get("description") or "",
+        "image_url": doc.get("image_url") or "",
+        "cta_label": doc.get("cta_label") or "Découvrir",
+        "link_type": doc.get("link_type") or "custom",
+        "link_target_id": doc.get("link_target_id"),
+        **link,
+    }
+
+
+@api.get("/staff/exclusivity")
+async def staff_get_exclusivity(staff=Depends(get_current_staff)):
+    """Staff read of the full exclusivity config (incl. when disabled)."""
+    await _require_role(staff, ["admin", "manager"])
+    doc = await db.config.find_one({"_id": "exclusivity_feature"}) or {}
+    doc.pop("_id", None)
+    # Surface the resolved link target name so the admin UI can show a preview
+    link = await _resolve_exclusivity_link(doc)
+    return {
+        "enabled": bool(doc.get("enabled")),
+        "title": doc.get("title") or "",
+        "subtitle": doc.get("subtitle") or "",
+        "description": doc.get("description") or "",
+        "image_url": doc.get("image_url") or "",
+        "cta_label": doc.get("cta_label") or "Découvrir",
+        "link_type": doc.get("link_type") or "special_event",
+        "link_target_id": doc.get("link_target_id") or "",
+        "link_url": doc.get("link_url") or "",
+        **link,
+    }
+
+
+@api.put("/staff/exclusivity")
+async def staff_update_exclusivity(body: ExclusivityFeature, staff=Depends(get_current_staff)):
+    """Admin upsert of the exclusivity card configuration."""
+    await _require_role(staff, ["admin", "manager"])
+    # When enabling, ensure the link target resolves (sanity check) so the
+    # public card never points to a dangling resource.
+    if body.enabled:
+        if body.link_type == "special_event" and body.link_target_id:
+            ev = await db.special_events.find_one(
+                {"id": body.link_target_id, "status": "published"}, {"_id": 0, "id": 1},
+            )
+            if not ev:
+                raise HTTPException(
+                    status_code=400,
+                    detail="L'événement spécial lié est introuvable ou non publié.",
+                )
+        elif body.link_type == "offer":
+            if not body.link_target_id or body.link_target_id not in OFFERS:
+                raise HTTPException(status_code=400, detail="Offre liée invalide.")
+        elif body.link_type == "custom":
+            if not (body.link_url or "").strip():
+                raise HTTPException(status_code=400, detail="URL personnalisée requise.")
+    payload = body.model_dump()
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    payload["updated_by"] = (staff.get("email") if isinstance(staff, dict) else None)
+    await db.config.update_one(
+        {"_id": "exclusivity_feature"},
+        {"$set": payload},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+# Stub — kept here so the next public endpoint definition keeps its position:
+async def _legacy_get_featured_event_passthrough():
+    pass
+
 
 
 @api.get("/special-events/{event_id}")
@@ -2537,13 +2733,41 @@ async def staff_get_special_event(event_id: str, staff=Depends(get_current_staff
     return ev
 
 
+def _validate_event_kind(payload: dict) -> None:
+    """Cross-field validation for special events.
+
+    • `single_day` requires at least one `event_dates` entry.
+    • `multi_day` requires `start_date` ≤ `end_date` and at least one
+      `programme` item with `start_date ≤ date ≤ end_date`.
+    """
+    kind = payload.get("event_kind") or "single_day"
+    if kind == "multi_day":
+        sd, ed = payload.get("start_date"), payload.get("end_date")
+        if not sd or not ed:
+            raise HTTPException(status_code=400, detail="start_date et end_date sont requis pour un événement multi-jours.")
+        if sd > ed:
+            raise HTTPException(status_code=400, detail="start_date doit être antérieur ou égal à end_date.")
+        prog = payload.get("programme") or []
+        if not prog:
+            raise HTTPException(status_code=400, detail="Au moins une entrée de programme est requise.")
+        for p in prog:
+            d = p.get("date") if isinstance(p, dict) else p.date
+            if not d or d < sd or d > ed:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"La date '{d}' du programme dépasse l'intervalle de l'événement.",
+                )
+
+
 @api.post("/staff/special-events")
 async def staff_create_special_event(body: SpecialEventCreate, staff=Depends(get_current_staff)):
     await _require_role(staff, ["manager", "admin"])
+    payload = body.model_dump()
+    _validate_event_kind(payload)
     eid = str(uuid.uuid4())
     doc = {
         "id": eid,
-        **body.model_dump(),
+        **payload,
         "is_featured": False,
         "created_at": now_iso(),
         "updated_at": now_iso(),
@@ -2564,6 +2788,12 @@ async def staff_update_special_event(
     update = {k: v for k, v in body.model_dump().items() if v is not None}
     if not update:
         raise HTTPException(status_code=400, detail="No fields to update")
+    # Cross-field validation needs the full picture (merging with stored doc),
+    # so we resolve the final shape before persisting.
+    if any(k in update for k in ("event_kind", "start_date", "end_date", "programme")):
+        existing = await db.special_events.find_one({"id": event_id}, {"_id": 0}) or {}
+        merged = {**existing, **update}
+        _validate_event_kind(merged)
     update["updated_at"] = now_iso()
     res = await db.special_events.update_one({"id": event_id}, {"$set": update})
     if res.matched_count == 0:
@@ -4579,7 +4809,7 @@ async def confirm_cash_payment(booking_id: str, staff=Depends(get_current_staff)
         raise HTTPException(status_code=400, detail="Encaissement déjà confirmé ou réservation non éligible")
 
     if booking["offer_type"] == "special_event":
-        offer = await _resolve_special_event_offer(booking.get("special_event_id") or "")
+        offer = await _resolve_special_event_offer(booking.get("special_event_id") or "", booking.get("date"))
     else:
         offer = OFFERS[booking["offer_type"]]
     participants = booking.get("participants", [])
