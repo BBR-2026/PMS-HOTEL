@@ -649,6 +649,11 @@ def _fetch_hero(offer_id: str, hero_url: Optional[str] = None):
     """Fetch + cache the hero image. If ``hero_url`` is provided, it overrides
     the static OFFER_HERO_URLS lookup (used for special-event tickets with a
     staff-uploaded image). Accepts http(s) URLs and base64 ``data:`` URIs.
+
+    Hardened against slow CDNs and very large source files (event hero images
+    are frequently 5-10 MB JPEGs straight from a photographer): timeout bumped
+    to 25s and the result is down-sampled to a max of 1600px on the long edge
+    BEFORE the bottom-band trim so PIL doesn't OOM on a 5000×3500 source.
     """
     url = hero_url or OFFER_HERO_URLS.get(offer_id)
     if not url:
@@ -657,7 +662,6 @@ def _fetch_hero(offer_id: str, hero_url: Optional[str] = None):
         return _HERO_CACHE[url].copy()
     try:
         if url.startswith("data:"):
-            # Inline base64-encoded image — supports "data:image/...;base64,xxxx"
             try:
                 head, b64 = url.split(",", 1)
             except ValueError:
@@ -665,21 +669,25 @@ def _fetch_hero(offer_id: str, hero_url: Optional[str] = None):
             data = base64.b64decode(b64)
         else:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=25) as resp:
                 data = resp.read()
         img = Image.open(io.BytesIO(data)).convert("RGB")
+        # Downscale extreme sources so the per-ticket compositing stays fast
+        # and uses bounded memory. 1600px on the longest edge is well above
+        # the 780×440 hero target size, so detail is preserved.
+        max_side = 1600
+        if max(img.width, img.height) > max_side:
+            scale = max_side / max(img.width, img.height)
+            img = img.resize((int(img.width * scale), int(img.height * scale)))
         # Trim the bottom white/cream "footer band" that brand marketing assets
-        # commonly include below the chevron decoration. Without this, that band
-        # bleeds into the ticket layout as an unwanted white strip between the
-        # photo and the brown / cream details block. 6% empirically matches the
-        # standard BBR offer assets (DAY PASS, THE SUNSET, B BRUNCH, LE KAAI).
+        # commonly include below the chevron decoration.
         trim = max(2, int(img.height * 0.06))
         if img.height - trim > 50:
             img = img.crop((0, 0, img.width, img.height - trim))
         _HERO_CACHE[url] = img
         return img.copy()
     except Exception as e:
-        logging.warning("Failed to fetch hero for %s: %s", offer_id, e)
+        logging.warning("Failed to fetch hero (%s) %s: %s", offer_id, url, e)
         return None
 
 
@@ -9211,7 +9219,12 @@ async def list_email_notifications(limit: int = 50, purpose: Optional[str] = Non
 
 @api.post("/staff/bookings/{booking_id}/resend-ticket-email")
 async def resend_ticket_email(booking_id: str, staff=Depends(get_current_staff)):
-    """Resend the booking confirmation email (with QR PNG attached) — staff action."""
+    """Resend the booking confirmation email (with QR PNGs attached) — staff action.
+
+    Also **regenerates** all per-adult ticket images using the *current* offer
+    / event image, so support can fix tickets where the hero was missing or
+    stale (e.g. event image uploaded AFTER booking was paid). Idempotent.
+    """
     await _require_role(staff, ["manager", "admin", "hotesse", "receptionist"])
     if not email_service.SENDGRID_ENABLED:
         raise HTTPException(status_code=503, detail="SendGrid non configuré.")
@@ -9220,6 +9233,58 @@ async def resend_ticket_email(booking_id: str, staff=Depends(get_current_staff))
         raise HTTPException(status_code=404, detail="Réservation introuvable.")
     if not booking.get("email"):
         raise HTTPException(status_code=400, detail="Aucune adresse email sur cette réservation.")
+
+    # ---- Regenerate ticket PNGs against current offer/event data ----
+    try:
+        if booking["offer_type"] == "special_event":
+            offer = await _resolve_special_event_offer(
+                booking.get("special_event_id") or "", booking.get("date"),
+            )
+        else:
+            offer = OFFERS[booking["offer_type"]]
+        is_paid = bool(booking.get("paid_at"))
+        styled_qr = is_paid  # paid → gold QR ticket ; pending cash → cream receipt
+        existing_qrs = booking.get("qr_codes") or []
+        new_qrs = []
+        for q in existing_qrs:
+            owner_name = f"{(q.get('guest_name') or '').strip()} {(q.get('guest_surname') or '').strip()}".strip()
+            d = q.get("event_date") or booking.get("date") or ""
+            ref_code = (q.get("qr_token") or "")[:10].upper()
+            qr_payload = (q.get("qr_payload") or "").strip() or json.dumps(
+                {"type": "ticket", "token": q.get("qr_token", ""), "ref": booking_id[:8].upper()},
+                ensure_ascii=False, separators=(",", ":"),
+            )
+            if styled_qr:
+                q["ticket_image"] = make_ticket_image(
+                    offer_id=booking["offer_type"],
+                    offer_name=offer["name_fr"],
+                    date_iso=d,
+                    boat_time=booking.get("boat_time", ""),
+                    owner_name=owner_name,
+                    qr_payload=qr_payload,
+                    ref_code=ref_code,
+                    lang="fr",
+                    hero_url=offer.get("image_url") or None,
+                )
+            else:
+                q["ticket_image"] = make_cash_receipt_image(
+                    offer_id=booking["offer_type"],
+                    offer_name=offer["name_fr"],
+                    date_iso=d,
+                    boat_time=booking.get("boat_time", ""),
+                    owner_name=owner_name,
+                    ref_code=ref_code,
+                    lang="fr",
+                    hero_url=offer.get("image_url") or None,
+                )
+            new_qrs.append(q)
+        if new_qrs:
+            await db.bookings.update_one({"id": booking_id}, {"$set": {"qr_codes": new_qrs}})
+            booking["qr_codes"] = new_qrs
+            logging.info("Regenerated %d ticket images for booking %s", len(new_qrs), booking_id)
+    except Exception as ex:
+        logging.warning("Ticket regeneration failed for %s: %s", booking_id, ex)
+
     # Build the email payload using shared helpers (do not skip on idempotency
     # check — staff explicitly clicked "resend").
     name = (booking.get("name") or "").strip() or "Cher client"

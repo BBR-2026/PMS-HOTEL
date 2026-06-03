@@ -105,69 +105,59 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
                 >
                   <Trash2 size={14} />
                 </button>
-                <div className="grid grid-cols-1 lg:grid-cols-12 lg:gap-2 lg:items-start gap-y-2 pr-8 lg:pr-0">
-                  <div className="lg:col-span-2">
-                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Date</label>
-                    <input
-                      type="date"
-                      value={item.date}
-                      onChange={(e) => update(realIdx, "date", e.target.value)}
-                      min={startDate}
-                      max={endDate}
-                      className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                    />
-                  </div>
-                  <div className="lg:col-span-3">
-                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Titre</label>
-                    <input
-                      value={item.title}
-                      onChange={(e) => update(realIdx, "title", e.target.value)}
-                      placeholder="Titre"
-                      className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                    />
-                  </div>
-                  <div className="lg:col-span-4">
-                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Description</label>
-                    <input
-                      value={item.description || ""}
-                      onChange={(e) => update(realIdx, "description", e.target.value)}
-                      placeholder="Description courte"
-                      className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 lg:contents">
-                    <div className="lg:col-span-1">
-                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Adulte</label>
+                  <div className="grid grid-cols-1 lg:grid-cols-12 lg:gap-2 lg:items-start gap-y-2 pr-9">
+                    <div className="lg:col-span-2">
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Date</label>
                       <input
-                        type="number" min={0}
-                        value={item.price_adult}
-                        onChange={(e) => update(realIdx, "price_adult", parseInt(e.target.value, 10) || 0)}
-                        placeholder="Adulte"
+                        type="date"
+                        value={item.date}
+                        onChange={(e) => update(realIdx, "date", e.target.value)}
+                        min={startDate}
+                        max={endDate}
                         className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                       />
                     </div>
-                    <div className="lg:col-span-1">
-                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Enfant</label>
+                    <div className="lg:col-span-3">
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Titre</label>
                       <input
-                        type="number" min={0}
-                        value={item.price_child}
-                        onChange={(e) => update(realIdx, "price_child", parseInt(e.target.value, 10) || 0)}
-                        placeholder="Enfant"
+                        value={item.title}
+                        onChange={(e) => update(realIdx, "title", e.target.value)}
+                        placeholder="Titre"
                         className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                       />
                     </div>
+                    <div className="lg:col-span-4">
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Description</label>
+                      <input
+                        value={item.description || ""}
+                        onChange={(e) => update(realIdx, "description", e.target.value)}
+                        placeholder="Description courte"
+                        className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 lg:contents">
+                      <div className="lg:col-span-1">
+                        <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Adulte</label>
+                        <input
+                          type="number" min={0}
+                          value={item.price_adult}
+                          onChange={(e) => update(realIdx, "price_adult", parseInt(e.target.value, 10) || 0)}
+                          placeholder="Adulte"
+                          className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                        />
+                      </div>
+                      <div className="lg:col-span-1">
+                        <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Enfant</label>
+                        <input
+                          type="number" min={0}
+                          value={item.price_child}
+                          onChange={(e) => update(realIdx, "price_child", parseInt(e.target.value, 10) || 0)}
+                          placeholder="Enfant"
+                          className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="lg:col-span-1 hidden lg:flex justify-end items-start">
-                    <button
-                      type="button"
-                      onClick={() => remove(realIdx)}
-                      className="text-red-600 hover:text-red-800 p-1.5 -m-1.5"
-                      data-testid={`programme-remove-desktop-${idx}`}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
               </div>
             );
           })}
