@@ -154,7 +154,7 @@ export default function StaffGallery() {
   const isCustom = albumData?.album?.kind === "custom";
 
   return (
-    <div className="space-y-6" data-testid="staff-gallery-page">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-6" data-testid="staff-gallery-page">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Camera size={20} className="text-[#B8922A]" />

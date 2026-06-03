@@ -91,66 +91,82 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
       </div>
 
       {sorted.length > 0 && (
-        <div className="space-y-2 mb-4">
+        <div className="space-y-3 mb-4">
           {sorted.map((item, idx) => {
             const realIdx = programme.indexOf(item);
             return (
-              <div key={`${item.date}-${idx}`} className="bg-[#FAFAF7] p-3 border border-[#0A0A0A]/8 space-y-2 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-start" data-testid={`programme-item-${idx}`}>
-                <div className="sm:col-span-2">
-                  <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Date</label>
-                  <input
-                    type="date"
-                    value={item.date}
-                    onChange={(e) => update(realIdx, "date", e.target.value)}
-                    min={startDate}
-                    max={endDate}
-                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                  />
-                </div>
-                <div className="sm:col-span-3">
-                  <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Titre</label>
-                  <input
-                    value={item.title}
-                    onChange={(e) => update(realIdx, "title", e.target.value)}
-                    placeholder="Titre"
-                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                  />
-                </div>
-                <div className="sm:col-span-4">
-                  <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Description</label>
-                  <input
-                    value={item.description || ""}
-                    onChange={(e) => update(realIdx, "description", e.target.value)}
-                    placeholder="Description courte"
-                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:contents">
-                  <div className="sm:col-span-1">
-                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Adulte</label>
+              <div key={`${item.date}-${idx}`} className="bg-[#FAFAF7] p-3 border border-[#0A0A0A]/8 relative" data-testid={`programme-item-${idx}`}>
+                <button
+                  type="button"
+                  onClick={() => remove(realIdx)}
+                  className="absolute top-2 right-2 text-red-600 hover:text-red-800 p-1.5"
+                  data-testid={`programme-remove-${idx}`}
+                  title="Supprimer cette journée"
+                >
+                  <Trash2 size={14} />
+                </button>
+                <div className="grid grid-cols-1 lg:grid-cols-12 lg:gap-2 lg:items-start gap-y-2 pr-8 lg:pr-0">
+                  <div className="lg:col-span-2">
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Date</label>
                     <input
-                      type="number" min={0}
-                      value={item.price_adult}
-                      onChange={(e) => update(realIdx, "price_adult", parseInt(e.target.value, 10) || 0)}
-                      placeholder="Adulte"
+                      type="date"
+                      value={item.date}
+                      onChange={(e) => update(realIdx, "date", e.target.value)}
+                      min={startDate}
+                      max={endDate}
                       className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                     />
                   </div>
-                  <div className="sm:col-span-1">
-                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Enfant</label>
+                  <div className="lg:col-span-3">
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Titre</label>
                     <input
-                      type="number" min={0}
-                      value={item.price_child}
-                      onChange={(e) => update(realIdx, "price_child", parseInt(e.target.value, 10) || 0)}
-                      placeholder="Enfant"
+                      value={item.title}
+                      onChange={(e) => update(realIdx, "title", e.target.value)}
+                      placeholder="Titre"
                       className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                     />
                   </div>
-                </div>
-                <div className="sm:col-span-1 flex justify-end">
-                  <button type="button" onClick={() => remove(realIdx)} className="text-red-600 hover:text-red-800 p-1.5 -m-1.5" data-testid={`programme-remove-${idx}`}>
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="lg:col-span-4">
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Description</label>
+                    <input
+                      value={item.description || ""}
+                      onChange={(e) => update(realIdx, "description", e.target.value)}
+                      placeholder="Description courte"
+                      className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 lg:contents">
+                    <div className="lg:col-span-1">
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Adulte</label>
+                      <input
+                        type="number" min={0}
+                        value={item.price_adult}
+                        onChange={(e) => update(realIdx, "price_adult", parseInt(e.target.value, 10) || 0)}
+                        placeholder="Adulte"
+                        className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                      />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 lg:hidden mb-0.5 block">Enfant</label>
+                      <input
+                        type="number" min={0}
+                        value={item.price_child}
+                        onChange={(e) => update(realIdx, "price_child", parseInt(e.target.value, 10) || 0)}
+                        placeholder="Enfant"
+                        className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="lg:col-span-1 hidden lg:flex justify-end items-start">
+                    <button
+                      type="button"
+                      onClick={() => remove(realIdx)}
+                      className="text-red-600 hover:text-red-800 p-1.5 -m-1.5"
+                      data-testid={`programme-remove-desktop-${idx}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -159,7 +175,7 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
       )}
 
       <div className="grid grid-cols-12 gap-2 items-end border border-dashed border-[#B8922A]/40 bg-[#FBF8EF] p-3">
-        <div className="col-span-12 sm:col-span-2">
+        <div className="col-span-12 lg:col-span-2">
           <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Date</label>
           <input
             type="date"
@@ -172,7 +188,7 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
             data-testid="programme-new-date"
           />
         </div>
-        <div className="col-span-12 sm:col-span-3">
+        <div className="col-span-12 lg:col-span-3">
           <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Titre</label>
           <input
             value={newItem.title}
@@ -182,7 +198,7 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
             data-testid="programme-new-title"
           />
         </div>
-        <div className="col-span-12 sm:col-span-4">
+        <div className="col-span-12 lg:col-span-4">
           <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Description courte</label>
           <input
             value={newItem.description}
@@ -192,7 +208,7 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
             data-testid="programme-new-description"
           />
         </div>
-        <div className="col-span-6 sm:col-span-1">
+        <div className="col-span-6 lg:col-span-1">
           <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Adulte</label>
           <input
             type="number" min={0}
@@ -202,7 +218,7 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
             data-testid="programme-new-price-adult"
           />
         </div>
-        <div className="col-span-6 sm:col-span-1">
+        <div className="col-span-6 lg:col-span-1">
           <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Enfant</label>
           <input
             type="number" min={0}
@@ -212,7 +228,7 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
             data-testid="programme-new-price-child"
           />
         </div>
-        <div className="col-span-12 sm:col-span-1">
+        <div className="col-span-12 lg:col-span-1">
           <button
             type="button"
             onClick={addItem}
@@ -640,7 +656,7 @@ export default function StaffSpecialEvents() {
               </div>
 
               {/* Pricing + capacity */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Tarif Adulte (FCFA)</label>
                   <input type="number" value={form.price_adult} onChange={(e) => setForm((f) => ({ ...f, price_adult: parseInt(e.target.value, 10) || 0 }))} className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-price-adult" />
