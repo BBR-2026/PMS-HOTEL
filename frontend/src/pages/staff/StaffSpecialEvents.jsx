@@ -512,7 +512,7 @@ export default function StaffSpecialEvents() {
 
       {editing && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 overflow-y-auto" onClick={() => !saving && closeModal()} data-testid="event-modal">
-          <div className="bg-white w-full sm:max-w-2xl sm:my-8 min-h-screen sm:min-h-0 sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white w-full sm:max-w-3xl sm:my-8 min-h-screen sm:min-h-0 sm:max-h-[90vh] flex flex-col overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-white flex items-center justify-between p-4 sm:p-6 border-b border-[#0A0A0A]/8 z-10 flex-shrink-0">
               <div className="min-w-0 flex-1">
                 <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A]">
@@ -636,20 +636,20 @@ export default function StaffSpecialEvents() {
               )}
 
               {/* Boat times */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="min-w-0">
                   <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Bateaux aller *</label>
                   <div className="flex gap-2">
-                    <input value={timeInput} onChange={(e) => setTimeInput(e.target.value)} placeholder="ex. 17H" className="flex-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-boat-input" />
-                    <button type="button" onClick={() => addToList("boat_times", timeInput.toUpperCase(), setTimeInput)} className="px-3 py-2 text-[0.65rem] uppercase tracking-[0.22em] border border-[#B8922A] text-[#B8922A] hover:bg-[#B8922A]/5">+</button>
+                    <input value={timeInput} onChange={(e) => setTimeInput(e.target.value)} placeholder="ex. 17H" className="min-w-0 flex-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-boat-input" />
+                    <button type="button" onClick={() => addToList("boat_times", timeInput.toUpperCase(), setTimeInput)} className="flex-shrink-0 w-10 px-0 py-2 text-sm border border-[#B8922A] text-[#B8922A] hover:bg-[#B8922A]/5">+</button>
                   </div>
                   <ChipList items={form.boat_times} onRemove={(v) => removeFromList("boat_times", v)} testid="event-boat-chips" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Bateaux retour</label>
                   <div className="flex gap-2">
-                    <input value={returnTimeInput} onChange={(e) => setReturnTimeInput(e.target.value)} placeholder="ex. 23H" className="flex-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-return-input" />
-                    <button type="button" onClick={() => addToList("return_boat_times", returnTimeInput.toUpperCase(), setReturnTimeInput)} className="px-3 py-2 text-[0.65rem] uppercase tracking-[0.22em] border border-[#B8922A] text-[#B8922A] hover:bg-[#B8922A]/5">+</button>
+                    <input value={returnTimeInput} onChange={(e) => setReturnTimeInput(e.target.value)} placeholder="ex. 23H" className="min-w-0 flex-1 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white" data-testid="event-return-input" />
+                    <button type="button" onClick={() => addToList("return_boat_times", returnTimeInput.toUpperCase(), setReturnTimeInput)} className="flex-shrink-0 w-10 px-0 py-2 text-sm border border-[#B8922A] text-[#B8922A] hover:bg-[#B8922A]/5">+</button>
                   </div>
                   <ChipList items={form.return_boat_times} onRemove={(v) => removeFromList("return_boat_times", v)} testid="event-return-chips" />
                 </div>
