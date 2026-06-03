@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar } from "../components/ui/calendar";
-import { Minus, Plus, Check, ArrowLeft, ArrowRight, Download, Mail, MessageCircle } from "lucide-react";
+import { Minus, Plus, Check, ArrowLeft, ArrowRight, Download, Mail, MessageCircle, Phone } from "lucide-react";
 import { format } from "date-fns";
 import { fr as frLocale, enUS } from "date-fns/locale";
 import api from "../lib/api";
@@ -1131,9 +1131,43 @@ export default function BookingTunnel() {
                   </div>
                 </div>
 
+                {/* Hotel contact reminder before payment — mobile-tap-to-call */}
+                <div className="mt-6 sm:mt-7 border border-[#B8922A]/30 bg-[#FBF8EF] p-4 sm:p-5 rounded-sm" data-testid="hotel-contact-alert">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-full bg-[#B8922A] text-white flex items-center justify-center flex-shrink-0">
+                      <Phone size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] font-semibold mb-1">
+                        Une question avant de payer ?
+                      </div>
+                      <p className="text-[0.85rem] text-[#0A0A0A]/75 leading-relaxed">
+                        Notre équipe répond à vos questions sur la réservation, l'accès en bateau ou les conditions sur place.
+                      </p>
+                      <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-sm">
+                        <a
+                          href="tel:+22507046000000"
+                          className="text-[#B8922A] font-medium hover:underline inline-flex items-center gap-1.5"
+                          data-testid="hotel-phone-1"
+                        >
+                          <Phone size={13} /> +225 07 04 600 000
+                        </a>
+                        <span className="hidden sm:inline text-[#0A0A0A]/30">·</span>
+                        <a
+                          href="tel:+22507174000600"
+                          className="text-[#B8922A] font-medium hover:underline inline-flex items-center gap-1.5"
+                          data-testid="hotel-phone-2"
+                        >
+                          <Phone size={13} /> +225 07 17 400 600
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <button
                   onClick={handleCreateBooking}
-                  className="btn-gold mt-10 inline-flex items-center gap-3"
+                  className="btn-gold mt-7 sm:mt-8 inline-flex items-center gap-3"
                   data-testid="confirm-summary-btn"
                   disabled={creating}
                 >

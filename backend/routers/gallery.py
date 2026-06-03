@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Generous cap — gallery photos can legitimately reach a dozen MB. Anything
 # heavier should be resized client-side before upload.
-MAX_GALLERY_BYTES = 15 * 1024 * 1024  # 15 MB
+MAX_GALLERY_BYTES = 20 * 1024 * 1024  # 20 MB
 ALLOWED_GALLERY_MIMES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 
 

@@ -328,7 +328,7 @@ export default function StaffGallery() {
                   </button>
                 </div>
                 <div className="text-[0.65rem] text-[#0A0A0A]/45">
-                  JPG, PNG, WebP — jusqu'à 15 Mo par fichier
+                  JPG, PNG, WebP — jusqu'à 20 Mo par fichier
                 </div>
                 <input
                   ref={inputRef}

@@ -233,10 +233,10 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
             type="button"
             onClick={addItem}
             disabled={!startDate || !endDate}
-            className="w-full px-3 py-1.5 text-[0.6rem] uppercase tracking-[0.18em] bg-[#B8922A] text-white hover:bg-[#9d7a23] disabled:opacity-50"
+            className="w-full h-full px-2 py-2 text-[0.6rem] uppercase tracking-[0.14em] bg-[#B8922A] text-white hover:bg-[#9d7a23] disabled:opacity-50 whitespace-nowrap inline-flex items-center justify-center gap-1"
             data-testid="programme-add"
           >
-            + Étape
+            <span className="text-base leading-none">+</span> Étape
           </button>
         </div>
       </div>
@@ -512,7 +512,7 @@ export default function StaffSpecialEvents() {
 
       {editing && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 overflow-y-auto" onClick={() => !saving && closeModal()} data-testid="event-modal">
-          <div className="bg-white w-full sm:max-w-3xl sm:my-8 min-h-screen sm:min-h-0 sm:max-h-[90vh] flex flex-col overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white w-full sm:max-w-4xl sm:my-8 min-h-screen sm:min-h-0 sm:max-h-[90vh] flex flex-col overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-white flex items-center justify-between p-4 sm:p-6 border-b border-[#0A0A0A]/8 z-10 flex-shrink-0">
               <div className="min-w-0 flex-1">
                 <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A]">
