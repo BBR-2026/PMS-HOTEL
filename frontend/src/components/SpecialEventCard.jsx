@@ -92,7 +92,7 @@ export default function SpecialEventCard({ event, index = 0 }) {
             </span>
           ) : (
             <Link
-              to={`/booking/special-event/${event.id}`}
+              to={`/event/${event.id}`}
               data-testid={`special-event-cta-${event.id}`}
               className="btn-gold inline-flex items-center gap-3"
             >

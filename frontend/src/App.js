@@ -45,6 +45,7 @@ import StaffPayments from "./pages/staff/StaffPayments";
 import PolePage from "./pages/PolePage";
 import Gallery from "./pages/Gallery";
 import GalleryAlbum from "./pages/GalleryAlbum";
+import EventDetail from "./pages/EventDetail";
 import StaffGallery from "./pages/staff/StaffGallery";
 import RoleGuard from "./components/RoleGuard";
 
@@ -91,6 +92,7 @@ function App() {
               <Route path="/booking/:offerId" element={<BookingTunnel />} />
               <Route path="/payment/fineo/result" element={<FineoResult />} />
               <Route path="/booking/special-event/:eventId" element={<BookingTunnel />} />
+              <Route path="/event/:eventId" element={<EventDetail />} />
               <Route path="/events" element={<EventPrivatization />} />
               <Route path="/galerie" element={<Gallery />} />
               <Route path="/galerie/:albumId" element={<GalleryAlbum />} />

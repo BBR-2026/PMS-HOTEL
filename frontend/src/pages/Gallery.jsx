@@ -118,7 +118,11 @@ function AlbumCard({ album }) {
       <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A]/85 via-[#0A0A0A]/15 to-transparent" />
       <div className="absolute inset-0 flex flex-col justify-end p-5 md:p-6 text-white">
         <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-1.5">
-          {album.kind === "special_event" ? "Événement spécial" : "Expérience signature"}
+          {album.kind === "special_event"
+            ? "Événement spécial"
+            : album.kind === "custom"
+            ? "Album libre"
+            : "Expérience signature"}
         </div>
         <h3 className="font-display-serif text-2xl md:text-3xl tracking-tight leading-tight mb-2">
           {album.label}

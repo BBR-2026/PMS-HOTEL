@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import api from "../../lib/api";
-import { Camera, UploadCloud, Trash2, ChevronLeft, Loader2, Image as ImageIcon } from "lucide-react";
+import { Camera, UploadCloud, Trash2, Loader2, Image as ImageIcon, FolderPlus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -99,6 +99,47 @@ export default function StaffGallery() {
     handleFiles(Array.from(e.dataTransfer.files || []));
   };
 
+  // ===== Custom albums =====
+  const createCustomAlbum = async () => {
+    const label = window.prompt("Nom de l'album :", "");
+    if (!label || !label.trim()) return;
+    try {
+      const { data } = await api.post("/staff/gallery/albums", { label: label.trim() });
+      toast.success("Album créé");
+      await loadAlbums();
+      setSelectedId(data.id);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Création impossible");
+    }
+  };
+
+  const renameCustomAlbum = async () => {
+    if (!albumData?.album?.id?.startsWith("custom:")) return;
+    const label = window.prompt("Nouveau nom de l'album :", albumData.album.label);
+    if (!label || !label.trim()) return;
+    try {
+      await api.patch(`/staff/gallery/albums/${encodeURIComponent(albumData.album.id)}`, { label: label.trim() });
+      toast.success("Album renommé");
+      await Promise.all([loadAlbums(), loadAlbumDetail(selectedId)]);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Modification impossible");
+    }
+  };
+
+  const deleteCustomAlbum = async () => {
+    if (!albumData?.album?.id?.startsWith("custom:")) return;
+    if (!window.confirm(`Supprimer l'album "${albumData.album.label}" et toutes ses photos ?`)) return;
+    try {
+      await api.delete(`/staff/gallery/albums/${encodeURIComponent(albumData.album.id)}`);
+      toast.success("Album supprimé");
+      setSelectedId(null);
+      setAlbumData(null);
+      await loadAlbums();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Suppression impossible");
+    }
+  };
+
   return (
     <div className="space-y-6" data-testid="staff-gallery-page">
       <div className="flex items-center gap-3">
@@ -154,22 +195,46 @@ export default function StaffGallery() {
               <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
                 <div>
                   <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
-                    {albumData.album?.kind === "special_event" ? "Événement spécial" : "Expérience signature"}
+                    {albumData.album?.kind === "special_event"
+                      ? "Événement spécial"
+                      : albumData.album?.kind === "custom"
+                      ? "Album libre"
+                      : "Expérience signature"}
                   </div>
                   <h2 className="font-display-serif text-2xl text-[#0A0A0A]">{albumData.album?.label}</h2>
                   <div className="text-[0.7rem] text-[#0A0A0A]/55 mt-1">
                     {albumData.total} photo{albumData.total > 1 ? "s" : ""} dans l'album
                   </div>
                 </div>
-                <a
-                  href={`/galerie/${encodeURIComponent(selectedId || "")}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] inline-flex items-center gap-1.5"
-                  data-testid="open-public-album"
-                >
-                  Voir page publique →
-                </a>
+                <div className="flex items-center gap-2">
+                  {albumData.album?.kind === "custom" && (
+                    <>
+                      <button
+                        onClick={renameCustomAlbum}
+                        className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] inline-flex items-center gap-1.5"
+                        data-testid="rename-album"
+                      >
+                        <Pencil size={11} /> Renommer
+                      </button>
+                      <button
+                        onClick={deleteCustomAlbum}
+                        className="text-[0.65rem] uppercase tracking-[0.22em] text-red-600 hover:text-red-800 inline-flex items-center gap-1.5"
+                        data-testid="delete-album"
+                      >
+                        <Trash2 size={11} /> Supprimer
+                      </button>
+                    </>
+                  )}
+                  <a
+                    href={`/galerie/${encodeURIComponent(selectedId || "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/60 hover:text-[#B8922A] inline-flex items-center gap-1.5"
+                    data-testid="open-public-album"
+                  >
+                    Voir page publique →
+                  </a>
+                </div>
               </div>
 
               {/* Upload zone */}

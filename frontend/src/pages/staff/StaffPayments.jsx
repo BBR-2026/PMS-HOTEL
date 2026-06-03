@@ -4,7 +4,7 @@ import { formatXOF } from "../../lib/i18n";
 import { toast } from "sonner";
 import {
   Wallet, AlertCircle, CreditCard, Banknote, Smartphone, ArrowDownToLine,
-  CheckCircle2, XCircle, Search, Filter, Send, ChevronRight, Clock,
+  CheckCircle2, XCircle, Search, Filter, Send, ChevronRight, Clock, RefreshCw,
 } from "lucide-react";
 
 const PAYMENT_METHODS = [
@@ -417,6 +417,15 @@ export default function StaffPayments() {
           </h1>
           <p className="text-sm text-[#0A0A0A]/55 mt-1">Suivi des encaissements et confirmations clients</p>
         </div>
+        <button
+          onClick={refresh}
+          disabled={loading}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] border border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A] transition-all self-start sm:self-auto disabled:opacity-50"
+          data-testid="payments-refresh"
+          title="Rafraîchir"
+        >
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Rafraîchir
+        </button>
       </div>
 
       {/* Headline KPIs */}

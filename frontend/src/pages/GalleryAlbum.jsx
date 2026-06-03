@@ -72,7 +72,11 @@ export default function GalleryAlbum() {
             <ChevronLeft size={14} /> Tous les albums
           </Link>
           <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-2">
-            {album?.kind === "special_event" ? "Événement spécial" : "Expérience signature"}
+            {album?.kind === "special_event"
+              ? "Événement spécial"
+              : album?.kind === "custom"
+              ? "Album libre"
+              : "Expérience signature"}
           </div>
           <h1 className="font-display-serif text-4xl md:text-5xl text-[#0A0A0A] tracking-tight leading-[1.05] mb-3">
             {album?.label || "Album"}

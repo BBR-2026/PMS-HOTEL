@@ -57,7 +57,7 @@ def build_gallery_router(db, OFFERS: dict, get_current_staff, require_role) -> A
     # ---------- helpers ----------
     async def _resolve_album_label(album_id: str) -> Optional[dict]:
         """Return ``{"id", "label", "kind", "image_url"}`` for the given album,
-        or ``None`` if it doesn't match any known offer / event.
+        or ``None`` if it doesn't match any known offer / event / custom album.
         """
         if album_id in OFFERS:
             o = OFFERS[album_id]
@@ -80,10 +80,24 @@ def build_gallery_router(db, OFFERS: dict, get_current_staff, require_role) -> A
                 "kind": "special_event",
                 "image_url": ev.get("image_url") or "",
             }
+        if album_id.startswith("custom:"):
+            cid = album_id.split(":", 1)[1]
+            doc = await db.gallery_albums.find_one(
+                {"id": cid}, {"_id": 0, "id": 1, "label": 1, "cover_url": 1},
+            )
+            if not doc:
+                return None
+            return {
+                "id": album_id,
+                "label": doc["label"],
+                "kind": "custom",
+                "image_url": doc.get("cover_url") or "",
+            }
         return None
 
     async def _list_known_albums() -> list:
-        """Enumerate every album: 1 per OFFERS entry + 1 per published event."""
+        """Enumerate every album: 1 per OFFERS entry + 1 per published event
+        + 1 per custom album created by staff."""
         albums = []
         for offer_id, o in OFFERS.items():
             albums.append({
@@ -101,6 +115,16 @@ def build_gallery_router(db, OFFERS: dict, get_current_staff, require_role) -> A
                 "label": ev["title"],
                 "kind": "special_event",
                 "image_url": ev.get("image_url") or "",
+            })
+        custom_cursor = db.gallery_albums.find(
+            {}, {"_id": 0, "id": 1, "label": 1, "cover_url": 1, "created_at": 1},
+        ).sort("created_at", -1)
+        async for doc in custom_cursor:
+            albums.append({
+                "id": f"custom:{doc['id']}",
+                "label": doc["label"],
+                "kind": "custom",
+                "image_url": doc.get("cover_url") or "",
             })
         return albums
 
@@ -257,6 +281,71 @@ def build_gallery_router(db, OFFERS: dict, get_current_staff, require_role) -> A
         res = await db.gallery_images.delete_one({"id": image_id})
         if res.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Image introuvable")
+        return {"ok": True}
+
+    # ============== CUSTOM ALBUMS (staff CRUD) ==============
+    @router.post("/staff/gallery/albums")
+    async def staff_create_album(payload: dict, staff=Depends(get_current_staff)):
+        """Create a free-form album not tied to any offer/event.
+        Body: ``{"label": "...", "cover_url": "..."}``
+        """
+        await require_role(staff, ["admin", "manager", "manager_pole"])
+        label = (payload.get("label") or "").strip()
+        if not label:
+            raise HTTPException(status_code=400, detail="Le nom de l'album est requis.")
+        cid = str(uuid.uuid4())
+        doc = {
+            "id": cid,
+            "label": label,
+            "cover_url": (payload.get("cover_url") or "").strip(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": staff.get("email") if isinstance(staff, dict) else None,
+        }
+        await db.gallery_albums.insert_one({**doc})
+        doc.pop("_id", None)
+        return {"id": f"custom:{cid}", "label": label, "kind": "custom",
+                "cover_url": doc["cover_url"]}
+
+    @router.patch("/staff/gallery/albums/{album_id}")
+    async def staff_update_album(album_id: str, payload: dict,
+                                 staff=Depends(get_current_staff)):
+        """Update a custom album label / cover. Only the custom albums (prefix
+        ``custom:``) are editable — offer/event albums are auto-derived.
+        """
+        await require_role(staff, ["admin", "manager", "manager_pole"])
+        if not album_id.startswith("custom:"):
+            raise HTTPException(status_code=400, detail="Seuls les albums personnalisés sont modifiables.")
+        cid = album_id.split(":", 1)[1]
+        update = {}
+        if "label" in payload:
+            new_label = (payload["label"] or "").strip()
+            if not new_label:
+                raise HTTPException(status_code=400, detail="Le nom de l'album ne peut pas être vide.")
+            update["label"] = new_label
+        if "cover_url" in payload:
+            update["cover_url"] = (payload["cover_url"] or "").strip()
+        if not update:
+            return {"ok": True}
+        update["updated_at"] = datetime.now(timezone.utc).isoformat()
+        res = await db.gallery_albums.update_one({"id": cid}, {"$set": update})
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Album introuvable")
+        return {"ok": True}
+
+    @router.delete("/staff/gallery/albums/{album_id}")
+    async def staff_delete_album(album_id: str, staff=Depends(get_current_staff)):
+        """Delete a custom album AND all photos that were uploaded in it. The
+        underlying media bytes are kept (deduped by SHA-256, may be referenced
+        by other images)."""
+        await require_role(staff, ["admin", "manager"])
+        if not album_id.startswith("custom:"):
+            raise HTTPException(status_code=400, detail="Seuls les albums personnalisés sont supprimables.")
+        cid = album_id.split(":", 1)[1]
+        res = await db.gallery_albums.delete_one({"id": cid})
+        if res.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Album introuvable")
+        # Hard-delete the images attached to this album
+        await db.gallery_images.delete_many({"album_id": album_id})
         return {"ok": True}
 
     # ============== FILE SERVING ==============

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import api, { getStaffToken } from "../../lib/api";
-import { Search, Trash2, FileSpreadsheet, FileText, FileType, UserCheck, Loader2 } from "lucide-react";
+import { Search, Trash2, FileSpreadsheet, FileText, FileType, UserCheck, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 
@@ -125,6 +125,9 @@ export default function StaffRegistrations() {
         </form>
 
         <div className="flex items-center gap-2">
+          <button onClick={load} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 border border-[#0A0A0A]/15 text-[0.65rem] uppercase tracking-[0.18em] hover:border-[#B8922A] hover:text-[#B8922A] disabled:opacity-50" data-testid="reg-refresh" title="Rafraîchir">
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Rafraîchir
+          </button>
           <button onClick={() => download("csv")} className="inline-flex items-center gap-1.5 px-3 py-2 border border-[#0A0A0A]/15 text-[0.65rem] uppercase tracking-[0.18em] hover:bg-[#0A0A0A]/5" data-testid="export-csv">
             <FileText size={12} /> CSV
           </button>

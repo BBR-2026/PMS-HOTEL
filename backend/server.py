@@ -2571,7 +2571,7 @@ async def _resolve_exclusivity_link(doc: dict) -> dict:
             {"id": target, "status": "published"}, {"_id": 0, "id": 1, "title": 1, "image_url": 1},
         )
         if ev:
-            href = f"/booking/special-event/{ev['id']}"
+            href = f"/event/{ev['id']}"
             resolved = {"id": ev["id"], "title": ev.get("title"), "image_url": ev.get("image_url")}
     elif lt == "offer" and target:
         if target in OFFERS:
@@ -2679,7 +2679,9 @@ async def get_special_event(event_id: str):
     if not _event_is_currently_active(ev, today):
         raise HTTPException(status_code=400, detail="Cet événement n'est pas disponible à la réservation")
     out = _public_event(ev)
-    out["event_dates"] = [d for d in (ev.get("event_dates") or []) if d >= today]
+    # For multi_day events, _public_event() already synthesised event_dates
+    # from the programme. Filter to future dates only.
+    out["event_dates"] = [d for d in (out.get("event_dates") or []) if d >= today]
     # Per-date remaining seats
     booked_cursor = db.bookings.find(
         {"offer_type": "special_event", "special_event_id": ev["id"], "status": {"$ne": "cancelled"}},

@@ -90,12 +90,18 @@ export default function BookingTunnel() {
             cta_label: ev.cta_label || "Réserver ma place",
             image_url: ev.image_url || "",
           });
+          // Pre-select date if passed via ?date=YYYY-MM-DD (multi-day deep link)
+          const qDate = new URLSearchParams(location.search).get("date");
+          if (qDate && (ev.event_dates || []).includes(qDate)) {
+            const [y, m, d] = qDate.split("-").map(Number);
+            setSelectedDate(new Date(y, m - 1, d));
+          }
         })
         .catch(() => navigate("/"));
     } else {
       api.get(`/offers/${offerId}`).then((r) => setOffer(r.data)).catch(() => navigate("/"));
     }
-  }, [offerId, eventId, isSpecialEvent, navigate]);
+  }, [offerId, eventId, isSpecialEvent, navigate, location.search]);
 
   useEffect(() => {
     if (!selectedDate) return;
@@ -133,14 +139,23 @@ export default function BookingTunnel() {
     return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
   }, [isOvernight, selectedDate, checkoutDate]);
 
+  const charterAmount = useMemo(() => {
+    if (!charterEnabled || !charterBoatId) return 0;
+    const b = charterBoats.find((x) => x.id === charterBoatId);
+    return b ? Number(b.charter_price || 0) : 0;
+  }, [charterEnabled, charterBoatId, charterBoats]);
+
   const total = useMemo(() => {
     if (!offer) return 0;
+    let base;
     if (isOvernight && hasTiers) {
-      return selectedTier ? selectedTier.price * nights * rooms : 0;
+      base = selectedTier ? selectedTier.price * nights * rooms : 0;
+    } else {
+      const guestsBase = adults * offer.price_adult + children * offer.price_child;
+      base = isOvernight ? guestsBase * nights : guestsBase;
     }
-    const base = adults * offer.price_adult + children * offer.price_child;
-    return isOvernight ? base * nights : base;
-  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms]);
+    return base + charterAmount;
+  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -985,6 +1000,18 @@ export default function BookingTunnel() {
                   )}
 
                   {contact.special_requests && <SummaryRow label={t.booking.specialRequests} value={contact.special_requests} />}
+                  {charterEnabled && charterBoatId && (() => {
+                    const cb = charterBoats.find((b) => b.id === charterBoatId);
+                    if (!cb) return null;
+                    return (
+                      <div className="border-t border-[#0A0A0A]/10 pt-4 mt-2" data-testid="summary-charter">
+                        <SummaryRow
+                          label="Privatisation"
+                          value={`${cb.name} · ${formatXOF(cb.charter_price)}`}
+                        />
+                      </div>
+                    );
+                  })()}
                   <div className="pt-5 border-t border-[#0A0A0A]/10 flex justify-between items-baseline">
                     <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A]">
                       {t.booking.total}
