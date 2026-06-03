@@ -3228,6 +3228,39 @@ async def seed_staff():
     logging.info("Staff seeding complete")
 
 
+# Seed/repair the 3 documented test accounts (idempotent — ensures correct roles
+# even if the docs got out of sync with the actual DB rows).
+@app.on_event("startup")
+async def seed_test_accounts():
+    test_seeds = [
+        {"email": "hotesse.test@boulay.ci", "name": "Hôtesse Test", "role": "hotesse",
+         "password": "Hotesse@2026", "pole_id": None},
+        {"email": "mgr.pole.test@boulay.ci", "name": "Manager Pôle Test", "role": "manager_pole",
+         "password": "MgrPole@2026", "pole_id": "beach_club"},
+        {"email": "direction.test@boulay.ci", "name": "Direction Test", "role": "management_general",
+         "password": "Direction@2026", "pole_id": None},
+    ]
+    for s in test_seeds:
+        existing = await db.staff.find_one({"email": s["email"]}, {"_id": 0, "id": 1, "role": 1})
+        if not existing:
+            await db.staff.insert_one({
+                "id": str(uuid.uuid4()),
+                "email": s["email"],
+                "name": s["name"],
+                "role": s["role"],
+                "pole_id": s["pole_id"],
+                "password_hash": hash_password(s["password"]),
+                "created_at": now_iso(),
+            })
+        elif existing.get("role") != s["role"]:
+            # Heal drifted role / pole_id without resetting passwords.
+            await db.staff.update_one(
+                {"email": s["email"]},
+                {"$set": {"role": s["role"], "pole_id": s["pole_id"]}},
+            )
+            logging.info("Repaired role for %s → %s", s["email"], s["role"])
+
+
 # Seed Beach Club VIP spaces (transats + balinés) if collection is empty.
 @app.on_event("startup")
 async def seed_vip_spaces_on_startup():
