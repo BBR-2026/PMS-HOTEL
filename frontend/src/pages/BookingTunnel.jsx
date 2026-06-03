@@ -40,6 +40,9 @@ export default function BookingTunnel() {
   const [multiDayDates, setMultiDayDates] = useState([]);
   // Premium package selections from EventDetail (sessionStorage bridge)
   const [packageSelections, setPackageSelections] = useState([]);
+  // Hoisted above the participants-sync useEffect to avoid the TDZ
+  // ReferenceError thrown when [usesPackages] is read inside the deps array.
+  const usesPackages = isSpecialEvent && packageSelections.length > 0;
   // Beach Club only — numbered transats / balinés selected for the booking date.
   const [vipSpaces, setVipSpaces] = useState([]); // [{id, kind, number, label_fr, price, is_available}]
   const [selectedVipSpaceIds, setSelectedVipSpaceIds] = useState([]);
@@ -151,18 +154,33 @@ export default function BookingTunnel() {
     api.get(`/availability/${offerId}/${iso}`).then((r) => setAvailability(r.data)).catch(() => {});
   }, [selectedDate, offerId, isSpecialEvent, offer, multiDayDates]);
 
-  // Keep participants array in sync with adults count only.
-  // Children are no longer collected as participants — they're counted via `children`
-  // and attached to the booker's (first adult) ticket on the backend.
+  // Keep participants array in sync. Default flow: only adults (children are
+  // attached to the booker on the backend). Special-event-with-packages flow:
+  // collect ONE entry per person, adults AND children, so each gets a ticket.
   useEffect(() => {
     setParticipants((prev) => {
+      if (usesPackages) {
+        const prevByKind = { adult: [], child: [] };
+        for (const p of prev) {
+          if (p.kind === "child") prevByKind.child.push(p);
+          else prevByKind.adult.push(p);
+        }
+        const next = [];
+        for (let i = 0; i < adults; i++) {
+          next.push(prevByKind.adult[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "adult" });
+        }
+        for (let i = 0; i < children; i++) {
+          next.push(prevByKind.child[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "child" });
+        }
+        return next;
+      }
       const prevAdults = prev.filter((p) => p.kind === "adult");
       const nextAdults = Array.from({ length: adults }, (_, i) =>
         prevAdults[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "adult" }
       );
       return nextAdults;
     });
-  }, [adults]);
+  }, [adults, children, usesPackages]);
 
   const isOvernight = !!offer?.is_overnight;
   const roomTiers = offer?.room_tiers || [];
@@ -223,7 +241,8 @@ export default function BookingTunnel() {
     return m;
   }, [specialEvent]);
 
-  // Premium package surcharge — per-line price applied on top of base.
+  // Premium package surcharge — FLAT forfait per selected package, NOT
+  // multiplied by headcount. Headcount only fills the package's capacity.
   const packagesAmount = useMemo(() => {
     if (!packageSelections.length || !specialEvent?.programme) return 0;
     const progByDate = {};
@@ -235,17 +254,43 @@ export default function BookingTunnel() {
       const day = progByDate[sel.date] || {};
       const pkg = (day.packages || []).find((x) => x.id === sel.package_id);
       if (!pkg) continue;
-      sum += (sel.adults || 0) * Number(pkg.price_adult || 0)
-           + (sel.children || 0) * Number(pkg.price_child || 0);
+      sum += Number(pkg.price_adult || pkg.price || 0);
     }
     return sum;
   }, [packageSelections, specialEvent]);
+
+  // Aggregated headcount derived from package selections. When the event uses
+  // packages, the public tunnel takes its `adults` and `children` from this
+  // sum (no manual counter) so Step 2 can be skipped.
+  const packagesAggregate = useMemo(() => {
+    let a = 0, c = 0;
+    for (const sel of packageSelections) {
+      a += Number(sel.adults || 0);
+      c += Number(sel.children || 0);
+    }
+    return { adults: a, children: c, total: a + c };
+  }, [packageSelections]);
+
+  // `usesPackages` is declared earlier (right after packageSelections) to
+  // prevent a temporal-dead-zone ReferenceError in the participants useEffect.
+
+  // Sync derived adults/children when packages drive the booking
+  useEffect(() => {
+    if (!usesPackages) return;
+    setAdults(packagesAggregate.adults);
+    setChildren(packagesAggregate.children);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usesPackages, packagesAggregate.adults, packagesAggregate.children]);
 
   const total = useMemo(() => {
     if (!offer) return 0;
     let base;
     if (isOvernight && hasTiers) {
       base = selectedTier ? selectedTier.price * nights * rooms : 0;
+    } else if (usesPackages) {
+      // When packages drive the booking, the per-day "Adulte/Enfant" tariff
+      // is ignored — only the flat package forfaits count.
+      base = 0;
     } else if (isSpecialEvent && multiDayDates.length > 1) {
       // Cumulative across all selected event days, picking per-day prices
       // from the programme when defined (falls back to event-level prices).
@@ -260,7 +305,7 @@ export default function BookingTunnel() {
       base = isOvernight ? guestsBase * nights : guestsBase;
     }
     return base + charterAmount + packagesAmount + vipSpacesAmount;
-  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount, vipSpacesAmount]);
+  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount, vipSpacesAmount, usesPackages]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -305,14 +350,18 @@ export default function BookingTunnel() {
 
   // Multi-day cumulative booking: skip the date-picker step entirely — dates
   // were already chosen on /event/:id. Auto-jump to step 2 once the event
-  // metadata is loaded and the dates state is hydrated. MUST be declared
-  // above the conditional `return` to satisfy react-hooks/rules-of-hooks.
+  // metadata is loaded and the dates state is hydrated. Also skips step 2
+  // (counters) and goes straight to step 3 when packages are involved, since
+  // adults/children are derived from package selections.
   useEffect(() => {
-    if (isSpecialEvent && multiDayDates.length > 1 && step === 1) {
+    if (!isSpecialEvent) return;
+    if (usesPackages && step <= 2) {
+      setStep(3);
+    } else if (multiDayDates.length > 1 && step === 1) {
       setStep(2);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSpecialEvent, multiDayDates.length, step]);
+  }, [isSpecialEvent, multiDayDates.length, usesPackages, step]);
 
   if (!offer) {
     return (
@@ -322,11 +371,13 @@ export default function BookingTunnel() {
     );
   }
 
-  // Validation: booker (participants[0]) must provide email + phone.
-  // Other adults only need name + surname + nationality.
+  // Validation. Standard flow: only adults required, booker (idx 0) needs
+  // email + phone. Event-with-packages flow: ALL persons (adults + children)
+  // must be filled in, booker (first adult) still owns the email + phone.
+  const expectedParticipants = usesPackages ? (adults + children) : adults;
   const participantsValid =
-    participants.length === adults &&
-    adults >= 1 &&
+    participants.length === expectedParticipants &&
+    expectedParticipants >= 1 &&
     participants.every(
       (p, i) =>
         p.name.trim() &&
@@ -351,7 +402,7 @@ export default function BookingTunnel() {
 
   const stepValid = {
     1:
-      isMultiDay || (
+      isMultiDay || usesPackages || (
         !!selectedDate &&
         (!isOvernight || (!!checkoutDate && nights >= 1)) &&
         remaining !== null &&
@@ -366,8 +417,9 @@ export default function BookingTunnel() {
   const goNext = () => step < 5 && setStep(step + 1);
   const goBack = () => {
     if (step > 1) {
-      // Don't bounce back into the (skipped) date step on multi-day bookings.
+      // Don't bounce back into the (skipped) steps on multi-day / package flows.
       if (step === 2 && isMultiDay) return;
+      if (step === 3 && usesPackages) return; // step 1+2 are skipped — first user step is 3
       setStep(step - 1);
     }
   };
@@ -392,10 +444,11 @@ export default function BookingTunnel() {
           surname: p.surname.trim(),
           // Email & phone are only required on the booker (first adult). For
           // other adults the backend will fall back to the booker's contact.
-          email: i === 0 ? p.email.trim().toLowerCase() : (p.email || "").trim().toLowerCase() || null,
-          phone: i === 0 ? p.phone.trim() : (p.phone || "").trim() || null,
+          // Children never carry contact info.
+          email: i === 0 ? p.email.trim().toLowerCase() : ((p.email || "").trim().toLowerCase() || null),
+          phone: i === 0 ? p.phone.trim() : ((p.phone || "").trim() || null),
           nationality: p.nationality.trim(),
-          kind: "adult",
+          kind: p.kind || "adult",
         })),
         boat_time: contact.boat_time,
         return_boat_time: isOvernight ? contact.return_boat_time : null,
@@ -763,8 +816,9 @@ export default function BookingTunnel() {
                 </h2>
                 <div className="gold-divider mb-6 sm:mb-8" />
 
-                {/* Children attached info (no per-child form) */}
-                {children > 0 && (
+                {/* Children attached info — hidden when packages drive the
+                    booking (each child has its own ticket then). */}
+                {children > 0 && !usesPackages && (
                   <div className="mb-5 sm:mb-6 border border-[#B8922A]/30 bg-[#FBF8EF] px-4 py-3 sm:px-5 sm:py-4">
                     <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] font-medium mb-1">
                       Enfants accompagnés
@@ -775,13 +829,22 @@ export default function BookingTunnel() {
                   </div>
                 )}
 
-                {/* Participants — 1 ticket par adulte. Booker (1er adulte) renseigne email + téléphone. */}
+                {/* Participants — 1 ticket par personne. Booker (1er adulte) renseigne email + téléphone. */}
                 <div className="space-y-5 sm:space-y-6">
                   {participants.map((p, i) => {
                     const isFirst = i === 0;
-                    const label = isFirst
-                      ? `Réservant · ${t.booking.primaryContact}${children > 0 ? ` + ${children} enfant${children > 1 ? "s" : ""}` : ""}`
-                      : `Adulte ${i + 1}`;
+                    const isChild = p.kind === "child";
+                    // Compute label depending on flow + person index
+                    let label;
+                    if (isFirst) {
+                      label = `Réservant · ${t.booking.primaryContact}${(!usesPackages && children > 0) ? ` + ${children} enfant${children > 1 ? "s" : ""}` : ""}`;
+                    } else if (isChild) {
+                      const childIdx = participants.slice(0, i).filter((x) => x.kind === "child").length + 1;
+                      label = `Enfant ${childIdx}`;
+                    } else {
+                      const adultIdx = participants.slice(0, i).filter((x) => x.kind === "adult").length + 1;
+                      label = `Adulte ${adultIdx}`;
+                    }
                     const update = (field) => (e) => {
                       const next = [...participants];
                       next[i] = { ...next[i], [field]: e.target.value };
@@ -826,7 +889,7 @@ export default function BookingTunnel() {
                                 testId={`participant-${i}-phone`}
                               />
                             </>
-                          ) : (
+                          ) : isChild ? null : (
                             <>
                               <div>
                                 <Field
@@ -1160,22 +1223,24 @@ export default function BookingTunnel() {
                         label="Dates sélectionnées"
                         value={`${multiDayDates.length} journée${multiDayDates.length > 1 ? "s" : ""}`}
                       />
-                      <div className="pl-1 -mt-1 mb-3" data-testid="summary-multi-dates">
-                        {multiDayDates.map((d) => {
-                          const item = programmeByDate[d] || {};
-                          const pa = Number(item.price_adult ?? offer.price_adult ?? 0);
-                          const pc = Number(item.price_child ?? offer.price_child ?? 0);
-                          const line = adults * pa + children * pc;
-                          const [y, m, dd] = d.split("-");
-                          const dateLabel = new Date(+y, +m - 1, +dd).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
-                          return (
-                            <div key={d} className="flex justify-between items-baseline text-[0.78rem] text-[#0A0A0A]/70 py-0.5">
-                              <span>· {dateLabel}{item.title ? ` — ${item.title}` : ""}</span>
-                              <span className="tabular-nums">{formatXOF(line)}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {!usesPackages && (
+                        <div className="pl-1 -mt-1 mb-3" data-testid="summary-multi-dates">
+                          {multiDayDates.map((d) => {
+                            const item = programmeByDate[d] || {};
+                            const pa = Number(item.price_adult ?? offer.price_adult ?? 0);
+                            const pc = Number(item.price_child ?? offer.price_child ?? 0);
+                            const line = adults * pa + children * pc;
+                            const [y, m, dd] = d.split("-");
+                            const dateLabel = new Date(+y, +m - 1, +dd).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+                            return (
+                              <div key={d} className="flex justify-between items-baseline text-[0.78rem] text-[#0A0A0A]/70 py-0.5">
+                                <span>· {dateLabel}{item.title ? ` — ${item.title}` : ""}</span>
+                                <span className="tabular-nums">{formatXOF(line)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </>
                   ) : (
                     <SummaryRow
@@ -1209,19 +1274,21 @@ export default function BookingTunnel() {
                       />
                     </>
                   )}
-                  <SummaryRow
-                    label={t.booking.adults}
-                    value={
-                      hasTiers
-                        ? `${adults}`
-                        : offer.price_adult > 0
-                        ? isOvernight
-                          ? `${adults} × ${formatXOF(offer.price_adult)} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`
-                          : `${adults} × ${formatXOF(offer.price_adult)}`
-                        : `${adults}`
-                    }
-                  />
-                  {children > 0 && (
+                  {!usesPackages && (
+                    <SummaryRow
+                      label={t.booking.adults}
+                      value={
+                        hasTiers
+                          ? `${adults}`
+                          : offer.price_adult > 0
+                          ? isOvernight
+                            ? `${adults} × ${formatXOF(offer.price_adult)} × ${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`
+                            : `${adults} × ${formatXOF(offer.price_adult)}`
+                          : `${adults}`
+                      }
+                    />
+                  )}
+                  {!usesPackages && children > 0 && (
                     <SummaryRow
                       label={t.booking.children}
                       value={
@@ -1241,22 +1308,34 @@ export default function BookingTunnel() {
                       {t.booking.participantsLabel}
                     </div>
                     <ul className="space-y-3">
-                      {participants.map((p, i) => (
-                        <li key={i} className="flex items-start justify-between gap-6">
-                          <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
-                            {i === 0 ? "Réservant" : `Adulte ${i + 1}`}
-                          </span>
-                          <span className="text-sm text-[#0A0A0A] text-right">
-                            {p.surname} {p.name} · {p.nationality}
-                            {i === 0 && (
-                              <span className="block text-[0.72rem] text-[#0A0A0A]/50 mt-0.5">
-                                {p.email} · {p.phone}
-                              </span>
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                      {children > 0 && (
+                      {participants.map((p, i) => {
+                        const isChild = p.kind === "child";
+                        let lab;
+                        if (i === 0) lab = "Réservant";
+                        else if (isChild) {
+                          const ci = participants.slice(0, i).filter((x) => x.kind === "child").length + 1;
+                          lab = `Enfant ${ci}`;
+                        } else {
+                          const ai = participants.slice(0, i).filter((x) => x.kind === "adult").length + 1;
+                          lab = `Adulte ${ai}`;
+                        }
+                        return (
+                          <li key={i} className="flex items-start justify-between gap-6">
+                            <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
+                              {lab}
+                            </span>
+                            <span className="text-sm text-[#0A0A0A] text-right">
+                              {p.surname} {p.name} · {p.nationality}
+                              {i === 0 && (
+                                <span className="block text-[0.72rem] text-[#0A0A0A]/50 mt-0.5">
+                                  {p.email} · {p.phone}
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        );
+                      })}
+                      {!usesPackages && children > 0 && (
                         <li className="flex items-start justify-between gap-6 pt-1">
                           <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
                             Enfants
@@ -1313,18 +1392,18 @@ export default function BookingTunnel() {
                   )}
                   {packageSelections.length > 0 && specialEvent?.programme && (
                     <div className="border-t border-[#0A0A0A]/10 pt-4 mt-2" data-testid="summary-packages">
-                      <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Packages premium</div>
+                      <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Forfaits sélectionnés</div>
                       {packageSelections.map((sel, i) => {
                         const day = (specialEvent.programme || []).find((p) => p.date === sel.date) || {};
                         const pkg = (day.packages || []).find((x) => x.id === sel.package_id);
                         if (!pkg) return null;
-                        const line = (sel.adults || 0) * Number(pkg.price_adult || 0)
-                                  + (sel.children || 0) * Number(pkg.price_child || 0);
+                        const line = Number(pkg.price_adult || pkg.price || 0);
+                        const persons = (sel.adults || 0) + (sel.children || 0);
                         const [y, m, dd] = sel.date.split("-");
                         const dateLabel = new Date(+y, +m - 1, +dd).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
                         return (
                           <div key={`pkg-${i}`} className="flex justify-between items-baseline text-[0.78rem] text-[#0A0A0A]/70 py-0.5">
-                            <span>· {dateLabel} — {pkg.label} ({sel.adults || 0}A {sel.children > 0 ? `+ ${sel.children}E` : ""})</span>
+                            <span>· {dateLabel} — {pkg.label} ({persons} pers. : {sel.adults || 0}A{sel.children > 0 ? ` + ${sel.children}E` : ""})</span>
                             <span className="tabular-nums">{formatXOF(line)}</span>
                           </div>
                         );

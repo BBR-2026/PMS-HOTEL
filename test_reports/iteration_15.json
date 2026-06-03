@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 15 — Special Event Packages (forfait flat) backend + frontend testing. Backend 5/5 pytest PASS (flat pricing 170 000 FCFA for pkg_std 50k + pkg_bal 120k, max_persons 400, unknown package_id 400, non-regression classical pricing, mixed adults+children participants accepted). Frontend EventDetail: 'Adulte X · Enfant Y FCFA' day price line removed (PASS), [data-testid^=day-select-] absent (PASS), pkg-toggle click activates aria-pressed=true with persons/adults/children sub-counters, sticky bar shows correct flat total '1 forfait · 50 000 FCFA'. CRITICAL BUG FOUND AND FIXED: BookingTunnel.jsx threw 'Cannot access usesPackages before initialization' (TDZ ReferenceError) because the const was declared on line 271 but used inside a useEffect dependency array on line 180. Hoisted the declaration immediately after packageSelections state on line 42. After fix, /booking/special-event/<id>?date=... lands directly on Step 3 (steps 1 & 2 hidden), 6 participant rows rendered with participant-0 carrying the booker email input. Staff /staff/evenements-speciaux → Modifier 'World Cup Opening' → PackagesSubBuilder shows ONLY 'Prix du forfait (FCFA)' + 'Pers. Max' columns (no Prix adulte / Prix enfant); data-testid pkg-new-price-adult + pkg-new-max present, pkg-new-price-child absent.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "BookingTunnel.jsx",
+        "issue": "FIXED by testing agent. ReferenceError 'Cannot access usesPackages before initialization' — const declared at line ~271 but consumed in useEffect deps array on line 180 → TDZ crash on every /booking/special-event/* render (white Uncaught runtime errors overlay, entire Step 3 unreachable). Patch: hoisted `const usesPackages = isSpecialEvent && packageSelections.length > 0;` to right after `useState([])` for packageSelections, and removed the duplicate declaration further down. Verified — booking tunnel now renders Step 3 cleanly.",
+        "selector": "[data-testid='booking-step-3']",
+        "priority": "CRITICAL (was blocking the entire package flow)"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration15_event_packages.py",
+    "/app/test_reports/pytest/iter15.xml"
+  ],
+  "action_items": [
+    "Review the BookingTunnel.jsx hoist patch (lines ~42 and ~271). Functionally minimal but worth a code-review pass to make sure the dependency on `isSpecialEvent` hoist order is also safe (it is — isSpecialEvent is declared at line 24).",
+    "Optional: add a smoke test that mounts <BookingTunnel> with a special-event package state in sessionStorage to catch any future TDZ regression in CI.",
+    "(non-blocking) Step 4 summary 'summary-packages' was not exercised end-to-end (would require filling 6 participant rows × name/surname/nationality + booker email/phone). The backend computation is already covered by pytest test_two_packages_flat_total which asserts total_amount=170000 and package_lines amounts."
+  ],
+  "critical_code_review_comments": [
+    "BookingTunnel.jsx (1984 lines) is well over the 700-line guideline — strong candidate for splitting (Step1/Step2/Step3/Step4 sub-components + a small useBookingState hook). The TDZ bug today is a direct symptom of the file size: declarations and consumers drifted apart.",
+    "server.py line 2224: `line_amount = int(pkg.get('price_adult', pkg.get('price', 0)) or 0)` — relies on the legacy schema field name `price_adult` to store the flat forfait. Schema migration note: `Package.price_child` and `Package.max_persons` are now unused for billing, but the Pydantic model in server.py still requires `price_child` and accepts `max_persons` only optionally. Consider renaming `price_adult → price` and deprecating `price_child` so the contract reflects the flat-forfait reality.",
+    "BookingTunnel.jsx still imports/references both `packagesAmount` and a separate participants-array path. Worth a final cleanup so the legacy headcount × price_child code paths can't sneak back in during future edits.",
+    "EventDetail.jsx + PackagesSubBuilder data-testid naming: pkg-new-price-adult is misleading since it now holds the flat forfait. Suggest renaming to pkg-new-price (and migrating the test files in this iteration accordingly). Cosmetic, not blocking."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/BookingTunnel.jsx (hoisted `const usesPackages` declaration to avoid TDZ ReferenceError)",
+    "/app/backend/tests/test_iteration15_event_packages.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (5/5 pytest)",
+    "frontend": "100% smoke (EventDetail + Step3 + StaffPackagesSubBuilder) after the TDZ fix"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (staff admin OK).",
+  "seed_data_creation": "Five test bookings created against event a9119968-09d6-4688-85c8-2915784b3a44 / 2026-12-15 by pytest with booker email pattern t-pkg-<uuid>@test-pkg.com. They were inserted as 'pending' (never paid), so they consume capacity until cleaned up — recommend a db.bookings.delete_many({'special_event_id':'a9119968-...', 'name': {'$regex':'^(Adult|Child)'}}) to free seats before next iteration. Total adults consumed across the 5 tests: ~17 of 100; well under capacity.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 15 — Boulay Beach Resort Event Packages flat-forfait refactor. The backend create_booking path at server.py:2156–2233 sets `total = 0` when uses_packages is true and adds each pkg.price_adult (used as the flat amount) — DO NOT reintroduce headcount × price_child. Frontend BookingTunnel.jsx has been patched to hoist `usesPackages`; if you see another TDZ-style runtime error on /booking/special-event/<id>, double-check the order of const declarations. Event a9119968-09d6-4688-85c8-2915784b3a44 with date 2026-12-15 carries packages pkg_std (50 000, max 6) and pkg_bal (120 000, max 4); admin staff editor confirmed only the flat-price column. Pytest file: backend/tests/test_iteration15_event_packages.py — re-run with `python -m pytest backend/tests/test_iteration15_event_packages.py -v --junitxml=test_reports/pytest/iter15.xml`.",
+  "rca of the issue": "Root cause: BookingTunnel.jsx had `const usesPackages = ...` declared on line 271 but the dependency array `[adults, children, usesPackages]` on line 180 evaluated `usesPackages` synchronously during render — before the const initializer ran. Because JS `const` lives in a Temporal Dead Zone until its declaration line executes, every render of BookingTunnel threw `ReferenceError: Cannot access 'usesPackages' before initialization`. The crash was masked during smoke-testing because the agent reportedly tested the EventDetail step only and never opened the booking tunnel route directly. Mitigation applied: moved the declaration immediately after `const [packageSelections, setPackageSelections] = useState([]);` on line 42, and removed the now-duplicate declaration. Verified post-fix: /booking/special-event/<id>?date=2026-12-15 renders Step 3 only with all 6 participant rows when pkg_std (max_persons=6) is active."
+}

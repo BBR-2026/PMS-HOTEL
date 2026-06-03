@@ -2150,12 +2150,20 @@ async def create_booking(body: BookingCreate):
         else:
             total = nights * (body.adults * offer["price_adult"] + body.children * offer["price_child"])
     else:
-        total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
+        # When a special event uses packages, the per-day base price is
+        # IGNORED — each package is billed as a flat forfait, and the base
+        # adult/child tariff has no meaning in that flow.
+        uses_packages = bool(is_special and body.package_selections)
+        if uses_packages:
+            total = 0
+        else:
+            total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
         # Multi-day special event with cumulative pricing: sum each selected
         # date's per-day prices (resolved from the event programme). The
         # primary `body.date` price is already in `total` above (offer was
-        # resolved with that date); add the additional dates here.
-        if is_special and body.multi_day_dates and body.special_event_id:
+        # resolved with that date); add the additional dates here. Skipped
+        # entirely when packages are used (forfaits-only).
+        if is_special and body.multi_day_dates and body.special_event_id and not uses_packages:
             extra_dates = [d for d in body.multi_day_dates if d != body.date]
             if extra_dates:
                 ev_doc = await db.special_events.find_one(
@@ -2184,10 +2192,10 @@ async def create_booking(body: BookingCreate):
                             detail=f"Plus assez de places le {d} ({ev_cap - extra_booked} restantes).",
                         )
 
-    # Premium package add-ons (events). Each selection lists how many adults
-    # and children take that specific package on that specific date. Total
-    # surcharge = Σ (adults × pkg.price_adult + children × pkg.price_child).
-    # We also enforce `max_persons` per package per day.
+    # Premium package add-ons (events). Each selection is a flat forfait — the
+    # `pkg.price_adult` field holds the package's flat price (legacy name kept
+    # for schema compat). Headcount only fills the package's capacity; price
+    # does NOT multiply. We still enforce `max_persons` per package per day.
     package_lines: List[dict] = []
     if is_special and body.package_selections and body.special_event_id:
         ev_doc = await db.special_events.find_one(
@@ -2212,10 +2220,8 @@ async def create_booking(body: BookingCreate):
                     status_code=400,
                     detail=f"Le package « {pkg.get('label')} » accepte {pkg.get('max_persons')} personne(s) max.",
                 )
-            line_amount = (
-                sel.adults * int(pkg.get("price_adult", 0))
-                + sel.children * int(pkg.get("price_child", 0))
-            )
+            # Flat forfait price — independent of headcount.
+            line_amount = int(pkg.get("price_adult", pkg.get("price", 0)) or 0)
             total += line_amount
             package_lines.append({
                 "date": sel.date,

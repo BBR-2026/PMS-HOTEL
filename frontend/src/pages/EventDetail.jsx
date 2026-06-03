@@ -27,7 +27,6 @@ export default function EventDetail() {
   const [ev, setEv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-  const [selected, setSelected] = useState(() => new Set());
   // Package selections: { [date]: { [package_id]: {adults, children} } }
   const [packageSel, setPackageSel] = useState({});
   // Modal for "Voir le contenu" → shows {date, package} details
@@ -40,14 +39,6 @@ export default function EventDetail() {
       .finally(() => setLoading(false));
   }, [eventId]);
 
-  const toggleDate = (date) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(date)) next.delete(date); else next.add(date);
-      return next;
-    });
-  };
-
   const programme = useMemo(() => {
     if (!ev) return [];
     const today = ev.today || "";
@@ -56,16 +47,10 @@ export default function EventDetail() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [ev]);
 
-  const selectedOrdered = useMemo(
-    () => programme.filter((p) => selected.has(p.date)),
-    [programme, selected]
-  );
-
   // Build flat array of package selections sent to backend
   const packageSelectionsArr = useMemo(() => {
     const out = [];
     for (const [date, byPkg] of Object.entries(packageSel)) {
-      if (!selected.has(date)) continue;
       for (const [package_id, qty] of Object.entries(byPkg || {})) {
         const adults = Number(qty?.adults || 0);
         const children = Number(qty?.children || 0);
@@ -75,15 +60,62 @@ export default function EventDetail() {
       }
     }
     return out;
-  }, [packageSel, selected]);
+  }, [packageSel]);
 
-  // Update a (date, package_id) quantity. Will be 0..pkg.max_persons enforced
-  // at the input level; backend re-validates.
-  const updatePkgQty = (date, pkgId, kind, value) => {
+  // Auto-derived: a date is "selected" when it has at least one package with
+  // persons ≥ 1. No more "Sélectionner cette date" button — clicking inside
+  // a package is enough.
+  const selectedDates = useMemo(() => {
+    const set = new Set();
+    for (const sel of packageSelectionsArr) set.add(sel.date);
+    return set;
+  }, [packageSelectionsArr]);
+
+  const selectedOrdered = useMemo(
+    () => programme.filter((p) => selectedDates.has(p.date)),
+    [programme, selectedDates]
+  );
+
+  // Flat package total — each selected package is billed at its forfait price,
+  // not multiplied by headcount. Headcount only fills the package's capacity.
+  const eventTotal = useMemo(() => {
+    if (!ev) return 0;
+    const progByDate = {};
+    for (const p of programme) progByDate[p.date] = p;
+    let sum = 0;
+    for (const sel of packageSelectionsArr) {
+      const day = progByDate[sel.date] || {};
+      const pkg = (day.packages || []).find((x) => x.id === sel.package_id);
+      if (!pkg) continue;
+      sum += Number(pkg.price_adult || pkg.price || 0);
+    }
+    return sum;
+  }, [ev, programme, packageSelectionsArr]);
+
+  // Update package counts. Keeps `persons = adults + children` invariant
+  // when the caller passes the special kind="persons" — it adjusts adults
+  // (children remain user-controlled, with auto-clamp on overflow).
+  const updatePkgQty = (date, pkgId, kind, value, maxPersons) => {
     setPackageSel((prev) => {
       const day = { ...(prev[date] || {}) };
       const cur = { adults: 0, children: 0, ...(day[pkgId] || {}) };
-      day[pkgId] = { ...cur, [kind]: Math.max(0, Number(value) || 0) };
+      const val = Math.max(0, Number(value) || 0);
+      let next = { ...cur };
+      if (kind === "persons") {
+        const clamped = Math.min(val, maxPersons || val);
+        // Keep children as user set, fill the rest with adults.
+        const children = Math.min(cur.children || 0, clamped);
+        next = { adults: Math.max(0, clamped - children), children };
+      } else if (kind === "children") {
+        const total = (cur.adults || 0) + (cur.children || 0);
+        const clamped = Math.min(val, total);
+        next = { adults: Math.max(0, total - clamped), children: clamped };
+      } else if (kind === "adults") {
+        const total = (cur.adults || 0) + (cur.children || 0);
+        const clamped = Math.min(val, total);
+        next = { adults: clamped, children: Math.max(0, total - clamped) };
+      }
+      day[pkgId] = next;
       return { ...prev, [date]: day };
     });
   };
@@ -91,8 +123,6 @@ export default function EventDetail() {
   const validateSelection = () => {
     if (selectedOrdered.length === 0) return;
     const dates = selectedOrdered.map((p) => p.date);
-    // Stash package selections in sessionStorage so BookingTunnel can read
-    // them (URL would explode on multi-package selections).
     if (packageSelectionsArr.length > 0) {
       sessionStorage.setItem(
         `bbr_event_pkgs_${eventId}`,
@@ -209,9 +239,7 @@ export default function EventDetail() {
                 {programme.map((day, idx) => {
                   const seatsLeft = seats[day.date];
                   const isFull = typeof seatsLeft === "number" && seatsLeft <= 0;
-                  const isSelected = selected.has(day.date);
-                  const priceA = Number(day.price_adult ?? ev.price_adult ?? 0);
-                  const priceC = Number(day.price_child ?? ev.price_child ?? 0);
+                  const isSelected = selectedDates.has(day.date);
                   const dayPkgs = Array.isArray(day.packages) ? day.packages : [];
                   const dayPkgSel = packageSel[day.date] || {};
                   return (
@@ -228,8 +256,15 @@ export default function EventDetail() {
                       }`}
                       data-testid={`programme-day-${day.date}`}
                     >
-                      <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-2">
-                        {fmtDateFR(day.date)}
+                      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                        <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A]">
+                          {fmtDateFR(day.date)}
+                        </div>
+                        {typeof seatsLeft === "number" && (
+                          <span className={`text-[0.7rem] ${seatsLeft <= 5 ? "text-[#B8922A]" : "text-[#0A0A0A]/55"}`}>
+                            <Users size={11} className="inline mr-1" /> {seatsLeft} place{seatsLeft > 1 ? "s" : ""} dispo.
+                          </span>
+                        )}
                       </div>
                       <h3 className="font-display-serif text-2xl md:text-3xl text-[#0A0A0A] mb-2 leading-tight">
                         {day.title || ev.title}
@@ -240,107 +275,138 @@ export default function EventDetail() {
                         </p>
                       )}
 
-                      {/* Base pricing line (always shown — default pass) */}
-                      <div className="flex flex-wrap items-baseline justify-between gap-2 py-3 border-y border-[#0A0A0A]/8 text-sm">
-                        <div>
-                          <span className="text-[#0A0A0A]/65 mr-3">Adulte <span className="font-medium text-[#0A0A0A]">{formatXOF(priceA)}</span></span>
-                          {priceC > 0 && (
-                            <span className="text-[#0A0A0A]/65">Enfant <span className="font-medium text-[#0A0A0A]">{formatXOF(priceC)}</span></span>
-                          )}
+                      {/* Sold-out badge (no clickable interactions if full) */}
+                      {isFull && (
+                        <div className="inline-flex items-center justify-center px-4 py-2.5 border border-red-200 text-red-700 text-[0.7rem] uppercase tracking-[0.22em]" data-testid={`day-soldout-${day.date}`}>
+                          Complet
                         </div>
-                        {typeof seatsLeft === "number" && (
-                          <span className={`text-[0.7rem] ${seatsLeft <= 5 ? "text-[#B8922A]" : "text-[#0A0A0A]/55"}`}>
-                            <Users size={11} className="inline mr-1" /> {seatsLeft} place{seatsLeft > 1 ? "s" : ""} dispo.
-                          </span>
-                        )}
-                      </div>
+                      )}
 
-                      {/* Premium packages list */}
-                      {dayPkgs.length > 0 && (
+                      {/* Premium packages — selecting any one auto-marks the date */}
+                      {!isFull && dayPkgs.length > 0 && (
                         <div className="mt-4 space-y-3" data-testid={`packages-${day.date}`}>
                           {dayPkgs.map((pkg) => {
                             const sel = dayPkgSel[pkg.id] || { adults: 0, children: 0 };
                             const persons = (sel.adults || 0) + (sel.children || 0);
                             const max = Number(pkg.max_persons) || 0;
-                            const lineAmount = (sel.adults || 0) * Number(pkg.price_adult || 0)
-                                              + (sel.children || 0) * Number(pkg.price_child || 0);
+                            const flatPrice = Number(pkg.price_adult || pkg.price || 0);
+                            const lineAmount = persons > 0 ? flatPrice : 0;
+                            const pkgActive = persons > 0;
+                            const togglePackage = () => {
+                              // Click on a non-active package → take the whole capacity (max)
+                              // with adults = max, children = 0 (user can split next).
+                              // Click on an active package → release (set both to 0).
+                              if (pkgActive) {
+                                updatePkgQty(day.date, pkg.id, "persons", 0, max);
+                              } else {
+                                updatePkgQty(day.date, pkg.id, "persons", Math.max(1, max), max);
+                              }
+                            };
                             return (
-                              <div key={pkg.id} className="border border-[#0A0A0A]/10 bg-[#FAFAF7] p-3 sm:p-4">
-                                <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                              <div
+                                key={pkg.id}
+                                className={`border transition-colors ${
+                                  pkgActive
+                                    ? "border-[#B8922A] bg-[#FBF6E9]"
+                                    : "border-[#0A0A0A]/10 bg-[#FAFAF7] hover:border-[#B8922A]"
+                                }`}
+                                data-testid={`pkg-card-${day.date}-${pkg.id}`}
+                              >
+                                {/* Clickable header — selects/deselects the package */}
+                                <button
+                                  type="button"
+                                  onClick={togglePackage}
+                                  className="w-full text-left p-3 sm:p-4 flex flex-wrap items-start justify-between gap-2"
+                                  data-testid={`pkg-toggle-${day.date}-${pkg.id}`}
+                                  aria-pressed={pkgActive}
+                                >
                                   <div className="min-w-0 flex-1">
-                                    <div className="font-medium text-[#0A0A0A]">{pkg.label}</div>
-                                    <div className="text-[0.75rem] text-[#0A0A0A]/55 mt-0.5">
-                                      Adulte <span className="text-[#B8922A]">{formatXOF(pkg.price_adult || 0)}</span>
-                                      {Number(pkg.price_child) > 0 && (
-                                        <> · Enfant <span className="text-[#B8922A]">{formatXOF(pkg.price_child)}</span></>
-                                      )}
-                                      · max {pkg.max_persons} pers.
+                                    <div className="flex items-center gap-2 font-medium text-[#0A0A0A]">
+                                      <span className={`w-4 h-4 inline-flex items-center justify-center border ${
+                                        pkgActive ? "bg-[#B8922A] border-[#B8922A] text-white" : "border-[#0A0A0A]/30 bg-white"
+                                      }`}>
+                                        {pkgActive && <Check size={11} />}
+                                      </span>
+                                      {pkg.label}
+                                    </div>
+                                    <div className="text-[0.75rem] text-[#0A0A0A]/55 mt-0.5 ml-6">
+                                      <span className="text-[#B8922A] font-medium">{formatXOF(flatPrice)}</span>
+                                      <span> · forfait · max {pkg.max_persons} pers.</span>
                                     </div>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setModalPkg({ day, pkg })}
-                                    className="text-[0.62rem] uppercase tracking-[0.18em] text-[#B8922A] hover:underline inline-flex items-center gap-1"
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => { e.stopPropagation(); setModalPkg({ day, pkg }); }}
+                                    onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setModalPkg({ day, pkg }); } }}
+                                    className="text-[0.62rem] uppercase tracking-[0.18em] text-[#B8922A] hover:underline inline-flex items-center gap-1 cursor-pointer"
                                     data-testid={`pkg-info-${day.date}-${pkg.id}`}
                                   >
                                     <Info size={11} /> Voir le contenu
-                                  </button>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-3 mt-2">
-                                  <label className="inline-flex items-center gap-2 text-[0.78rem] text-[#0A0A0A]/75">
-                                    Adultes
-                                    <input
-                                      type="number" min={0} max={max}
-                                      value={sel.adults || 0}
-                                      onChange={(e) => updatePkgQty(day.date, pkg.id, "adults", e.target.value)}
-                                      className="w-16 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                                      data-testid={`pkg-adults-${day.date}-${pkg.id}`}
-                                    />
-                                  </label>
-                                  <label className="inline-flex items-center gap-2 text-[0.78rem] text-[#0A0A0A]/75">
-                                    Enfants
-                                    <input
-                                      type="number" min={0} max={max}
-                                      value={sel.children || 0}
-                                      onChange={(e) => updatePkgQty(day.date, pkg.id, "children", e.target.value)}
-                                      className="w-16 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                                      data-testid={`pkg-children-${day.date}-${pkg.id}`}
-                                    />
-                                  </label>
-                                  {persons > 0 && (
-                                    <span className={`text-[0.72rem] ml-auto font-medium ${persons > max ? "text-red-600" : "text-[#B8922A]"}`}>
-                                      {persons > max
-                                        ? `${persons} > max ${max}`
-                                        : `${persons}/${max} · ${formatXOF(lineAmount)}`}
-                                    </span>
-                                  )}
-                                </div>
+                                  </span>
+                                </button>
+
+                                {/* Persons + Adult/Children split — visible only when selected */}
+                                {pkgActive && (
+                                  <div className="px-3 sm:px-4 pb-4 pt-1 border-t border-[#B8922A]/20 space-y-3" data-testid={`pkg-counts-${day.date}-${pkg.id}`}>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                      <label className="inline-flex items-center gap-2 text-[0.78rem] text-[#0A0A0A]/80 font-medium">
+                                        Nombre de personnes
+                                        <input
+                                          type="number" min={1} max={max}
+                                          value={persons}
+                                          onChange={(e) => updatePkgQty(day.date, pkg.id, "persons", e.target.value, max)}
+                                          className="w-16 px-2 py-1 text-sm border border-[#B8922A]/40 bg-white focus:border-[#B8922A] outline-none text-center"
+                                          data-testid={`pkg-persons-${day.date}-${pkg.id}`}
+                                        />
+                                        <span className="text-[0.7rem] text-[#0A0A0A]/55">/ {max}</span>
+                                      </label>
+                                      <span className="ml-auto text-[0.78rem] font-medium text-[#B8922A]">
+                                        {formatXOF(lineAmount)}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[#B8922A]/15">
+                                      <label className="inline-flex items-center gap-2 text-[0.74rem] text-[#0A0A0A]/70">
+                                        Dont adultes
+                                        <input
+                                          type="number" min={0} max={persons}
+                                          value={sel.adults || 0}
+                                          onChange={(e) => updatePkgQty(day.date, pkg.id, "adults", e.target.value, max)}
+                                          className="w-14 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center"
+                                          data-testid={`pkg-adults-${day.date}-${pkg.id}`}
+                                        />
+                                      </label>
+                                      <label className="inline-flex items-center gap-2 text-[0.74rem] text-[#0A0A0A]/70">
+                                        Dont enfants
+                                        <input
+                                          type="number" min={0} max={persons}
+                                          value={sel.children || 0}
+                                          onChange={(e) => updatePkgQty(day.date, pkg.id, "children", e.target.value, max)}
+                                          className="w-14 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center"
+                                          data-testid={`pkg-children-${day.date}-${pkg.id}`}
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
                         </div>
                       )}
 
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        {isFull ? (
-                          <div className="inline-flex items-center justify-center px-4 py-2.5 border border-red-200 text-red-700 text-[0.7rem] uppercase tracking-[0.22em]" data-testid={`day-soldout-${day.date}`}>
-                            Complet
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => toggleDate(day.date)}
-                            className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] transition-colors border ${
-                              isSelected
-                                ? "bg-[#B8922A] text-white border-[#B8922A]"
-                                : "bg-white text-[#0A0A0A] border-[#0A0A0A]/20 hover:border-[#B8922A] hover:text-[#B8922A]"
-                            }`}
-                            data-testid={`day-select-${day.date}`}
-                            aria-pressed={isSelected}
+                      {/* No packages configured: fall back to a single "Réserver cette date" CTA. */}
+                      {!isFull && dayPkgs.length === 0 && (
+                        <div className="mt-5">
+                          <Link
+                            to={`/booking/special-event/${eventId}?date=${day.date}`}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] bg-white text-[#0A0A0A] border border-[#0A0A0A]/20 hover:border-[#B8922A] hover:text-[#B8922A] transition-colors"
+                            data-testid={`day-quick-book-${day.date}`}
                           >
-                            {isSelected ? (<><Check size={13} /> Date sélectionnée</>) : ("Sélectionner cette date")}
-                          </button>
-                        )}
-                      </div>
+                            Réserver cette date
+                          </Link>
+                        </div>
+                      )}
                     </motion.div>
                   );
                 })}
@@ -351,16 +417,14 @@ export default function EventDetail() {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 max-w-6xl mx-auto">
                   <div className="text-sm text-[#0A0A0A]/70">
                     {selectedOrdered.length === 0 ? (
-                      <span className="text-[#0A0A0A]/50">Sélectionnez au moins une date pour continuer.</span>
+                      <span className="text-[#0A0A0A]/50">Sélectionnez au moins une offre pour continuer.</span>
                     ) : (
                       <>
                         <span className="font-medium text-[#0A0A0A]">{selectedOrdered.length}</span>{" "}
-                        date{selectedOrdered.length > 1 ? "s" : ""} sélectionnée{selectedOrdered.length > 1 ? "s" : ""}
-                        {selectedOrdered.length > 1 && (
-                          <span className="block text-[0.7rem] text-[#0A0A0A]/50 mt-0.5">
-                            Vous validerez et paierez chaque date séparément, dans l'ordre choisi.
-                          </span>
-                        )}
+                        date{selectedOrdered.length > 1 ? "s" : ""} ·{" "}
+                        <span className="font-medium text-[#0A0A0A]">{packageSelectionsArr.length}</span>{" "}
+                        forfait{packageSelectionsArr.length > 1 ? "s" : ""} ·{" "}
+                        <span className="text-[#B8922A] font-medium" data-testid="event-total">{formatXOF(eventTotal)}</span>
                       </>
                     )}
                   </div>
@@ -419,14 +483,10 @@ export default function EventDetail() {
                 <p className="text-sm text-[#0A0A0A]/75 leading-relaxed whitespace-pre-line">
                   {modalPkg.pkg.description || "Aucune description détaillée pour ce package."}
                 </p>
-                <div className="mt-5 pt-5 border-t border-[#0A0A0A]/8 grid grid-cols-3 gap-3 text-center">
+                <div className="mt-5 pt-5 border-t border-[#0A0A0A]/8 grid grid-cols-2 gap-3 text-center">
                   <div>
-                    <div className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/45">Adulte</div>
-                    <div className="text-[#B8922A] font-medium mt-1">{formatXOF(modalPkg.pkg.price_adult || 0)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/45">Enfant</div>
-                    <div className="text-[#B8922A] font-medium mt-1">{formatXOF(modalPkg.pkg.price_child || 0)}</div>
+                    <div className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/45">Forfait</div>
+                    <div className="text-[#B8922A] font-medium mt-1">{formatXOF(modalPkg.pkg.price_adult || modalPkg.pkg.price || 0)}</div>
                   </div>
                   <div>
                     <div className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/45">Pers. max</div>

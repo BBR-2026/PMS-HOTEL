@@ -79,7 +79,7 @@ function PackagesSubBuilder({ packages, onChange }) {
   return (
     <div className="mt-3 pt-3 border-t border-[#B8922A]/20 lg:col-span-12">
       <div className="text-[0.55rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2 font-medium">
-        Packages premium {packages.length > 0 ? `(${packages.length})` : ""}
+        Forfaits {packages.length > 0 ? `(${packages.length})` : ""}
       </div>
       {packages.length > 0 && (
         <div className="space-y-2 mb-3">
@@ -114,22 +114,13 @@ function PackagesSubBuilder({ packages, onChange }) {
                     className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none resize-none"
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-2 lg:contents">
-                  <div className="lg:col-span-2">
-                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Prix adulte</label>
+                <div className="grid grid-cols-2 gap-2 lg:contents">
+                  <div className="lg:col-span-3">
+                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Prix du forfait (FCFA)</label>
                     <input
                       type="number" min={0}
                       value={pkg.price_adult}
                       onChange={(e) => updatePkg(idx, "price_adult", parseInt(e.target.value, 10) || 0)}
-                      className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                    />
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Prix enfant</label>
-                    <input
-                      type="number" min={0}
-                      value={pkg.price_child}
-                      onChange={(e) => updatePkg(idx, "price_child", parseInt(e.target.value, 10) || 0)}
                       className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                     />
                   </div>
@@ -168,25 +159,15 @@ function PackagesSubBuilder({ packages, onChange }) {
             data-testid="pkg-new-description"
           />
         </div>
-        <div className="grid grid-cols-3 gap-2 lg:contents">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-2 gap-2 lg:contents">
+          <div className="lg:col-span-3">
             <input
               type="number" min={0}
               value={draft.price_adult}
               onChange={(e) => setDraft({ ...draft, price_adult: parseInt(e.target.value, 10) || 0 })}
-              placeholder="Adulte"
+              placeholder="Prix forfait"
               className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
               data-testid="pkg-new-price-adult"
-            />
-          </div>
-          <div className="lg:col-span-2">
-            <input
-              type="number" min={0}
-              value={draft.price_child}
-              onChange={(e) => setDraft({ ...draft, price_child: parseInt(e.target.value, 10) || 0 })}
-              placeholder="Enfant"
-              className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-              data-testid="pkg-new-price-child"
             />
           </div>
           <div className="lg:col-span-1">
@@ -194,7 +175,7 @@ function PackagesSubBuilder({ packages, onChange }) {
               type="number" min={1} max={50}
               value={draft.max_persons}
               onChange={(e) => setDraft({ ...draft, max_persons: parseInt(e.target.value, 10) || 1 })}
-              placeholder="Pax"
+              placeholder="Pax max"
               className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
               data-testid="pkg-new-max"
             />
@@ -206,7 +187,7 @@ function PackagesSubBuilder({ packages, onChange }) {
           className="lg:col-span-12 mt-1 w-full px-2 py-1.5 text-[0.55rem] uppercase tracking-[0.18em] bg-[#B8922A] text-white hover:bg-[#9d7a23] inline-flex items-center justify-center gap-1"
           data-testid="pkg-add-btn"
         >
-          <Plus size={11} /> Ajouter un package
+          <Plus size={11} /> Ajouter un forfait
         </button>
       </div>
     </div>
