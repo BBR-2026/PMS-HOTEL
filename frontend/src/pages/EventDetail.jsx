@@ -60,19 +60,14 @@ export default function EventDetail() {
   const validateSelection = () => {
     if (selectedOrdered.length === 0) return;
     const dates = selectedOrdered.map((p) => p.date);
-    const first = dates[0];
-    const rest = dates.slice(1);
-    if (rest.length > 0) {
-      // Stash queued dates so the booking tunnel / result page can prompt the
-      // user to book the next selected date after completing the current one.
-      sessionStorage.setItem(
-        `bbr_event_queue_${eventId}`,
-        JSON.stringify({ remaining: rest, total: dates.length, completed: 0 })
-      );
-    } else {
-      sessionStorage.removeItem(`bbr_event_queue_${eventId}`);
-    }
-    navigate(`/booking/special-event/${eventId}?date=${encodeURIComponent(first)}`);
+    // Single booking covering all selected dates. The booking tunnel reads
+    // the comma-separated `dates` param, computes the cumulative total from
+    // the event programme and skips the date-picking step.
+    const qs = new URLSearchParams({
+      date: dates[0],
+      ...(dates.length > 1 ? { dates: dates.join(",") } : {}),
+    }).toString();
+    navigate(`/booking/special-event/${eventId}?${qs}`);
   };
 
   if (loading) {

@@ -35,6 +35,9 @@ export default function BookingTunnel() {
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
   const [participants, setParticipants] = useState([]);
+  // Multi-day cumulative booking (special events): all selected dates that
+  // will be billed in a single transaction. Empty means single-day flow.
+  const [multiDayDates, setMultiDayDates] = useState([]);
   const [contact, setContact] = useState({
     special_requests: "",
     boat_time: "",
@@ -91,10 +94,18 @@ export default function BookingTunnel() {
             image_url: ev.image_url || "",
           });
           // Pre-select date if passed via ?date=YYYY-MM-DD (multi-day deep link)
-          const qDate = new URLSearchParams(location.search).get("date");
+          const sp = new URLSearchParams(location.search);
+          const qDate = sp.get("date");
           if (qDate && (ev.event_dates || []).includes(qDate)) {
             const [y, m, d] = qDate.split("-").map(Number);
             setSelectedDate(new Date(y, m - 1, d));
+          }
+          // Multi-day cumulative booking: read comma-separated dates list.
+          const qDates = sp.get("dates");
+          if (qDates) {
+            const parsed = qDates.split(",").map((s) => s.trim()).filter(Boolean);
+            const valid = parsed.filter((d) => (ev.event_dates || []).includes(d));
+            if (valid.length > 1) setMultiDayDates(valid);
           }
         })
         .catch(() => navigate("/"));
@@ -104,6 +115,17 @@ export default function BookingTunnel() {
   }, [offerId, eventId, isSpecialEvent, navigate, location.search]);
 
   useEffect(() => {
+    // Multi-day cumulative booking: bypass the regular availability check and
+    // use the smallest remaining-seats across all selected dates so the user
+    // can't overbook on any individual day.
+    if (isSpecialEvent && multiDayDates.length > 1 && offer) {
+      const remainingPerDay = multiDayDates.map((d) =>
+        (offer.seats_per_date && offer.seats_per_date[d]) ?? offer.max_capacity ?? 0
+      );
+      const minRemaining = remainingPerDay.length ? Math.min(...remainingPerDay) : (offer.max_capacity ?? 0);
+      setAvailability({ remaining: minRemaining, max_capacity: offer.max_capacity ?? 0 });
+      return;
+    }
     if (!selectedDate) return;
     if (isSpecialEvent) {
       // Availability is derived from the event's seats_per_date map
@@ -114,7 +136,7 @@ export default function BookingTunnel() {
     }
     const iso = format(selectedDate, "yyyy-MM-dd");
     api.get(`/availability/${offerId}/${iso}`).then((r) => setAvailability(r.data)).catch(() => {});
-  }, [selectedDate, offerId, isSpecialEvent, offer]);
+  }, [selectedDate, offerId, isSpecialEvent, offer, multiDayDates]);
 
   // Keep participants array in sync with adults count only.
   // Children are no longer collected as participants — they're counted via `children`
@@ -145,17 +167,37 @@ export default function BookingTunnel() {
     return b ? Number(b.charter_price || 0) : 0;
   }, [charterEnabled, charterBoatId, charterBoats]);
 
+  // Per-day programme map for multi-day events (date → {price_adult, price_child, title})
+  const programmeByDate = useMemo(() => {
+    const m = {};
+    if (specialEvent?.programme) {
+      for (const p of specialEvent.programme) {
+        if (p?.date) m[p.date] = p;
+      }
+    }
+    return m;
+  }, [specialEvent]);
+
   const total = useMemo(() => {
     if (!offer) return 0;
     let base;
     if (isOvernight && hasTiers) {
       base = selectedTier ? selectedTier.price * nights * rooms : 0;
+    } else if (isSpecialEvent && multiDayDates.length > 1) {
+      // Cumulative across all selected event days, picking per-day prices
+      // from the programme when defined (falls back to event-level prices).
+      base = multiDayDates.reduce((sum, d) => {
+        const item = programmeByDate[d] || {};
+        const pa = Number(item.price_adult ?? offer.price_adult ?? 0);
+        const pc = Number(item.price_child ?? offer.price_child ?? 0);
+        return sum + adults * pa + children * pc;
+      }, 0);
     } else {
       const guestsBase = adults * offer.price_adult + children * offer.price_child;
       base = isOvernight ? guestsBase * nights : guestsBase;
     }
     return base + charterAmount;
-  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount]);
+  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -198,6 +240,17 @@ export default function BookingTunnel() {
     }
   }, [returnBoatTimes, contact.return_boat_time]);
 
+  // Multi-day cumulative booking: skip the date-picker step entirely — dates
+  // were already chosen on /event/:id. Auto-jump to step 2 once the event
+  // metadata is loaded and the dates state is hydrated. MUST be declared
+  // above the conditional `return` to satisfy react-hooks/rules-of-hooks.
+  useEffect(() => {
+    if (isSpecialEvent && multiDayDates.length > 1 && step === 1) {
+      setStep(2);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSpecialEvent, multiDayDates.length, step]);
+
   if (!offer) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center text-[#0A0A0A]/40 text-sm uppercase tracking-[0.3em]">
@@ -231,20 +284,30 @@ export default function BookingTunnel() {
   if (isOvernight && !contact.return_boat_time) missingStep3.push(t.booking.missingReturnBoatTime);
   if (charterEnabled && !charterBoatId) missingStep3.push("bateau privatisé");
 
+  const isMultiDay = isSpecialEvent && multiDayDates.length > 1;
+
   const stepValid = {
     1:
-      !!selectedDate &&
-      (!isOvernight || (!!checkoutDate && nights >= 1)) &&
-      remaining !== null &&
-      remaining >= totalGuests &&
-      totalGuests >= 1,
+      isMultiDay || (
+        !!selectedDate &&
+        (!isOvernight || (!!checkoutDate && nights >= 1)) &&
+        remaining !== null &&
+        remaining >= totalGuests &&
+        totalGuests >= 1
+      ),
     2: totalGuests >= 1 && (remaining === null || remaining >= totalGuests) && (!hasTiers || !!selectedTier),
     3: contactValid,
     4: true,
   };
 
   const goNext = () => step < 5 && setStep(step + 1);
-  const goBack = () => step > 1 && setStep(step - 1);
+  const goBack = () => {
+    if (step > 1) {
+      // Don't bounce back into the (skipped) date step on multi-day bookings.
+      if (step === 2 && isMultiDay) return;
+      setStep(step - 1);
+    }
+  };
 
   const handleCreateBooking = async () => {
     if (!stepValid[3]) return;
@@ -275,6 +338,7 @@ export default function BookingTunnel() {
         return_boat_time: isOvernight ? contact.return_boat_time : null,
         special_requests: contact.special_requests,
         charter_boat_id: charterEnabled && charterBoatId ? charterBoatId : null,
+        multi_day_dates: (isSpecialEvent && multiDayDates.length > 1) ? multiDayDates : null,
       });
       setBookingResp(data);
       setStep(5);
@@ -914,6 +978,29 @@ export default function BookingTunnel() {
                         label={t.booking.nights}
                         value={`${nights} ${nights > 1 ? t.booking.nights.toLowerCase() : t.booking.night}`}
                       />
+                    </>
+                  ) : isMultiDay ? (
+                    <>
+                      <SummaryRow
+                        label="Dates sélectionnées"
+                        value={`${multiDayDates.length} journée${multiDayDates.length > 1 ? "s" : ""}`}
+                      />
+                      <div className="pl-1 -mt-1 mb-3" data-testid="summary-multi-dates">
+                        {multiDayDates.map((d) => {
+                          const item = programmeByDate[d] || {};
+                          const pa = Number(item.price_adult ?? offer.price_adult ?? 0);
+                          const pc = Number(item.price_child ?? offer.price_child ?? 0);
+                          const line = adults * pa + children * pc;
+                          const [y, m, dd] = d.split("-");
+                          const dateLabel = new Date(+y, +m - 1, +dd).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+                          return (
+                            <div key={d} className="flex justify-between items-baseline text-[0.78rem] text-[#0A0A0A]/70 py-0.5">
+                              <span>· {dateLabel}{item.title ? ` — ${item.title}` : ""}</span>
+                              <span className="tabular-nums">{formatXOF(line)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </>
                   ) : (
                     <SummaryRow

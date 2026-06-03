@@ -336,10 +336,16 @@ def _wrap_html(content_html: str, *, preheader: str = "") -> str:
 def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
                                 date_str: str, boat_time: Optional[str],
                                 amount_label: str, ticket_url: Optional[str],
-                                offer_type: str = "") -> dict:
-    """Confirmation de paiement (envoyée après webhook FineoPay)."""
+                                offer_type: str = "",
+                                hero_override: str = "") -> dict:
+    """Confirmation de paiement (envoyée après webhook FineoPay).
+
+    ``hero_override`` lets the caller force a specific image URL — used to
+    surface the actual offer/event image instead of the static default
+    (special events were rendering with the Sunset photo otherwise).
+    """
     greet = _formal_greeting(name)
-    hero = OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
+    hero = (hero_override or "").strip() or OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
 
     intro = (
         f"Bonjour {greet}, nous avons le plaisir de vous confirmer votre réservation pour "

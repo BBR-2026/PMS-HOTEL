@@ -18,38 +18,7 @@ export default function FineoResult() {
   const [resumeBusy, setResumeBusy] = useState(false);
   const [refToken, setRefToken] = useState(null);
   const [autoDownloaded, setAutoDownloaded] = useState(false);
-  const [eventQueue, setEventQueue] = useState(null); // {eventId, remaining, total, completed}
   const tickRef = useRef(null);
-
-  // Detect a pending multi-day event queue stashed by EventDetail.jsx
-  useEffect(() => {
-    if (status !== "paid") return;
-    const keys = Object.keys(sessionStorage).filter((k) => k.startsWith("bbr_event_queue_"));
-    for (const k of keys) {
-      try {
-        const eventId = k.replace("bbr_event_queue_", "");
-        const q = JSON.parse(sessionStorage.getItem(k) || "{}");
-        if (Array.isArray(q.remaining) && q.remaining.length > 0) {
-          setEventQueue({ eventId, ...q });
-          return;
-        }
-      } catch (_) {}
-    }
-  }, [status]);
-
-  const continueQueue = () => {
-    if (!eventQueue) return;
-    const [next, ...rest] = eventQueue.remaining;
-    if (rest.length > 0) {
-      sessionStorage.setItem(
-        `bbr_event_queue_${eventQueue.eventId}`,
-        JSON.stringify({ remaining: rest, total: eventQueue.total, completed: (eventQueue.completed || 0) + 1 })
-      );
-    } else {
-      sessionStorage.removeItem(`bbr_event_queue_${eventQueue.eventId}`);
-    }
-    window.location.href = `/booking/special-event/${eventQueue.eventId}?date=${encodeURIComponent(next)}`;
-  };
 
   const resumeCheckout = async () => {
     if (!bookingId) return;
@@ -227,28 +196,6 @@ export default function FineoResult() {
             <div className="border border-[#B8922A]/30 bg-[#B8922A]/5 p-4 text-[0.78rem] text-[#0A0A0A]/75 mb-6">
               Votre billet QR vous a été envoyé par email et WhatsApp. Conservez-le pour l'embarquement.
             </div>
-            {eventQueue && eventQueue.remaining?.length > 0 && (
-              <div className="border border-[#B8922A] bg-[#FAF5E8] p-4 sm:p-5 text-left mb-6" data-testid="event-queue-prompt">
-                <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
-                  Sélection multi-dates
-                </div>
-                <p className="text-sm text-[#0A0A0A] mb-3 leading-relaxed">
-                  Il vous reste{" "}
-                  <strong>
-                    {eventQueue.remaining.length} date{eventQueue.remaining.length > 1 ? "s" : ""}
-                  </strong>{" "}
-                  à réserver sur votre sélection initiale ({(eventQueue.completed || 0) + 1}/{eventQueue.total} payée
-                  {(eventQueue.completed || 0) + 1 > 1 ? "s" : ""}).
-                </p>
-                <button
-                  onClick={continueQueue}
-                  className="btn-gold inline-flex items-center gap-2 text-[0.7rem]"
-                  data-testid="event-queue-next-btn"
-                >
-                  Réserver la date suivante →
-                </button>
-              </div>
-            )}
             <div className="flex flex-wrap items-center justify-center gap-3">
               {refToken && (
                 <a

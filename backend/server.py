@@ -408,6 +408,11 @@ class BookingCreate(BaseModel):
     special_requests: Optional[str] = ""
     # Required when offer_type == "special_event". Identifies which event the booking targets.
     special_event_id: Optional[str] = None
+    # Multi-day special events: pass the full list of dates the customer
+    # selected on the event detail page. When set (≥2 dates), backend bills
+    # a cumulative total = Σ (adults*priceA[d] + children*priceC[d]) and
+    # generates one ticket per (adult × date).
+    multi_day_dates: Optional[List[str]] = None
     # Optional private boat charter — adds boat_charter_amount to the total.
     charter_boat_id: Optional[str] = None
 
@@ -1955,6 +1960,16 @@ async def create_booking(body: BookingCreate):
                 status_code=400,
                 detail=f"Selected date is not part of this event. Allowed: {', '.join(event_dates)}",
             )
+        # Multi-day cumulative booking: validate every selected date belongs to
+        # the programme and that there's still room on each one.
+        if body.multi_day_dates:
+            extra_dates = [d for d in body.multi_day_dates if d != body.date]
+            for d in extra_dates:
+                if event_dates and d not in event_dates:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Date {d} not part of this event",
+                    )
     else:
         allowed_times = _boat_times_for_date(body.offer_type, booking_date.weekday())
         if body.boat_time not in allowed_times:
@@ -2095,6 +2110,38 @@ async def create_booking(body: BookingCreate):
             total = nights * (body.adults * offer["price_adult"] + body.children * offer["price_child"])
     else:
         total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
+        # Multi-day special event with cumulative pricing: sum each selected
+        # date's per-day prices (resolved from the event programme). The
+        # primary `body.date` price is already in `total` above (offer was
+        # resolved with that date); add the additional dates here.
+        if is_special and body.multi_day_dates and body.special_event_id:
+            extra_dates = [d for d in body.multi_day_dates if d != body.date]
+            if extra_dates:
+                ev_doc = await db.special_events.find_one(
+                    {"id": body.special_event_id},
+                    {"_id": 0, "programme": 1, "price_adult": 1, "price_child": 1, "capacity": 1},
+                )
+                prog = {p.get("date"): p for p in (ev_doc.get("programme") or []) if p.get("date")} if ev_doc else {}
+                ev_cap = int((ev_doc or {}).get("capacity", offer["max_capacity"]))
+                for d in extra_dates:
+                    item = prog.get(d) or {}
+                    pa = int(item.get("price_adult", (ev_doc or {}).get("price_adult", offer["price_adult"])))
+                    pc = int(item.get("price_child", (ev_doc or {}).get("price_child", offer["price_child"])))
+                    total += body.adults * pa + body.children * pc
+                    # Capacity guard for the extra date
+                    extra_booked = 0
+                    async for b in db.bookings.find(
+                        {"offer_type": "special_event", "special_event_id": body.special_event_id,
+                         "date": d, "status": {"$ne": "cancelled"}},
+                        {"_id": 0, "adults": 1, "children": 1},
+                    ):
+                        extra_booked += int(b.get("adults", 0)) + int(b.get("children", 0))
+                    # Also count current booking's secondary dates from THIS submission
+                    if extra_booked + total_guests > ev_cap:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Plus assez de places le {d} ({ev_cap - extra_booked} restantes).",
+                        )
 
     # Optional private boat charter — adds a flat amount to the total.
     charter_boat: Optional[dict] = None
@@ -2128,6 +2175,11 @@ async def create_booking(body: BookingCreate):
         "offer_name": offer["name_fr"],
         "pole": _pole_for_offer(body.offer_type),
         "special_event_id": offer["event_id"] if is_special else None,
+        # Multi-day cumulative bookings keep `date` = first day (sort key for
+        # dashboards) and list every selected day in `multi_day_dates`.
+        "multi_day_dates": (
+            sorted(set(body.multi_day_dates)) if (is_special and body.multi_day_dates and len(body.multi_day_dates) > 1) else None
+        ),
         "date": body.date,
         "checkout_date": checkout_iso,
         "nights": nights,
@@ -2227,76 +2279,92 @@ async def pay_booking(booking_id: str, body: PayBooking):
     }
 
     qr_codes = []
-    for adult_i, p in enumerate(adult_participants, start=1):
-        token = uuid.uuid4().hex
-        is_booker = adult_i == 1
-        # Booker gets a richer label that mentions the children he/she is carrying.
-        if is_booker and children_count > 0:
-            label_fr = f"Réservant · +{children_count} enfant{'s' if children_count > 1 else ''}"
-            label_en = f"Booker · +{children_count} child{'ren' if children_count > 1 else ''}"
-        elif is_booker:
-            label_fr = "Réservant"
-            label_en = "Booker"
-        else:
-            label_fr = f"Adulte #{adult_i}"
-            label_en = f"Adult #{adult_i}"
-        guest_payload = {
-            **base_payload,
-            "guest_kind": "adult",
-            "guest_index": adult_i,
-            "guest_label": label_fr,
-            "guest_name": p["name"],
-            "guest_surname": p["surname"],
-            "guest_email": p.get("email", "") or booking.get("email", ""),
-            "guest_phone": p.get("phone", "") or booking.get("phone", ""),
-            "guest_nationality": p["nationality"],
-            "guest_token": token,
-            "children_attached": children_count if is_booker else 0,
-        }
-        payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
-        compact_qr = json.dumps(
-            {"type": "ticket", "token": token, "ref": booking_id[:8].upper()},
-            ensure_ascii=False, separators=(",", ":"),
-        )
-        token_short = token[:10].upper()
-        entry = {
-            "label_fr": label_fr,
-            "label_en": label_en,
-            "kind": "adult",
-            "guest_name": p["name"],
-            "guest_surname": p["surname"],
-            "guest_email": p.get("email", "") or booking.get("email", ""),
-            "guest_phone": p.get("phone", "") or booking.get("phone", ""),
-            "guest_nationality": p["nationality"],
-            "qr_token": token,
-            "qr_payload": payload_str,
-            "qr_code": make_qr(compact_qr, styled=styled_qr),
-            "children_attached": children_count if is_booker else 0,
-        }
-        if styled_qr:
-            entry["ticket_image"] = make_ticket_image(
-                offer_id=booking["offer_type"],
-                offer_name=offer["name_fr"],
-                date_iso=booking["date"],
-                boat_time=booking.get("boat_time", ""),
-                owner_name=f"{p['name']} {p['surname']}",
-                qr_payload=compact_qr,
-                ref_code=token_short,
-                lang="fr",
-                hero_url=offer.get("image_url") or None,
+    # Multi-day cumulative bookings → one ticket per (adult × date).
+    # Single-day bookings → unchanged: one ticket per adult.
+    ticket_dates: list = list(booking.get("multi_day_dates") or []) or [booking["date"]]
+    for ticket_date in ticket_dates:
+        for adult_i, p in enumerate(adult_participants, start=1):
+            token = uuid.uuid4().hex
+            is_booker = adult_i == 1
+            # Per-day label (if multi-day) so the booker doesn't get N identical
+            # "Réservant" entries — easier to attach individually in the email.
+            day_suffix = ""
+            if len(ticket_dates) > 1:
+                try:
+                    d = datetime.strptime(ticket_date, "%Y-%m-%d").date()
+                    day_suffix = f" · {d.day:02d}/{d.month:02d}"
+                except Exception:
+                    day_suffix = f" · {ticket_date}"
+            # Booker gets a richer label that mentions the children he/she is carrying.
+            if is_booker and children_count > 0:
+                label_fr = f"Réservant · +{children_count} enfant{'s' if children_count > 1 else ''}{day_suffix}"
+                label_en = f"Booker · +{children_count} child{'ren' if children_count > 1 else ''}{day_suffix}"
+            elif is_booker:
+                label_fr = f"Réservant{day_suffix}"
+                label_en = f"Booker{day_suffix}"
+            else:
+                label_fr = f"Adulte #{adult_i}{day_suffix}"
+                label_en = f"Adult #{adult_i}{day_suffix}"
+            guest_payload = {
+                **base_payload,
+                # Override the date with the per-ticket day for multi-day tickets
+                "date": ticket_date,
+                "guest_kind": "adult",
+                "guest_index": adult_i,
+                "guest_label": label_fr,
+                "guest_name": p["name"],
+                "guest_surname": p["surname"],
+                "guest_email": p.get("email", "") or booking.get("email", ""),
+                "guest_phone": p.get("phone", "") or booking.get("phone", ""),
+                "guest_nationality": p["nationality"],
+                "guest_token": token,
+                "children_attached": children_count if is_booker else 0,
+            }
+            payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
+            compact_qr = json.dumps(
+                {"type": "ticket", "token": token, "ref": booking_id[:8].upper()},
+                ensure_ascii=False, separators=(",", ":"),
             )
-        else:
-            entry["ticket_image"] = make_cash_receipt_image(
-                offer_id=booking["offer_type"],
-                offer_name=offer["name_fr"],
-                date_iso=booking["date"],
-                boat_time=booking.get("boat_time", ""),
-                owner_name=f"{p['name']} {p['surname']}",
-                ref_code=token_short,
-                lang="fr",
-                hero_url=offer.get("image_url") or None,
-            )
-        qr_codes.append(entry)
+            token_short = token[:10].upper()
+            entry = {
+                "label_fr": label_fr,
+                "label_en": label_en,
+                "kind": "adult",
+                "event_date": ticket_date,
+                "guest_name": p["name"],
+                "guest_surname": p["surname"],
+                "guest_email": p.get("email", "") or booking.get("email", ""),
+                "guest_phone": p.get("phone", "") or booking.get("phone", ""),
+                "guest_nationality": p["nationality"],
+                "qr_token": token,
+                "qr_payload": payload_str,
+                "qr_code": make_qr(compact_qr, styled=styled_qr),
+                "children_attached": children_count if is_booker else 0,
+            }
+            if styled_qr:
+                entry["ticket_image"] = make_ticket_image(
+                    offer_id=booking["offer_type"],
+                    offer_name=offer["name_fr"],
+                    date_iso=ticket_date,
+                    boat_time=booking.get("boat_time", ""),
+                    owner_name=f"{p['name']} {p['surname']}",
+                    qr_payload=compact_qr,
+                    ref_code=token_short,
+                    lang="fr",
+                    hero_url=offer.get("image_url") or None,
+                )
+            else:
+                entry["ticket_image"] = make_cash_receipt_image(
+                    offer_id=booking["offer_type"],
+                    offer_name=offer["name_fr"],
+                    date_iso=ticket_date,
+                    boat_time=booking.get("boat_time", ""),
+                    owner_name=f"{p['name']} {p['surname']}",
+                    ref_code=token_short,
+                    lang="fr",
+                    hero_url=offer.get("image_url") or None,
+                )
+            qr_codes.append(entry)
 
     paid_at = now_iso()
 
@@ -7953,10 +8021,27 @@ async def _send_booking_confirmation_email(booking: dict, temporary: bool = Fals
     amount_label = _fmt_xof(booking.get("paid_amount") or booking.get("total_amount", 0))
     ticket_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking['id']}/ticket.png?ref={booking.get('reference_token', '')}"
 
+    # ---------- Resolve the actual offer/event image so the email banner and
+    # ticket use the right photo (special events were defaulting to "sunset").
+    hero_override = ""
+    if booking.get("offer_type") == "special_event" and booking.get("special_event_id"):
+        ev_doc = await db.special_events.find_one(
+            {"id": booking["special_event_id"]}, {"_id": 0, "image_url": 1}
+        )
+        if ev_doc and (ev_doc.get("image_url") or "").strip():
+            hero_override = ev_doc["image_url"]
+    if not hero_override:
+        ov = await db.offer_overrides.find_one(
+            {"_id": booking.get("offer_type")}, {"_id": 0, "image_url": 1}
+        )
+        if ov and (ov.get("image_url") or "").strip():
+            hero_override = ov["image_url"]
+
     tpl = email_service.render_booking_confirmation(
         name=name, ref=ref, offer_label=offer_label, date_str=date_str,
         boat_time=boat, amount_label=amount_label, ticket_url=ticket_url,
         offer_type=booking.get("offer_type", ""),
+        hero_override=hero_override,
     )
     if temporary:
         # Patch the rendered template with a clearly-marked "PROVISOIRE" wrapper.
@@ -9143,10 +9228,26 @@ async def resend_ticket_email(booking_id: str, staff=Depends(get_current_staff))
     date_str = _fmt_date_fr(booking.get("date", ""))
     amount_label = _fmt_xof(booking.get("total_amount", 0))
     ticket_url = f"{FINEO_PUBLIC_BASE_URL}/api/bookings/{booking_id}/ticket.png?ref={booking.get('reference_token', '')}"
+    # Resolve actual offer/event image for the email banner
+    hero_override = ""
+    if booking.get("offer_type") == "special_event" and booking.get("special_event_id"):
+        ev_doc = await db.special_events.find_one(
+            {"id": booking["special_event_id"]}, {"_id": 0, "image_url": 1}
+        )
+        if ev_doc and (ev_doc.get("image_url") or "").strip():
+            hero_override = ev_doc["image_url"]
+    if not hero_override:
+        ov = await db.offer_overrides.find_one(
+            {"_id": booking.get("offer_type")}, {"_id": 0, "image_url": 1}
+        )
+        if ov and (ov.get("image_url") or "").strip():
+            hero_override = ov["image_url"]
     tpl = email_service.render_booking_confirmation(
         name=name, ref=ref, offer_label=offer_label, date_str=date_str,
         boat_time=booking.get("boat_time"), amount_label=amount_label,
         ticket_url=ticket_url,
+        offer_type=booking.get("offer_type", ""),
+        hero_override=hero_override,
     )
     attachments = []
     try:
