@@ -280,12 +280,15 @@ export default function BookingTunnel() {
     // returnUrl (confirmed by their support), so this is how we guarantee
     // the customer always lands back on our confirmation page once payment
     // settles — the background sweeper detects it within ~30s.
-    if (method === "fineo") {
+    // Hébergement "deposit" also goes through FineoPay with a partial amount —
+    // _settle_payment detects the ratio and applies the proper deposit status.
+    if (method === "fineo" || method === "deposit") {
       try {
-        const { data } = await api.post(`/payments/fineo/checkout`, {
-          booking_id: bookingResp.id,
-          intent: "booking",
-        });
+        const checkoutBody = { booking_id: bookingResp.id, intent: "booking" };
+        if (method === "deposit" && extra.deposit_pct) {
+          checkoutBody.amount = Math.round((bookingResp.total_amount * extra.deposit_pct) / 100);
+        }
+        const { data } = await api.post(`/payments/fineo/checkout`, checkoutBody);
         if (data?.checkout_url) {
           window.open(data.checkout_url, "_blank", "noopener,noreferrer");
           // Move our tab to the result page → starts polling for "paid".
@@ -301,9 +304,6 @@ export default function BookingTunnel() {
       }
     }
 
-    if (method === "deposit") {
-      await new Promise((r) => setTimeout(r, 1200)); // brief UX latency
-    }
     try {
       const { data } = await api.post(`/bookings/${bookingResp.id}/pay`, {
         reference_token: bookingResp.reference_token,

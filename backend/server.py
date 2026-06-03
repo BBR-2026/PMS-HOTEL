@@ -2571,7 +2571,7 @@ async def _resolve_exclusivity_link(doc: dict) -> dict:
             {"id": target, "status": "published"}, {"_id": 0, "id": 1, "title": 1, "image_url": 1},
         )
         if ev:
-            href = f"/booking/special_event/{ev['id']}"
+            href = f"/booking/special-event/{ev['id']}"
             resolved = {"id": ev["id"], "title": ev.get("title"), "image_url": ev.get("image_url")}
     elif lt == "offer" and target:
         if target in OFFERS:
@@ -8406,8 +8406,17 @@ async def fineo_create_checkout(body: FineoCheckoutBody):
         return f"{n:,}".replace(",", " ") + " FCFA"
 
     if body.intent == "booking":
-        amount = int(booking.get("total_amount", 0) or 0)
-        title = f"BBR — {offer_label} — {_fmt_xof(amount)}"
+        total_amount = int(booking.get("total_amount", 0) or 0)
+        # Allow a partial amount when paying a deposit through FineoPay (hébergement).
+        # The frontend passes amount = round(total * pct/100); _settle_payment
+        # auto-detects the deposit ratio and applies the proper booking status.
+        if body.amount is not None and 0 < int(body.amount) < total_amount:
+            amount = int(body.amount)
+            ratio_pct = round(amount * 100 / total_amount)
+            title = f"BBR — Acompte {ratio_pct}% · {offer_label} — {_fmt_xof(amount)}"
+        else:
+            amount = total_amount
+            title = f"BBR — {offer_label} — {_fmt_xof(amount)}"
     elif body.intent == "wallet":
         wallet = await db.wallets.find_one({"booking_id": body.booking_id}, {"_id": 0})
         if not wallet:
