@@ -394,6 +394,14 @@ class Participant(BaseModel):
     kind: Literal["adult", "child"] = "adult"
 
 
+class PackageSelection(BaseModel):
+    """One package picked by the customer for a given event date."""
+    date: str  # YYYY-MM-DD
+    package_id: str
+    adults: int = Field(ge=0, le=50)
+    children: int = Field(ge=0, le=50)
+
+
 class BookingCreate(BaseModel):
     offer_type: OfferType
     date: str  # YYYY-MM-DD (arrival date for overnight stays)
@@ -413,6 +421,10 @@ class BookingCreate(BaseModel):
     # a cumulative total = Σ (adults*priceA[d] + children*priceC[d]) and
     # generates one ticket per (adult × date).
     multi_day_dates: Optional[List[str]] = None
+    # Premium package add-ons (per event day). When set, each entry's
+    # (adults*pkg.price_adult + children*pkg.price_child) is ADDED on top of
+    # the base event price. Multiple packages per day are allowed (mix).
+    package_selections: Optional[List[PackageSelection]] = None
     # Optional private boat charter — adds boat_charter_amount to the total.
     charter_boat_id: Optional[str] = None
 
@@ -435,6 +447,22 @@ class EventPrivatization(BaseModel):
     message: Optional[str] = ""
 
 
+class EventPackage(BaseModel):
+    """Premium pass / package offered for one specific day of an event.
+
+    Customers can mix any number of packages within the same booking — the
+    quantities `adults` / `children` per selection are constrained by
+    `max_persons`. Each package keeps its own per-person pricing so the
+    booking total stays predictable.
+    """
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
+    label: str = Field(min_length=1, max_length=120)
+    description: Optional[str] = ""  # rich text shown in the "Voir le contenu" modal
+    price_adult: int = Field(default=0, ge=0)
+    price_child: int = Field(default=0, ge=0)
+    max_persons: int = Field(default=2, ge=1, le=50)
+
+
 class ProgrammeItem(BaseModel):
     """A mini-event within a multi-day special event (one entry per day).
     `date` must fall between the event's `start_date` and `end_date` inclusive.
@@ -444,6 +472,7 @@ class ProgrammeItem(BaseModel):
     description: Optional[str] = ""
     price_adult: int = Field(default=0, ge=0)
     price_child: int = Field(default=0, ge=0)
+    packages: List[EventPackage] = Field(default_factory=list)
 
 
 class SpecialEventCreate(BaseModel):
@@ -2151,6 +2180,48 @@ async def create_booking(body: BookingCreate):
                             detail=f"Plus assez de places le {d} ({ev_cap - extra_booked} restantes).",
                         )
 
+    # Premium package add-ons (events). Each selection lists how many adults
+    # and children take that specific package on that specific date. Total
+    # surcharge = Σ (adults × pkg.price_adult + children × pkg.price_child).
+    # We also enforce `max_persons` per package per day.
+    package_lines: List[dict] = []
+    if is_special and body.package_selections and body.special_event_id:
+        ev_doc = await db.special_events.find_one(
+            {"id": body.special_event_id},
+            {"_id": 0, "programme": 1, "event_dates": 1, "capacity": 1},
+        )
+        prog = {p.get("date"): p for p in (ev_doc.get("programme") or []) if p.get("date")} if ev_doc else {}
+        for sel in body.package_selections:
+            if sel.adults <= 0 and sel.children <= 0:
+                continue
+            day_item = prog.get(sel.date) or {}
+            pkgs = {p.get("id"): p for p in (day_item.get("packages") or []) if p.get("id")}
+            pkg = pkgs.get(sel.package_id)
+            if not pkg:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Package {sel.package_id} introuvable pour le {sel.date}.",
+                )
+            persons = sel.adults + sel.children
+            if persons > int(pkg.get("max_persons", 0)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Le package « {pkg.get('label')} » accepte {pkg.get('max_persons')} personne(s) max.",
+                )
+            line_amount = (
+                sel.adults * int(pkg.get("price_adult", 0))
+                + sel.children * int(pkg.get("price_child", 0))
+            )
+            total += line_amount
+            package_lines.append({
+                "date": sel.date,
+                "package_id": sel.package_id,
+                "label": pkg.get("label"),
+                "adults": sel.adults,
+                "children": sel.children,
+                "amount": line_amount,
+            })
+
     # Optional private boat charter — adds a flat amount to the total.
     charter_boat: Optional[dict] = None
     charter_amount = 0
@@ -2210,6 +2281,8 @@ async def create_booking(body: BookingCreate):
         "charter_boat_id": charter_boat["id"] if charter_boat else None,
         "charter_boat_name": charter_boat["name"] if charter_boat else None,
         "charter_amount": charter_amount,
+        # Premium event packages picked by the customer (flat list).
+        "package_lines": package_lines or None,
         "created_at": now_iso(),
         "paid_at": None,
     }

@@ -57,6 +57,162 @@ function ChipList({ items, onRemove, testid }) {
   );
 }
 
+// ===== Package sub-builder (premium passes for a single event day) =====
+function PackagesSubBuilder({ packages, onChange }) {
+  const [draft, setDraft] = useState({ label: "", description: "", price_adult: 0, price_child: 0, max_persons: 2 });
+
+  const addPkg = () => {
+    if (!draft.label.trim()) { toast.error("Nom du package requis"); return; }
+    if (draft.max_persons < 1) { toast.error("Capacité minimum : 1"); return; }
+    onChange([...packages, { ...draft, id: Math.random().toString(36).slice(2, 14) }]);
+    setDraft({ label: "", description: "", price_adult: 0, price_child: 0, max_persons: 2 });
+  };
+
+  const updatePkg = (idx, key, val) => {
+    const copy = packages.slice();
+    copy[idx] = { ...copy[idx], [key]: val };
+    onChange(copy);
+  };
+
+  const removePkg = (idx) => onChange(packages.filter((_, i) => i !== idx));
+
+  return (
+    <div className="mt-3 pt-3 border-t border-[#B8922A]/20 lg:col-span-12">
+      <div className="text-[0.55rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2 font-medium">
+        Packages premium {packages.length > 0 ? `(${packages.length})` : ""}
+      </div>
+      {packages.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {packages.map((pkg, idx) => (
+            <div key={pkg.id || idx} className="bg-white border border-[#B8922A]/25 p-2.5 relative pr-8">
+              <button
+                type="button"
+                onClick={() => removePkg(idx)}
+                className="absolute top-1.5 right-1.5 text-red-600 hover:text-red-800 p-1"
+                data-testid={`pkg-remove-${idx}`}
+                title="Supprimer ce package"
+              >
+                <Trash2 size={11} />
+              </button>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
+                <div className="lg:col-span-3">
+                  <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Nom *</label>
+                  <input
+                    value={pkg.label}
+                    onChange={(e) => updatePkg(idx, "label", e.target.value)}
+                    placeholder="Standard Premium"
+                    className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="lg:col-span-4">
+                  <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Description (modal)</label>
+                  <textarea
+                    rows={2}
+                    value={pkg.description || ""}
+                    onChange={(e) => updatePkg(idx, "description", e.target.value)}
+                    placeholder="Terrasse Restaurant & Plage — détail complet…"
+                    className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none resize-none"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2 lg:contents">
+                  <div className="lg:col-span-2">
+                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Prix adulte</label>
+                    <input
+                      type="number" min={0}
+                      value={pkg.price_adult}
+                      onChange={(e) => updatePkg(idx, "price_adult", parseInt(e.target.value, 10) || 0)}
+                      className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                    />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Prix enfant</label>
+                    <input
+                      type="number" min={0}
+                      value={pkg.price_child}
+                      onChange={(e) => updatePkg(idx, "price_child", parseInt(e.target.value, 10) || 0)}
+                      className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                    />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Pers. max</label>
+                    <input
+                      type="number" min={1} max={50}
+                      value={pkg.max_persons}
+                      onChange={(e) => updatePkg(idx, "max_persons", parseInt(e.target.value, 10) || 1)}
+                      className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Add row */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end bg-[#B8922A]/5 border border-dashed border-[#B8922A]/40 p-2.5">
+        <div className="lg:col-span-3">
+          <input
+            value={draft.label}
+            onChange={(e) => setDraft({ ...draft, label: e.target.value })}
+            placeholder="Nom (ex. Salon balinais)"
+            className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+            data-testid="pkg-new-label"
+          />
+        </div>
+        <div className="lg:col-span-4">
+          <input
+            value={draft.description}
+            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+            placeholder="Détails affichés dans le pop-up"
+            className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+            data-testid="pkg-new-description"
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-2 lg:contents">
+          <div className="lg:col-span-2">
+            <input
+              type="number" min={0}
+              value={draft.price_adult}
+              onChange={(e) => setDraft({ ...draft, price_adult: parseInt(e.target.value, 10) || 0 })}
+              placeholder="Adulte"
+              className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+              data-testid="pkg-new-price-adult"
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <input
+              type="number" min={0}
+              value={draft.price_child}
+              onChange={(e) => setDraft({ ...draft, price_child: parseInt(e.target.value, 10) || 0 })}
+              placeholder="Enfant"
+              className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+              data-testid="pkg-new-price-child"
+            />
+          </div>
+          <div className="lg:col-span-1">
+            <input
+              type="number" min={1} max={50}
+              value={draft.max_persons}
+              onChange={(e) => setDraft({ ...draft, max_persons: parseInt(e.target.value, 10) || 1 })}
+              placeholder="Pax"
+              className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+              data-testid="pkg-new-max"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={addPkg}
+          className="lg:col-span-12 mt-1 w-full px-2 py-1.5 text-[0.55rem] uppercase tracking-[0.18em] bg-[#B8922A] text-white hover:bg-[#9d7a23] inline-flex items-center justify-center gap-1"
+          data-testid="pkg-add-btn"
+        >
+          <Plus size={11} /> Ajouter un package
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ===== Multi-day programme builder =====
 function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
   const [newItem, setNewItem] = useState({ date: "", title: "", description: "", price_adult: 0, price_child: 0 });
@@ -68,7 +224,7 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
     if (!newItem.title.trim()) { toast.error("Titre du mini-événement requis"); return; }
     if (startDate && newItem.date < startDate) { toast.error("Date avant le début de l'événement"); return; }
     if (endDate && newItem.date > endDate) { toast.error("Date après la fin de l'événement"); return; }
-    onChange([...programme, { ...newItem }]);
+    onChange([...programme, { ...newItem, packages: [] }]);
     setNewItem({ date: "", title: "", description: "", price_adult: 0, price_child: 0 });
   };
 
@@ -158,6 +314,11 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
                       </div>
                     </div>
                   </div>
+                  {/* Packages premium for this day */}
+                  <PackagesSubBuilder
+                    packages={item.packages || []}
+                    onChange={(pkgs) => update(realIdx, "packages", pkgs)}
+                  />
               </div>
             );
           })}

@@ -38,6 +38,8 @@ export default function BookingTunnel() {
   // Multi-day cumulative booking (special events): all selected dates that
   // will be billed in a single transaction. Empty means single-day flow.
   const [multiDayDates, setMultiDayDates] = useState([]);
+  // Premium package selections from EventDetail (sessionStorage bridge)
+  const [packageSelections, setPackageSelections] = useState([]);
   const [contact, setContact] = useState({
     special_requests: "",
     boat_time: "",
@@ -107,6 +109,14 @@ export default function BookingTunnel() {
             const valid = parsed.filter((d) => (ev.event_dates || []).includes(d));
             if (valid.length > 1) setMultiDayDates(valid);
           }
+          // Premium package selections (from sessionStorage bridge).
+          try {
+            const raw = sessionStorage.getItem(`bbr_event_pkgs_${eventId}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) setPackageSelections(parsed);
+            }
+          } catch (_) { /* ignore */ }
         })
         .catch(() => navigate("/"));
     } else {
@@ -178,6 +188,24 @@ export default function BookingTunnel() {
     return m;
   }, [specialEvent]);
 
+  // Premium package surcharge — per-line price applied on top of base.
+  const packagesAmount = useMemo(() => {
+    if (!packageSelections.length || !specialEvent?.programme) return 0;
+    const progByDate = {};
+    for (const p of specialEvent.programme) {
+      if (p?.date) progByDate[p.date] = p;
+    }
+    let sum = 0;
+    for (const sel of packageSelections) {
+      const day = progByDate[sel.date] || {};
+      const pkg = (day.packages || []).find((x) => x.id === sel.package_id);
+      if (!pkg) continue;
+      sum += (sel.adults || 0) * Number(pkg.price_adult || 0)
+           + (sel.children || 0) * Number(pkg.price_child || 0);
+    }
+    return sum;
+  }, [packageSelections, specialEvent]);
+
   const total = useMemo(() => {
     if (!offer) return 0;
     let base;
@@ -196,8 +224,8 @@ export default function BookingTunnel() {
       const guestsBase = adults * offer.price_adult + children * offer.price_child;
       base = isOvernight ? guestsBase * nights : guestsBase;
     }
-    return base + charterAmount;
-  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate]);
+    return base + charterAmount + packagesAmount;
+  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -339,7 +367,12 @@ export default function BookingTunnel() {
         special_requests: contact.special_requests,
         charter_boat_id: charterEnabled && charterBoatId ? charterBoatId : null,
         multi_day_dates: (isSpecialEvent && multiDayDates.length > 1) ? multiDayDates : null,
+        package_selections: packageSelections.length > 0 ? packageSelections : null,
       });
+      // Clear the package-selection bridge once the booking is created
+      if (isSpecialEvent && eventId) {
+        try { sessionStorage.removeItem(`bbr_event_pkgs_${eventId}`); } catch (_) { /* ignore */ }
+      }
       setBookingResp(data);
       setStep(5);
     } catch (e) {
@@ -1121,6 +1154,26 @@ export default function BookingTunnel() {
                       </div>
                     );
                   })()}
+                  {packageSelections.length > 0 && specialEvent?.programme && (
+                    <div className="border-t border-[#0A0A0A]/10 pt-4 mt-2" data-testid="summary-packages">
+                      <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Packages premium</div>
+                      {packageSelections.map((sel, i) => {
+                        const day = (specialEvent.programme || []).find((p) => p.date === sel.date) || {};
+                        const pkg = (day.packages || []).find((x) => x.id === sel.package_id);
+                        if (!pkg) return null;
+                        const line = (sel.adults || 0) * Number(pkg.price_adult || 0)
+                                  + (sel.children || 0) * Number(pkg.price_child || 0);
+                        const [y, m, dd] = sel.date.split("-");
+                        const dateLabel = new Date(+y, +m - 1, +dd).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+                        return (
+                          <div key={`pkg-${i}`} className="flex justify-between items-baseline text-[0.78rem] text-[#0A0A0A]/70 py-0.5">
+                            <span>· {dateLabel} — {pkg.label} ({sel.adults || 0}A {sel.children > 0 ? `+ ${sel.children}E` : ""})</span>
+                            <span className="tabular-nums">{formatXOF(line)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="pt-5 border-t border-[#0A0A0A]/10 flex justify-between items-baseline">
                     <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A]">
                       {t.booking.total}
