@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { useParams, Link, Navigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, Link, Navigate, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Sparkles, Calendar, Users, ArrowRight, ChevronLeft } from "lucide-react";
+import { Sparkles, Calendar, Users, ArrowRight, ChevronLeft, Check } from "lucide-react";
 import api from "../lib/api";
 import { formatXOF } from "../lib/i18n";
 
@@ -23,9 +23,11 @@ function fmtDateFR(iso) {
  */
 export default function EventDetail() {
   const { eventId } = useParams();
+  const navigate = useNavigate();
   const [ev, setEv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
 
   useEffect(() => {
     api.get(`/special-events/${eventId}`)
@@ -33,6 +35,45 @@ export default function EventDetail() {
       .catch((e) => setErr(e.response?.data?.detail || "Événement introuvable"))
       .finally(() => setLoading(false));
   }, [eventId]);
+
+  const toggleDate = (date) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date); else next.add(date);
+      return next;
+    });
+  };
+
+  const programme = useMemo(() => {
+    if (!ev) return [];
+    const today = ev.today || "";
+    return (ev.programme || [])
+      .filter((p) => p?.date && p.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [ev]);
+
+  const selectedOrdered = useMemo(
+    () => programme.filter((p) => selected.has(p.date)),
+    [programme, selected]
+  );
+
+  const validateSelection = () => {
+    if (selectedOrdered.length === 0) return;
+    const dates = selectedOrdered.map((p) => p.date);
+    const first = dates[0];
+    const rest = dates.slice(1);
+    if (rest.length > 0) {
+      // Stash queued dates so the booking tunnel / result page can prompt the
+      // user to book the next selected date after completing the current one.
+      sessionStorage.setItem(
+        `bbr_event_queue_${eventId}`,
+        JSON.stringify({ remaining: rest, total: dates.length, completed: 0 })
+      );
+    } else {
+      sessionStorage.removeItem(`bbr_event_queue_${eventId}`);
+    }
+    navigate(`/booking/special-event/${eventId}?date=${encodeURIComponent(first)}`);
+  };
 
   if (loading) {
     return (
@@ -55,11 +96,8 @@ export default function EventDetail() {
     return <Navigate to={`/booking/special-event/${eventId}`} replace />;
   }
 
-  // Multi-day → show programme as sub-offers.
+  // Multi-day → show programme as sub-offers (with multi-selection).
   const today = ev.today;
-  const programme = (ev.programme || [])
-    .filter((p) => p?.date && p.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date));
   const seats = ev.seats_per_date || {};
 
   return (
@@ -133,73 +171,120 @@ export default function EventDetail() {
               Les détails du programme ne sont pas encore disponibles.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-7" data-testid="programme-grid">
-              {programme.map((day, idx) => {
-                const seatsLeft = seats[day.date];
-                const isFull = typeof seatsLeft === "number" && seatsLeft <= 0;
-                const priceA = Number(day.price_adult ?? ev.price_adult ?? 0);
-                const priceC = Number(day.price_child ?? ev.price_child ?? 0);
-                return (
-                  <motion.div
-                    key={`${day.date}-${idx}`}
-                    initial={{ opacity: 0, y: 18 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-60px" }}
-                    transition={{ duration: 0.55, delay: idx * 0.06 }}
-                    className="border border-[#0A0A0A]/12 bg-white p-6 flex flex-col hover:border-[#B8922A] transition-colors"
-                    data-testid={`programme-day-${day.date}`}
-                  >
-                    <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-2">
-                      {fmtDateFR(day.date)}
-                    </div>
-                    <h3 className="font-display-serif text-xl md:text-2xl text-[#0A0A0A] mb-2 leading-tight">
-                      {day.title || ev.title}
-                    </h3>
-                    {day.description && (
-                      <p className="text-[0.85rem] text-[#0A0A0A]/65 leading-relaxed mb-4 line-clamp-4">
-                        {day.description}
-                      </p>
-                    )}
-                    <div className="space-y-1.5 mb-5 mt-auto">
-                      <div className="flex items-baseline justify-between text-sm">
-                        <span className="text-[#0A0A0A]/65">Adulte</span>
-                        <span className="font-medium">{formatXOF(priceA)}</span>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-7" data-testid="programme-grid">
+                {programme.map((day, idx) => {
+                  const seatsLeft = seats[day.date];
+                  const isFull = typeof seatsLeft === "number" && seatsLeft <= 0;
+                  const isSelected = selected.has(day.date);
+                  const priceA = Number(day.price_adult ?? ev.price_adult ?? 0);
+                  const priceC = Number(day.price_child ?? ev.price_child ?? 0);
+                  return (
+                    <motion.div
+                      key={`${day.date}-${idx}`}
+                      initial={{ opacity: 0, y: 18 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: "-60px" }}
+                      transition={{ duration: 0.55, delay: idx * 0.06 }}
+                      className={`border bg-white p-6 flex flex-col transition-colors ${
+                        isSelected
+                          ? "border-[#B8922A] shadow-[0_0_0_2px_rgba(184,146,42,0.18)]"
+                          : "border-[#0A0A0A]/12 hover:border-[#B8922A]"
+                      }`}
+                      data-testid={`programme-day-${day.date}`}
+                    >
+                      <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-2">
+                        {fmtDateFR(day.date)}
                       </div>
-                      {priceC > 0 && (
+                      <h3 className="font-display-serif text-xl md:text-2xl text-[#0A0A0A] mb-2 leading-tight">
+                        {day.title || ev.title}
+                      </h3>
+                      {day.description && (
+                        <p className="text-[0.85rem] text-[#0A0A0A]/65 leading-relaxed mb-4 line-clamp-4">
+                          {day.description}
+                        </p>
+                      )}
+                      <div className="space-y-1.5 mb-5 mt-auto">
                         <div className="flex items-baseline justify-between text-sm">
-                          <span className="text-[#0A0A0A]/65">Enfant</span>
-                          <span className="font-medium">{formatXOF(priceC)}</span>
+                          <span className="text-[#0A0A0A]/65">Adulte</span>
+                          <span className="font-medium">{formatXOF(priceA)}</span>
                         </div>
-                      )}
-                      {typeof seatsLeft === "number" && (
-                        <div className="flex items-baseline justify-between text-[0.72rem] pt-1">
-                          <span className="text-[#0A0A0A]/45 inline-flex items-center gap-1.5">
-                            <Users size={11} /> Places restantes
-                          </span>
-                          <span className={`font-medium ${seatsLeft <= 5 ? "text-[#B8922A]" : "text-[#0A0A0A]/60"}`}>
-                            {seatsLeft}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    {isFull ? (
-                      <div className="inline-flex items-center justify-center px-4 py-2.5 border border-red-200 text-red-700 text-[0.7rem] uppercase tracking-[0.22em]" data-testid={`day-soldout-${day.date}`}>
-                        Complet
+                        {priceC > 0 && (
+                          <div className="flex items-baseline justify-between text-sm">
+                            <span className="text-[#0A0A0A]/65">Enfant</span>
+                            <span className="font-medium">{formatXOF(priceC)}</span>
+                          </div>
+                        )}
+                        {typeof seatsLeft === "number" && (
+                          <div className="flex items-baseline justify-between text-[0.72rem] pt-1">
+                            <span className="text-[#0A0A0A]/45 inline-flex items-center gap-1.5">
+                              <Users size={11} /> Places restantes
+                            </span>
+                            <span className={`font-medium ${seatsLeft <= 5 ? "text-[#B8922A]" : "text-[#0A0A0A]/60"}`}>
+                              {seatsLeft}
+                            </span>
+                          </div>
+                        )}
                       </div>
+                      {isFull ? (
+                        <div className="inline-flex items-center justify-center px-4 py-2.5 border border-red-200 text-red-700 text-[0.7rem] uppercase tracking-[0.22em]" data-testid={`day-soldout-${day.date}`}>
+                          Complet
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => toggleDate(day.date)}
+                          className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] transition-colors border ${
+                            isSelected
+                              ? "bg-[#B8922A] text-white border-[#B8922A]"
+                              : "bg-white text-[#0A0A0A] border-[#0A0A0A]/20 hover:border-[#B8922A] hover:text-[#B8922A]"
+                          }`}
+                          data-testid={`day-select-${day.date}`}
+                          aria-pressed={isSelected}
+                        >
+                          {isSelected ? (
+                            <>
+                              <Check size={13} /> Sélectionnée
+                            </>
+                          ) : (
+                            "Sélectionner cette date"
+                          )}
+                        </button>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Sticky validation bar */}
+              <div className="sticky bottom-0 mt-10 -mx-6 md:-mx-12 lg:-mx-20 bg-white/95 backdrop-blur-sm border-t border-[#0A0A0A]/10 px-6 md:px-12 lg:px-20 py-5" data-testid="event-validate-bar">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 max-w-6xl mx-auto">
+                  <div className="text-sm text-[#0A0A0A]/70">
+                    {selectedOrdered.length === 0 ? (
+                      <span className="text-[#0A0A0A]/50">Sélectionnez au moins une date pour continuer.</span>
                     ) : (
-                      <Link
-                        to={`/booking/special-event/${eventId}?date=${encodeURIComponent(day.date)}`}
-                        className="btn-gold inline-flex items-center justify-center gap-2 text-[0.7rem]"
-                        data-testid={`day-reserve-${day.date}`}
-                      >
-                        Réserver cette date
-                        <ArrowRight size={12} />
-                      </Link>
+                      <>
+                        <span className="font-medium text-[#0A0A0A]">{selectedOrdered.length}</span>{" "}
+                        date{selectedOrdered.length > 1 ? "s" : ""} sélectionnée{selectedOrdered.length > 1 ? "s" : ""}
+                        {selectedOrdered.length > 1 && (
+                          <span className="block text-[0.7rem] text-[#0A0A0A]/50 mt-0.5">
+                            Vous validerez et paierez chaque date séparément, dans l'ordre choisi.
+                          </span>
+                        )}
+                      </>
                     )}
-                  </motion.div>
-                );
-              })}
-            </div>
+                  </div>
+                  <button
+                    onClick={validateSelection}
+                    disabled={selectedOrdered.length === 0}
+                    className="btn-gold inline-flex items-center justify-center gap-2 text-[0.7rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                    data-testid="event-validate-cta"
+                  >
+                    Valider ma sélection
+                    <ArrowRight size={12} />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </section>

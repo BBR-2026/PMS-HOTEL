@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api, { API, getStaffToken } from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
-import { TrendingUp, Wallet, ShoppingBag, Users, BarChart3, Clock, Globe, FileDown } from "lucide-react";
+import { TrendingUp, Wallet, ShoppingBag, Users, BarChart3, Clock, Globe, FileDown, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -52,11 +52,17 @@ export default function StaffRevenue() {
   const [loading, setLoading] = useState(true);
   const [advanced, setAdvanced] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const customRange = !!(dateFrom || dateTo);
 
   useEffect(() => {
     setLoading(true);
-    api.get(`/staff/revenue?period=${period}`).then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, [period]);
+    const params = customRange
+      ? { date_from: dateFrom || undefined, date_to: dateTo || undefined }
+      : { period };
+    api.get(`/staff/revenue`, { params }).then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, [period, dateFrom, dateTo, customRange]);
 
   useEffect(() => {
     if (showAdvanced && !advanced) {
@@ -66,7 +72,10 @@ export default function StaffRevenue() {
 
   const downloadPdf = async () => {
     const token = getStaffToken();
-    const res = await fetch(`${API}/staff/revenue/report.pdf?period=${period}`, {
+    const qs = customRange
+      ? `date_from=${encodeURIComponent(dateFrom || "")}&date_to=${encodeURIComponent(dateTo || "")}`
+      : `period=${period}`;
+    const res = await fetch(`${API}/staff/revenue/report.pdf?${qs}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
@@ -77,7 +86,7 @@ export default function StaffRevenue() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `bbr-revenue-${period}.pdf`;
+    a.download = `bbr-revenue-${customRange ? `${dateFrom}_${dateTo}` : period}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Rapport PDF téléchargé");
@@ -107,13 +116,14 @@ export default function StaffRevenue() {
       <p className="text-sm text-[#0A0A0A]/55 mb-6">Revenus consolidés des réservations payées.</p>
 
       {/* Period selector */}
-      <div className="flex flex-wrap gap-2 mb-8" data-testid="period-selector">
+      <div className="flex flex-wrap gap-2 mb-3" data-testid="period-selector">
         {PERIODS.map((p) => (
           <button
             key={p.id}
-            onClick={() => setPeriod(p.id)}
-            className={`px-3 sm:px-4 py-2 text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.22em] border transition-all ${
-              period === p.id
+            onClick={() => { setPeriod(p.id); setDateFrom(""); setDateTo(""); }}
+            disabled={customRange}
+            className={`px-3 sm:px-4 py-2 text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.22em] border transition-all disabled:opacity-40 ${
+              period === p.id && !customRange
                 ? "bg-[#B8922A] text-white border-[#B8922A]"
                 : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A]"
             }`}
@@ -122,6 +132,33 @@ export default function StaffRevenue() {
             {p.label}
           </button>
         ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mb-8">
+        <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mr-1">Période personnalisée :</span>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="px-2.5 py-1.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-xs bg-white"
+          data-testid="filter-date-from"
+        />
+        <span className="text-[0.65rem] text-[#0A0A0A]/55">→</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="px-2.5 py-1.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-xs bg-white"
+          data-testid="filter-date-to"
+        />
+        {customRange && (
+          <button
+            onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="inline-flex items-center gap-1 px-2 py-1.5 text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/60 hover:text-red-600"
+            data-testid="filter-clear-dates"
+          >
+            <X size={11} /> Effacer
+          </button>
+        )}
       </div>
 
       {/* KPIs */}

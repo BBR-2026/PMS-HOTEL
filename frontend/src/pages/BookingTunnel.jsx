@@ -676,7 +676,7 @@ export default function BookingTunnel() {
                             onChange={update("name")}
                             testId={`participant-${i}-name`}
                           />
-                          {isFirst && (
+                          {isFirst ? (
                             <>
                               <Field
                                 type="email"
@@ -688,6 +688,28 @@ export default function BookingTunnel() {
                               <Field
                                 type="tel"
                                 label={t.booking.phone}
+                                value={p.phone}
+                                onChange={update("phone")}
+                                testId={`participant-${i}-phone`}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <div>
+                                <Field
+                                  type="email"
+                                  label={`${t.booking.email} (optionnel)`}
+                                  value={p.email}
+                                  onChange={update("email")}
+                                  testId={`participant-${i}-email`}
+                                />
+                                <p className="text-[0.68rem] text-[#0A0A0A]/50 mt-1.5 leading-snug">
+                                  Pour envoyer son billet directement à cet adulte. Si vide, le billet partira chez le réservant.
+                                </p>
+                              </div>
+                              <Field
+                                type="tel"
+                                label={`${t.booking.phone} (optionnel)`}
                                 value={p.phone}
                                 onChange={update("phone")}
                                 testId={`participant-${i}-phone`}

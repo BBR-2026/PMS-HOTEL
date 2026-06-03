@@ -3115,6 +3115,8 @@ async def list_bateaux_charter():
 async def staff_list_charters(
     period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
     boat_id: Optional[str] = None,
+    date_from: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
+    date_to: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
     staff=Depends(get_current_staff),
 ):
     """List all bookings that include a private boat charter, with the
@@ -3124,7 +3126,15 @@ async def staff_list_charters(
     filt: dict = {"charter_boat_id": {"$ne": None}}
     if boat_id:
         filt["charter_boat_id"] = boat_id
-    if period and period != "all":
+    # Custom date range takes precedence over the period preset
+    if date_from or date_to:
+        date_q: dict = {}
+        if date_from:
+            date_q["$gte"] = date_from
+        if date_to:
+            date_q["$lte"] = date_to
+        filt["date"] = date_q
+    elif period and period != "all":
         now = datetime.now(timezone.utc)
         if period == "day":
             since = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -5296,25 +5306,41 @@ async def client_detail(email: str, staff=Depends(get_current_staff)):
 @api.get("/staff/revenue")
 async def revenue_overview(
     period: str = "month",  # day | week | month | year | all
+    date_from: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
+    date_to: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
     staff=Depends(get_current_staff),
 ):
-    """Revenue dashboard: KPIs, by offer, by payment method, daily trend, top clients."""
+    """Revenue dashboard: KPIs, by offer, by payment method, daily trend, top clients.
+
+    ``date_from``/``date_to`` override the preset ``period`` when provided —
+    inclusive custom range used by the "Période personnalisée" picker.
+    """
     await _require_role(staff, ["manager", "admin"])
     today = datetime.now(timezone.utc).date()
-    if period == "day":
-        date_from = today
-    elif period == "week":
-        date_from = today - timedelta(days=7)
-    elif period == "month":
-        date_from = today - timedelta(days=30)
-    elif period == "year":
-        date_from = today - timedelta(days=365)
+    if date_from or date_to:
+        date_from_iso = date_from
+        date_to_iso = date_to
     else:
-        date_from = None
+        if period == "day":
+            date_from_iso = today.isoformat()
+        elif period == "week":
+            date_from_iso = (today - timedelta(days=7)).isoformat()
+        elif period == "month":
+            date_from_iso = (today - timedelta(days=30)).isoformat()
+        elif period == "year":
+            date_from_iso = (today - timedelta(days=365)).isoformat()
+        else:
+            date_from_iso = None
+        date_to_iso = None
 
     q: dict = {"paid_at": {"$ne": None}}
-    if date_from:
-        q["date"] = {"$gte": date_from.isoformat()}
+    if date_from_iso or date_to_iso:
+        rng: dict = {}
+        if date_from_iso:
+            rng["$gte"] = date_from_iso
+        if date_to_iso:
+            rng["$lte"] = date_to_iso
+        q["date"] = rng
 
     paid = await db.bookings.find(
         q,
@@ -5386,12 +5412,15 @@ async def revenue_overview(
 @api.get("/staff/revenue/report.pdf")
 async def export_revenue_pdf(
     period: str = "month",  # day | week | month | year | all
+    date_from: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
+    date_to: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
     staff=Depends(get_current_staff),
 ):
-    """Stylized PDF report of the revenue dashboard for the selected period."""
+    """Stylized PDF report of the revenue dashboard for the selected period
+    (preset) or a custom inclusive date range."""
     await _require_role(staff, ["manager", "admin"])
     # Reuse the revenue aggregator to compute the same payload (no auth re-check)
-    data = await revenue_overview(period=period, staff=staff)  # type: ignore
+    data = await revenue_overview(period=period, date_from=date_from, date_to=date_to, staff=staff)  # type: ignore
 
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -5406,6 +5435,8 @@ async def export_revenue_pdf(
         "year": "12 derniers mois",
         "all": "Depuis le lancement",
     }.get(period, period)
+    if date_from or date_to:
+        period_label = f"Du {date_from or '—'} au {date_to or '—'}"
 
     method_label = {
         "fineo": "FINEO",
@@ -7811,6 +7842,81 @@ def _offer_label_fr(offer_type: str) -> str:
     }.get(offer_type, (offer_type or "Réservation").replace("_", " ").title())
 
 
+async def _send_individual_ticket_email(booking: dict, qr_entry: dict, booker_name: str) -> None:
+    """Send a per-adult ticket email to an adult passenger whose email differs
+    from the booker's. The email contains ONLY that passenger's QR PNG plus a
+    short personalized note. We don't dedupe via _email_sent_already because
+    each recipient is a distinct address (no risk of replays on resend).
+    """
+    if not email_service.SENDGRID_ENABLED:
+        return
+    guest_email = (qr_entry.get("guest_email") or "").strip()
+    if not guest_email or "@" not in guest_email:
+        return
+    guest_name = f"{qr_entry.get('guest_name','').strip()} {qr_entry.get('guest_surname','').strip()}".strip() or "Cher invité"
+    ref = (booking.get("id", "") or "")[:8].upper()
+    offer_label = _offer_label_fr(booking.get("offer_type", ""))
+    date_str = _fmt_date_fr(booking.get("date", ""))
+    boat = booking.get("boat_time") or ""
+
+    # Decode the ticket PNG
+    img_data = qr_entry.get("ticket_image", "")
+    attachments = []
+    if img_data:
+        if img_data.startswith("data:"):
+            img_data = img_data.split(",", 1)[1]
+        try:
+            import base64 as _b64
+            png_bytes = _b64.b64decode(img_data)
+            first = (qr_entry.get("guest_name") or "").strip().replace(" ", "_") or "passager"
+            attachments.append({
+                "content": png_bytes,
+                "filename": f"BBR-billet-{ref}-{first}.png",
+                "mime": "image/png",
+                "disposition": "attachment",
+            })
+        except Exception:
+            pass
+
+    subject = f"Votre billet d'embarquement BBr · {ref}"
+    html = f"""
+    <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:24px;color:#0A0A0A;">
+      <h2 style="font-weight:400;font-size:22px;color:#0A0A0A;margin:0 0 6px;">Votre billet d'embarquement</h2>
+      <div style="color:#B8922A;letter-spacing:.18em;text-transform:uppercase;font-size:11px;margin-bottom:18px;">Boulay Beach Resort</div>
+      <p style="font-size:14px;line-height:1.6;color:#3a3a3a;">
+        Bonjour <strong>{guest_name}</strong>,<br><br>
+        Vous figurez sur la réservation effectuée par <strong>{booker_name}</strong> pour
+        <strong>{offer_label}</strong> du <strong>{date_str}</strong>{(' — départ ' + boat) if boat else ''}.
+      </p>
+      <p style="font-size:14px;line-height:1.6;color:#3a3a3a;">
+        Vous trouverez en pièce jointe votre <strong>billet personnel</strong> avec QR code.
+        Présentez-le à l'embarquement le jour J.
+      </p>
+      <div style="background:#FAFAF7;border-left:3px solid #B8922A;padding:14px 18px;margin:18px 0;font-size:13px;color:#0A0A0A;">
+        <strong>Référence :</strong> {ref}<br>
+        <strong>Expérience :</strong> {offer_label}<br>
+        <strong>Date :</strong> {date_str}
+      </div>
+      <p style="font-size:12px;color:#0A0A0A/55;margin-top:20px;">À très bientôt sur la lagune.<br>L'équipe BBr</p>
+    </div>
+    """
+    plain = (
+        f"Bonjour {guest_name},\n\n"
+        f"Vous figurez sur la réservation BBr de {booker_name} pour {offer_label} "
+        f"du {date_str}{(' — départ ' + boat) if boat else ''}.\n"
+        f"Référence : {ref}\n\n"
+        f"Votre billet personnel avec QR code se trouve en pièce jointe.\n\n"
+        f"L'équipe Boulay Beach Resort"
+    )
+    await email_service.send_email(
+        db, to_email=guest_email, to_name=guest_name,
+        subject=subject, html=html, plain=plain,
+        purpose=f"booking_paid_passenger:{qr_entry.get('qr_token','')[:8]}",
+        booking_id=booking.get("id"),
+        attachments=attachments,
+    )
+
+
 async def _send_booking_confirmation_email(booking: dict, temporary: bool = False) -> None:
     """Send the post-payment confirmation email with QR PNG attached.
 
@@ -7872,21 +7978,44 @@ async def _send_booking_confirmation_email(booking: dict, temporary: bool = Fals
             "vous sera envoyé après encaissement à votre arrivée.\n\n" + tpl["plain"]
         )
 
-    # Attach the QR ticket PNG + the styled booking confirmation PDF. Both are
-    # best-effort: the email is still sent if either generation fails.
+    # ---- Booker email — full PDF + ALL ticket PNGs (one per adult) ----
     attachments = []
+    all_qrs = booking.get("qr_codes") or []
+    adult_qrs = [q for q in all_qrs if q.get("kind") == "adult"]
     try:
-        png_bytes = await _build_ticket_png(booking)
-        if png_bytes:
-            fname = (f"BBR-recu-provisoire-{ref}.png" if temporary else f"BBR-billet-{ref}.png")
+        # Always attach every adult's ticket so the booker has the full set,
+        # not only the first one (legacy behaviour).
+        for q in adult_qrs:
+            img_data = q.get("ticket_image", "")
+            if not img_data:
+                continue
+            if img_data.startswith("data:"):
+                img_data = img_data.split(",", 1)[1]
+            import base64 as _b64
+            try:
+                png_bytes = _b64.b64decode(img_data)
+            except Exception:
+                continue
+            guest_first = (q.get("guest_name") or "").strip().replace(" ", "_") or "passager"
+            fname = (f"BBR-recu-provisoire-{ref}-{guest_first}.png" if temporary
+                     else f"BBR-billet-{ref}-{guest_first}.png")
             attachments.append({
                 "content": png_bytes,
                 "filename": fname,
                 "mime": "image/png",
                 "disposition": "attachment",
             })
+        # Fallback: legacy bookings without per-guest images.
+        if not attachments:
+            png_bytes = await _build_ticket_png(booking)
+            if png_bytes:
+                fname = (f"BBR-recu-provisoire-{ref}.png" if temporary else f"BBR-billet-{ref}.png")
+                attachments.append({
+                    "content": png_bytes, "filename": fname,
+                    "mime": "image/png", "disposition": "attachment",
+                })
     except Exception as ex:
-        logging.warning("Could not attach ticket PNG to email: %s", ex)
+        logging.warning("Could not attach ticket PNGs to email: %s", ex)
     # No styled PDF for cash-pending state (only the provisional receipt).
     if not temporary:
         try:
@@ -7907,6 +8036,19 @@ async def _send_booking_confirmation_email(booking: dict, temporary: bool = Fals
         purpose=purpose, booking_id=booking.get("id"),
         attachments=attachments,
     )
+
+    # ---- Per-adult tickets — each non-booker adult who provided their own
+    # email gets a personalized email with ONLY their own QR ticket. The booker
+    # is skipped (they just got the full bundle above).
+    if not temporary:  # cash pending → wait for final confirmation
+        booker_email = (booking.get("email") or "").strip().lower()
+        sent_to = {booker_email}
+        for q in adult_qrs:
+            guest_email = (q.get("guest_email") or "").strip().lower()
+            if not guest_email or guest_email in sent_to or "@" not in guest_email:
+                continue
+            sent_to.add(guest_email)
+            await _send_individual_ticket_email(booking, q, name)
 
 
 async def _build_ticket_png(booking: dict) -> Optional[bytes]:

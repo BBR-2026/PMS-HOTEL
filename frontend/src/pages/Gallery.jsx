@@ -21,8 +21,7 @@ export default function Gallery() {
       .finally(() => setLoading(false));
   }, []);
 
-  const withPhotos = albums.filter((a) => a.photo_count > 0);
-  const empty = albums.filter((a) => a.photo_count === 0);
+  const withPhotos = albums; // all albums are user-created — show as-is
 
   return (
     <div className="bg-white text-[#0A0A0A] min-h-screen" data-testid="gallery-page">
@@ -36,7 +35,7 @@ export default function Gallery() {
           </h1>
           <div className="gold-divider mb-5" />
           <p className="text-base text-[#0A0A0A]/60 max-w-2xl leading-relaxed">
-            Parcourez les albums photos de nos expériences signature et téléchargez librement vos clichés préférés.
+            Parcourez nos albums photos et téléchargez librement vos clichés préférés.
           </p>
         </div>
       </section>
@@ -47,50 +46,18 @@ export default function Gallery() {
             <div className="text-center text-[#0A0A0A]/50 py-16 text-sm" data-testid="gallery-loading">Chargement…</div>
           )}
 
+          {!loading && withPhotos.length === 0 && (
+            <div className="text-center py-20 border border-dashed border-[#0A0A0A]/15 bg-[#FAFAF7]" data-testid="gallery-empty">
+              <Camera size={32} className="mx-auto text-[#0A0A0A]/25 mb-4" />
+              <p className="text-sm text-[#0A0A0A]/55">Aucun album n'a encore été publié. Revenez bientôt.</p>
+            </div>
+          )}
+
           {!loading && withPhotos.length > 0 && (
-            <div className="mb-12">
-              <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4">Albums actifs</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-7" data-testid="albums-grid">
-                {withPhotos.map((album) => (
-                  <AlbumCard key={album.id} album={album} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!loading && empty.length > 0 && (
-            <div>
-              <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#0A0A0A]/40 mb-4">
-                Bientôt en photos
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 lg:gap-4">
-                {empty.map((album) => (
-                  <div
-                    key={album.id}
-                    className="aspect-[4/5] relative overflow-hidden border border-[#0A0A0A]/8 bg-[#FAFAF7] group"
-                    data-testid={`empty-album-${album.id}`}
-                  >
-                    {album.image_url ? (
-                      <img
-                        src={album.image_url}
-                        alt={album.label}
-                        className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-70 transition-opacity"
-                      />
-                    ) : null}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A]/85 via-[#0A0A0A]/30 to-transparent" />
-                    <div className="absolute inset-x-0 bottom-0 p-3 text-white">
-                      <div className="text-[0.65rem] uppercase tracking-[0.18em]">{album.label}</div>
-                      <div className="text-[0.58rem] text-[#B8922A]/75 mt-0.5">À venir</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!loading && withPhotos.length === 0 && empty.length === 0 && (
-            <div className="text-center text-[#0A0A0A]/50 py-20" data-testid="gallery-empty">
-              Aucun album disponible pour le moment.
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-7" data-testid="albums-grid">
+              {withPhotos.map((album) => (
+                <AlbumCard key={album.id} album={album} />
+              ))}
             </div>
           )}
         </div>

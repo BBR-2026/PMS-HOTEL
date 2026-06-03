@@ -57,65 +57,30 @@ def build_gallery_router(db, OFFERS: dict, get_current_staff, require_role) -> A
     # ---------- helpers ----------
     async def _resolve_album_label(album_id: str) -> Optional[dict]:
         """Return ``{"id", "label", "kind", "image_url"}`` for the given album,
-        or ``None`` if it doesn't match any known offer / event / custom album.
+        or ``None`` if it doesn't match any existing custom album.
+
+        Albums are 100% manual now: only entries in ``gallery_albums`` are
+        served. The legacy ``offer:*`` / ``event:*`` virtual albums are no
+        longer exposed (their photos remain in the DB but are hidden).
         """
-        if album_id in OFFERS:
-            o = OFFERS[album_id]
-            return {
-                "id": album_id,
-                "label": o.get("name_fr") or album_id,
-                "kind": "offer",
-                "image_url": o.get("image_url") or "",
-            }
-        if album_id.startswith("event:"):
-            evid = album_id.split(":", 1)[1]
-            ev = await db.special_events.find_one(
-                {"id": evid, "status": "published"}, {"_id": 0, "id": 1, "title": 1, "image_url": 1},
-            )
-            if not ev:
-                return None
-            return {
-                "id": album_id,
-                "label": ev["title"],
-                "kind": "special_event",
-                "image_url": ev.get("image_url") or "",
-            }
-        if album_id.startswith("custom:"):
-            cid = album_id.split(":", 1)[1]
-            doc = await db.gallery_albums.find_one(
-                {"id": cid}, {"_id": 0, "id": 1, "label": 1, "cover_url": 1},
-            )
-            if not doc:
-                return None
-            return {
-                "id": album_id,
-                "label": doc["label"],
-                "kind": "custom",
-                "image_url": doc.get("cover_url") or "",
-            }
-        return None
+        # Custom albums use either ``custom:{id}`` (new) or just ``{id}`` (older
+        # uploads created before the prefix was introduced).
+        cid = album_id.split(":", 1)[1] if album_id.startswith("custom:") else album_id
+        doc = await db.gallery_albums.find_one(
+            {"id": cid}, {"_id": 0, "id": 1, "label": 1, "cover_url": 1},
+        )
+        if not doc:
+            return None
+        return {
+            "id": f"custom:{cid}",
+            "label": doc["label"],
+            "kind": "custom",
+            "image_url": doc.get("cover_url") or "",
+        }
 
     async def _list_known_albums() -> list:
-        """Enumerate every album: 1 per OFFERS entry + 1 per published event
-        + 1 per custom album created by staff."""
+        """Return only custom albums created by staff."""
         albums = []
-        for offer_id, o in OFFERS.items():
-            albums.append({
-                "id": offer_id,
-                "label": o.get("name_fr") or offer_id,
-                "kind": "offer",
-                "image_url": o.get("image_url") or "",
-            })
-        cursor = db.special_events.find(
-            {"status": "published"}, {"_id": 0, "id": 1, "title": 1, "image_url": 1},
-        )
-        async for ev in cursor:
-            albums.append({
-                "id": f"event:{ev['id']}",
-                "label": ev["title"],
-                "kind": "special_event",
-                "image_url": ev.get("image_url") or "",
-            })
         custom_cursor = db.gallery_albums.find(
             {}, {"_id": 0, "id": 1, "label": 1, "cover_url": 1, "created_at": 1},
         ).sort("created_at", -1)

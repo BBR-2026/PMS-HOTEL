@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
-import { Ship, Search, Loader2, CheckCircle2, Clock } from "lucide-react";
+import { Ship, Loader2, CheckCircle2, Clock, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { formatXOF } from "../../lib/i18n";
 
@@ -18,6 +18,8 @@ export default function StaffCharters() {
   const [boatId, setBoatId] = useState("");
   const [boats, setBoats] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
     api.get("/bateaux/charter").then(({ data }) => setBoats(data.items || [])).catch(() => {});
@@ -26,12 +28,14 @@ export default function StaffCharters() {
   const load = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/staff/charters", {
-        params: {
-          period: period !== "all" ? period : undefined,
-          boat_id: boatId || undefined,
-        },
-      });
+      const params = { boat_id: boatId || undefined };
+      if (dateFrom || dateTo) {
+        params.date_from = dateFrom || undefined;
+        params.date_to = dateTo || undefined;
+      } else if (period !== "all") {
+        params.period = period;
+      }
+      const { data } = await api.get("/staff/charters", { params });
       setItems(data.items || []);
       setSummary(data.summary || { count: 0, total_revenue: 0, paid_count: 0 });
     } catch (e) {
@@ -42,7 +46,7 @@ export default function StaffCharters() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [period, boatId]);
+  useEffect(() => { load(); }, [period, boatId, dateFrom, dateTo]);
 
   const fmtDate = (iso) => {
     if (!iso) return "—";
@@ -78,14 +82,15 @@ export default function StaffCharters() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-5">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mr-1">Période :</span>
         {PERIODS.map((p) => (
           <button
             key={p.v}
-            onClick={() => setPeriod(p.v)}
-            className={`px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border transition-colors ${
-              period === p.v
+            onClick={() => { setPeriod(p.v); setDateFrom(""); setDateTo(""); }}
+            disabled={!!(dateFrom || dateTo)}
+            className={`px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border transition-colors disabled:opacity-40 ${
+              period === p.v && !dateFrom && !dateTo
                 ? "bg-[#B8922A] text-white border-[#B8922A]"
                 : "bg-white text-[#0A0A0A]/70 border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
             }`}
@@ -106,6 +111,42 @@ export default function StaffCharters() {
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
         </select>
+        <button
+          onClick={load}
+          disabled={loading}
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#0A0A0A]/15 text-[0.65rem] uppercase tracking-[0.18em] hover:border-[#B8922A] hover:text-[#B8922A] disabled:opacity-50"
+          data-testid="charters-refresh"
+          title="Rafraîchir"
+        >
+          <RefreshCw size={11} className={loading ? "animate-spin" : ""} /> Rafraîchir
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mr-1">Dates précises :</span>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="px-2.5 py-1.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-xs bg-white"
+          data-testid="filter-date-from"
+        />
+        <span className="text-[0.65rem] text-[#0A0A0A]/55">→</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="px-2.5 py-1.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-xs bg-white"
+          data-testid="filter-date-to"
+        />
+        {(dateFrom || dateTo) && (
+          <button
+            onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="inline-flex items-center gap-1 px-2 py-1.5 text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/60 hover:text-red-600"
+            data-testid="filter-clear-dates"
+          >
+            <X size={11} /> Effacer
+          </button>
+        )}
       </div>
 
       {loading ? (
