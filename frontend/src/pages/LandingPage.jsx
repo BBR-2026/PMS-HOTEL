@@ -71,11 +71,11 @@ function ExclusivityHero({ feature }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden border border-[#B8922A]/50 bg-[#0A0A0A] mb-10 lg:mb-12 shadow-md"
+      className="relative overflow-hidden border border-[#B8922A]/40 bg-gradient-to-br from-[#F8F1DC] via-[#F2E7C8] to-[#E8D9A8] mb-10 lg:mb-12 shadow-[0_8px_28px_-12px_rgba(184,146,42,0.45)]"
       data-testid="exclusivity-hero"
     >
       <a href={feature.href || "#"} className="grid grid-cols-1 md:grid-cols-2 min-h-[280px] md:min-h-[340px] group">
-        <div className="relative overflow-hidden bg-[#1a1a1a]">
+        <div className="relative overflow-hidden bg-[#EFE3C2]">
           {feature.image_url ? (
             <img
               src={feature.image_url}
@@ -83,28 +83,30 @@ function ExclusivityHero({ feature }) {
               className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-[1.05]"
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#B8922A]/20 to-[#0A0A0A]" />
+            <div className="absolute inset-0 bg-gradient-to-br from-[#B8922A]/30 to-[#EFE3C2]" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/40 via-transparent to-transparent md:bg-gradient-to-l" />
+          {/* Subtle warm overlay that fades into the beige right column on desktop */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#F2E7C8] hidden md:block" />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#F2E7C8] md:hidden" />
         </div>
-        <div className="relative p-8 md:p-10 lg:p-12 flex flex-col justify-center text-white">
-          <div className="inline-flex items-center gap-2 self-start mb-4 px-3 py-1 bg-[#B8922A] text-white text-[0.6rem] uppercase tracking-[0.32em] font-semibold rounded-sm">
+        <div className="relative p-8 md:p-10 lg:p-12 flex flex-col justify-center text-[#0A0A0A]">
+          <div className="inline-flex items-center gap-2 self-start mb-4 px-3 py-1 bg-[#B8922A] text-white text-[0.6rem] uppercase tracking-[0.32em] font-semibold rounded-sm shadow-sm">
             ✦ En exclusivité
           </div>
-          <h2 className="font-display-serif text-3xl md:text-4xl lg:text-5xl tracking-tight leading-tight mb-3">
+          <h2 className="font-display-serif text-3xl md:text-4xl lg:text-5xl tracking-tight leading-tight mb-3 text-[#0A0A0A]">
             {feature.title}
           </h2>
           {feature.subtitle && (
-            <p className="text-[#B8922A] text-base md:text-lg font-light mb-3">
+            <p className="text-[#8a6c14] text-base md:text-lg font-light mb-3">
               {feature.subtitle}
             </p>
           )}
           {feature.description && (
-            <p className="text-white/75 text-sm md:text-base leading-relaxed mb-5 max-w-md">
+            <p className="text-[#0A0A0A]/70 text-sm md:text-base leading-relaxed mb-5 max-w-md">
               {feature.description}
             </p>
           )}
-          <div className="inline-flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.28em] text-[#B8922A] group-hover:gap-3 transition-all">
+          <div className="inline-flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.28em] text-[#B8922A] font-medium group-hover:gap-3 transition-all">
             {feature.cta_label || "Découvrir"} <ArrowRight size={14} />
           </div>
         </div>

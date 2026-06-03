@@ -95,8 +95,9 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
           {sorted.map((item, idx) => {
             const realIdx = programme.indexOf(item);
             return (
-              <div key={`${item.date}-${idx}`} className="grid grid-cols-12 gap-2 items-start bg-[#FAFAF7] p-3 border border-[#0A0A0A]/8" data-testid={`programme-item-${idx}`}>
-                <div className="col-span-12 sm:col-span-2">
+              <div key={`${item.date}-${idx}`} className="bg-[#FAFAF7] p-3 border border-[#0A0A0A]/8 space-y-2 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-start" data-testid={`programme-item-${idx}`}>
+                <div className="sm:col-span-2">
+                  <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Date</label>
                   <input
                     type="date"
                     value={item.date}
@@ -106,7 +107,8 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
                     className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                   />
                 </div>
-                <div className="col-span-12 sm:col-span-3">
+                <div className="sm:col-span-3">
+                  <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Titre</label>
                   <input
                     value={item.title}
                     onChange={(e) => update(realIdx, "title", e.target.value)}
@@ -114,7 +116,8 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
                     className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                   />
                 </div>
-                <div className="col-span-12 sm:col-span-4">
+                <div className="sm:col-span-4">
+                  <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Description</label>
                   <input
                     value={item.description || ""}
                     onChange={(e) => update(realIdx, "description", e.target.value)}
@@ -122,26 +125,30 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
                     className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                   />
                 </div>
-                <div className="col-span-5 sm:col-span-1">
-                  <input
-                    type="number" min={0}
-                    value={item.price_adult}
-                    onChange={(e) => update(realIdx, "price_adult", parseInt(e.target.value, 10) || 0)}
-                    placeholder="Adulte"
-                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                  />
+                <div className="grid grid-cols-2 gap-2 sm:contents">
+                  <div className="sm:col-span-1">
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Adulte</label>
+                    <input
+                      type="number" min={0}
+                      value={item.price_adult}
+                      onChange={(e) => update(realIdx, "price_adult", parseInt(e.target.value, 10) || 0)}
+                      placeholder="Adulte"
+                      className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 sm:hidden mb-0.5 block">Enfant</label>
+                    <input
+                      type="number" min={0}
+                      value={item.price_child}
+                      onChange={(e) => update(realIdx, "price_child", parseInt(e.target.value, 10) || 0)}
+                      placeholder="Enfant"
+                      className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                    />
+                  </div>
                 </div>
-                <div className="col-span-5 sm:col-span-1">
-                  <input
-                    type="number" min={0}
-                    value={item.price_child}
-                    onChange={(e) => update(realIdx, "price_child", parseInt(e.target.value, 10) || 0)}
-                    placeholder="Enfant"
-                    className="w-full px-2 py-1.5 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
-                  />
-                </div>
-                <div className="col-span-2 sm:col-span-1 flex justify-end">
-                  <button type="button" onClick={() => remove(realIdx)} className="text-red-600 hover:text-red-800 p-1" data-testid={`programme-remove-${idx}`}>
+                <div className="sm:col-span-1 flex justify-end">
+                  <button type="button" onClick={() => remove(realIdx)} className="text-red-600 hover:text-red-800 p-1.5 -m-1.5" data-testid={`programme-remove-${idx}`}>
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -488,21 +495,21 @@ export default function StaffSpecialEvents() {
       )}
 
       {editing && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto" onClick={() => !saving && closeModal()} data-testid="event-modal">
-          <div className="bg-white w-full max-w-2xl my-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white flex items-center justify-between p-5 sm:p-6 border-b border-[#0A0A0A]/8 z-10">
-              <div>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 overflow-y-auto" onClick={() => !saving && closeModal()} data-testid="event-modal">
+          <div className="bg-white w-full sm:max-w-2xl sm:my-8 min-h-screen sm:min-h-0 sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white flex items-center justify-between p-4 sm:p-6 border-b border-[#0A0A0A]/8 z-10 flex-shrink-0">
+              <div className="min-w-0 flex-1">
                 <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A]">
                   {editing._isNew ? "Nouvel événement" : "Modifier l'événement"}
                 </div>
-                <div className="font-display-serif text-xl text-[#0A0A0A] mt-0.5">
+                <div className="font-display-serif text-lg sm:text-xl text-[#0A0A0A] mt-0.5 truncate">
                   {form.title || "Sans titre"}
                 </div>
               </div>
-              <button onClick={closeModal} disabled={saving} className="p-2 text-[#0A0A0A]/55 hover:text-[#0A0A0A]"><X size={18} /></button>
+              <button onClick={closeModal} disabled={saving} className="p-2 text-[#0A0A0A]/55 hover:text-[#0A0A0A] flex-shrink-0 ml-2"><X size={18} /></button>
             </div>
 
-            <div className="p-5 sm:p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
               {/* Visual */}
               <div>
                 <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">Image hero</label>
@@ -676,9 +683,9 @@ export default function StaffSpecialEvents() {
               </div>
             </div>
 
-            <div className="sticky bottom-0 bg-white border-t border-[#0A0A0A]/8 p-4 sm:p-5 flex justify-end gap-2">
-              <button onClick={closeModal} disabled={saving} className="px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] border border-[#0A0A0A]/15 text-[#0A0A0A]/65 hover:border-[#0A0A0A] hover:text-[#0A0A0A]" data-testid="event-cancel">Annuler</button>
-              <button onClick={save} disabled={saving} className="px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#a37e1f] inline-flex items-center gap-2 disabled:opacity-50" data-testid="event-save">
+            <div className="sticky bottom-0 bg-white border-t border-[#0A0A0A]/8 p-4 sm:p-5 flex flex-col-reverse sm:flex-row justify-end gap-2 flex-shrink-0">
+              <button onClick={closeModal} disabled={saving} className="w-full sm:w-auto px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] border border-[#0A0A0A]/15 text-[#0A0A0A]/65 hover:border-[#0A0A0A] hover:text-[#0A0A0A]" data-testid="event-cancel">Annuler</button>
+              <button onClick={save} disabled={saving} className="w-full sm:w-auto px-5 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#a37e1f] inline-flex items-center justify-center gap-2 disabled:opacity-50" data-testid="event-save">
                 <Save size={12} /> {saving ? "Enregistrement…" : "Enregistrer"}
               </button>
             </div>
