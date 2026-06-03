@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 14 — Beach Club VIP Spaces (numbered transats + balinés). Backend: 10/11 pytest PASS against https://reserve-bbr.preview.emergentagent.com/api. Frontend smoke: VIP UI block confirmed rendering correctly on /booking/pass_day step 3 with all 16 cards, gold-selection state, and live subtotal '+ 60 000 FCFA'; section correctly absent on /booking/hebergement. The single failure is a SEED DATA bug — direction.test@boulay.ci is stored with role=serveur_caisse instead of management_general, so management_general read-only enforcement on /api/staff/vip-spaces cannot be validated.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "auth seed / migration",
+        "issue": "direction.test@boulay.ci has role='serveur_caisse' in DB but /app/memory/test_credentials.md (and iter13 docs) say it should be 'management_general'. Decoded JWT: {sub: bf18d8a2-..., type: staff, role: serveur_caisse}. Side-effect: this account currently CAN POST /api/staff/vip-spaces because serveur_caisse → ROLE_INCLUDES manager. The readonly_role_middleware logic itself is correct (it gates by JWT.role ∈ READONLY_ROLES={'management_general'}), but it never fires for this account because its actual role is wrong. Test asserting 403 on POST/PATCH/DELETE for management_general therefore cannot run."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration14_vip_spaces.py",
+    "/app/test_reports/pytest/iter14_vip.xml"
+  ],
+  "action_items": [
+    "Fix seed/migration: ensure direction.test@boulay.ci is created/updated with role='management_general'. Either (a) update the seed function in server.py that provisions test accounts, or (b) run a one-off migration: db.staff.update_one({'email':'direction.test@boulay.ci'}, {'$set': {'role':'management_general'}}). After fix, re-run pytest backend/tests/test_iteration14_vip_spaces.py::TestStaffVipSpacesCrud::test_management_general_readonly — it should turn green automatically (expects 403 on POST/PATCH/DELETE).",
+    "(optional, defensive) Consider tightening /api/staff/vip-spaces write endpoints — they require ['admin','manager'] but ROLE_INCLUDES grants 'manager' inheritance to serveur_caisse, hotesse, logistique, manager_pole. If the intent is admin/manager only for VIP space config, those four roles can currently create/modify VIP spaces. Probably acceptable for the inherited 'manager' design, but worth a product call."
+  ],
+  "critical_code_review_comments": [
+    "routers/vip_spaces.py is clean, well-documented (262 lines). Idempotent seed, set-based availability lookup, proper 409 vs 400 separation, _id exclusion on every find. Good module boundary.",
+    "validate_and_resolve_vip_spaces dedupes the input ids but never errors on duplicates — silently collapses; acceptable but should be documented or rejected with 400 (consistency).",
+    "_taken_space_ids_for_date filter uses {status: {$ne: 'cancelled'}}. Note: 'pending' (unpaid) bookings hold a space too. Confirmed during testing — desired behaviour given the brief, but worth a TTL/expiration on pending Beach Club bookings to avoid permanent reservation of T01 by abandoned carts.",
+    "server.py:2245 — total += vip_spaces_amount happens AFTER the charter block but BEFORE the participants_docs/doc assembly. OK, but the booking doc stores vip_spaces_amount = 60000 and total_amount already includes it; if a later code path recomputed total it would risk double counting. Currently safe.",
+    "BookingCreate.boat_time is `str` (required) even for offers that don't use a boat (hebergement, spa_wellness). This caused a 422 in tests that omit boat_time on hebergement. Either make it Optional with per-offer validators, or document the requirement clearly in the schema. Minor.",
+    "Front-end BookingTunnel.jsx VIP block (line 1027-1140) renders disabled cards via aria-disabled — verify the rendered <button>'s `disabled` HTML attribute is also set so Playwright/keyboard nav treat 'Réservé' cards correctly. Not blocking — visual gold-on-select works perfectly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration14_vip_spaces.py"
+  ],
+  "success_rate": {
+    "backend": "91% (10/11 — failure exposes seed bug, not feature bug)",
+    "frontend": "100% smoke (section render + selection + subtotal + absence on hebergement)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (admin OK), direction.test@boulay.ci / Direction@2026 (logs in OK but role is serveur_caisse instead of management_general).",
+  "seed_data_creation": "Tests created ONE pass_day booking holding T01+B01 on a unique far-future weekday date (date varies per run). 1 spa_wellness 400-test attempt (rejected before insert). 1 le_kaai 400-test attempt (rejected). 1 pass_day 400-test attempt with invalid vip id (rejected). Staff CRUD creates a unique TXXXX transat and deletes it within the same test. No leftover VIP space rows after run (verified: count back to 16). Also cleaned up two stray TZZZ/TYY9 spaces from earlier diagnostic curls.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "VIP Spaces feature is fully wired end-to-end. Backend module at /app/backend/routers/vip_spaces.py is auto-mounted with startup seed (server.py:3233). Public endpoint: GET /api/vip-spaces/available?date=YYYY-MM-DD&offer_type=pass_day|sunset|brunch returns {items:[...16]}; non-beach-club returns {items:[]}. POST /api/bookings now accepts optional vip_space_ids[]; validates via validate_and_resolve_vip_spaces which returns 400 for missing/non-beach-club, 409 for date-collision, and embeds resolved vip_spaces[] + vip_spaces_amount in the booking doc (total_amount aggregates). Staff CRUD at /api/staff/vip-spaces requires ['admin','manager'] for writes (with ROLE_INCLUDES inheritance — see action_items). Frontend BookingTunnel renders the section in Step 3 for Beach Club offers only; data-testids confirmed: vip-spaces-section, vip-transats-grid, vip-balines-grid, vip-space-T01..T12, vip-space-B01..B04, vip-spaces-subtotal, summary-vip-spaces. Re-running the test file: `python -m pytest backend/tests/test_iteration14_vip_spaces.py -v` — only test_management_general_readonly will fail until the seed bug for direction.test is fixed.",
+  "rca of the issue": "Seed-data drift: at some prior iteration the test account direction.test@boulay.ci was overwritten/recreated with role 'serveur_caisse' (likely by a copy-paste fixture from the serveur_caisse account or a manual DB edit). The credentials catalogue in /app/memory/test_credentials.md was not updated to match. Because /api/staff/vip-spaces POST allows ROLE_INCLUDES inheritance (serveur_caisse → manager), the account ends up able to write VIP spaces — a privilege the documentation says it should not have. Mitigation: update db.staff for that user back to role='management_general' (or recreate via the seed function). After this, the existing readonly_role_middleware (server.py:10104) will correctly return 403 with 'Compte consultation : lecture seule, modification interdite.' on all non-GET requests."
+}

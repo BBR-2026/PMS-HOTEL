@@ -40,6 +40,9 @@ export default function BookingTunnel() {
   const [multiDayDates, setMultiDayDates] = useState([]);
   // Premium package selections from EventDetail (sessionStorage bridge)
   const [packageSelections, setPackageSelections] = useState([]);
+  // Beach Club only — numbered transats / balinés selected for the booking date.
+  const [vipSpaces, setVipSpaces] = useState([]); // [{id, kind, number, label_fr, price, is_available}]
+  const [selectedVipSpaceIds, setSelectedVipSpaceIds] = useState([]);
   const [contact, setContact] = useState({
     special_requests: "",
     boat_time: "",
@@ -177,6 +180,38 @@ export default function BookingTunnel() {
     return b ? Number(b.charter_price || 0) : 0;
   }, [charterEnabled, charterBoatId, charterBoats]);
 
+  // Beach Club VIP spaces — show numbered transats/balinés selector during Step 3
+  // for `pass_day` / `sunset` / `brunch` only. Fetch availability on date change.
+  const isBeachClub = !isSpecialEvent && ["pass_day", "sunset", "brunch"].includes(offerId);
+  useEffect(() => {
+    if (!isBeachClub || !selectedDate) {
+      setVipSpaces([]);
+      setSelectedVipSpaceIds([]);
+      return;
+    }
+    const iso = format(selectedDate, "yyyy-MM-dd");
+    api.get(`/vip-spaces/available?date=${iso}&offer_type=${offerId}`)
+      .then(({ data }) => setVipSpaces(data.items || []))
+      .catch(() => setVipSpaces([]));
+    // Clear any previously-selected space if the user changes date — we don't
+    // know yet whether it's still available for the new date.
+    setSelectedVipSpaceIds([]);
+  }, [isBeachClub, selectedDate, offerId]);
+
+  const vipSpacesAmount = useMemo(() => {
+    if (!selectedVipSpaceIds.length) return 0;
+    return selectedVipSpaceIds.reduce((sum, id) => {
+      const s = vipSpaces.find((v) => v.id === id);
+      return sum + (s ? Number(s.price || 0) : 0);
+    }, 0);
+  }, [selectedVipSpaceIds, vipSpaces]);
+
+  const toggleVipSpace = (id) => {
+    setSelectedVipSpaceIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
   // Per-day programme map for multi-day events (date → {price_adult, price_child, title})
   const programmeByDate = useMemo(() => {
     const m = {};
@@ -224,8 +259,8 @@ export default function BookingTunnel() {
       const guestsBase = adults * offer.price_adult + children * offer.price_child;
       base = isOvernight ? guestsBase * nights : guestsBase;
     }
-    return base + charterAmount + packagesAmount;
-  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount]);
+    return base + charterAmount + packagesAmount + vipSpacesAmount;
+  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount, vipSpacesAmount]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -366,6 +401,7 @@ export default function BookingTunnel() {
         return_boat_time: isOvernight ? contact.return_boat_time : null,
         special_requests: contact.special_requests,
         charter_boat_id: charterEnabled && charterBoatId ? charterBoatId : null,
+        vip_space_ids: selectedVipSpaceIds.length > 0 ? selectedVipSpaceIds : null,
         multi_day_dates: (isSpecialEvent && multiDayDates.length > 1) ? multiDayDates : null,
         package_selections: packageSelections.length > 0 ? packageSelections : null,
       });
@@ -985,6 +1021,112 @@ export default function BookingTunnel() {
                     className="input-luxury resize-none"
                   />
                 </div>
+
+                {/* Beach Club VIP spaces — numbered transats / balinés (optional) */}
+                {isBeachClub && vipSpaces.length > 0 && (
+                  <div className="mt-10" data-testid="vip-spaces-section">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                      <label className="label-luxury">Espaces VIP (optionnel)</label>
+                      {selectedVipSpaceIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVipSpaceIds([])}
+                          className="text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 hover:text-[#B8922A] transition-colors"
+                          data-testid="vip-spaces-clear"
+                        >
+                          Tout désélectionner
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[0.78rem] text-[#0A0A0A]/55 mb-4 leading-relaxed">
+                      Réservez un transat numéroté ou un baliné privatif pour la journée. Chaque espace est unique et garanti pour vous seul. Vous pouvez passer cette étape.
+                    </p>
+
+                    {/* Transats */}
+                    {vipSpaces.some((v) => v.kind === "transat") && (
+                      <div className="mb-6">
+                        <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
+                          Transats numérotés · {formatXOF(vipSpaces.find((v) => v.kind === "transat")?.price || 0)}
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2" data-testid="vip-transats-grid">
+                          {vipSpaces.filter((v) => v.kind === "transat").map((v) => {
+                            const selected = selectedVipSpaceIds.includes(v.id);
+                            const disabled = !v.is_available && !selected;
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => !disabled && toggleVipSpace(v.id)}
+                                disabled={disabled}
+                                className={`aspect-square flex flex-col items-center justify-center text-center p-1.5 border transition-all ${
+                                  selected
+                                    ? "bg-[#B8922A] text-white border-[#B8922A]"
+                                    : disabled
+                                      ? "bg-[#FAFAF7] text-[#0A0A0A]/30 border-[#0A0A0A]/10 cursor-not-allowed line-through"
+                                      : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                                }`}
+                                data-testid={`vip-space-${v.number}`}
+                                title={disabled ? "Déjà réservé pour cette date" : v.label_fr}
+                              >
+                                <span className="font-display-serif text-base sm:text-lg leading-none">{v.number}</span>
+                                {disabled && (
+                                  <span className="text-[0.55rem] uppercase tracking-[0.12em] mt-0.5">Réservé</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Balinés */}
+                    {vipSpaces.some((v) => v.kind === "baline") && (
+                      <div>
+                        <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
+                          Balinés privatifs · {formatXOF(vipSpaces.find((v) => v.kind === "baline")?.price || 0)}
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="vip-balines-grid">
+                          {vipSpaces.filter((v) => v.kind === "baline").map((v) => {
+                            const selected = selectedVipSpaceIds.includes(v.id);
+                            const disabled = !v.is_available && !selected;
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => !disabled && toggleVipSpace(v.id)}
+                                disabled={disabled}
+                                className={`p-3 border transition-all text-left ${
+                                  selected
+                                    ? "bg-[#B8922A] text-white border-[#B8922A]"
+                                    : disabled
+                                      ? "bg-[#FAFAF7] text-[#0A0A0A]/30 border-[#0A0A0A]/10 cursor-not-allowed"
+                                      : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                                }`}
+                                data-testid={`vip-space-${v.number}`}
+                              >
+                                <div className="font-display-serif text-lg leading-none mb-0.5">{v.number}</div>
+                                <div className={`text-[0.7rem] ${selected ? "text-white/85" : "text-[#0A0A0A]/55"}`}>
+                                  {disabled ? "Déjà réservé" : "Baliné 2 pers."}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedVipSpaceIds.length > 0 && (
+                      <div className="mt-5 pt-4 border-t border-[#0A0A0A]/10 flex justify-between items-baseline" data-testid="vip-spaces-subtotal">
+                        <span className="text-[0.72rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">
+                          Sous-total espaces VIP ({selectedVipSpaceIds.length})
+                        </span>
+                        <span className="font-display-serif text-lg text-[#B8922A]">
+                          + {formatXOF(vipSpacesAmount)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1154,6 +1296,21 @@ export default function BookingTunnel() {
                       </div>
                     );
                   })()}
+                  {selectedVipSpaceIds.length > 0 && (
+                    <div className="border-t border-[#0A0A0A]/10 pt-4 mt-2" data-testid="summary-vip-spaces">
+                      <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Espaces VIP</div>
+                      {selectedVipSpaceIds.map((id) => {
+                        const v = vipSpaces.find((x) => x.id === id);
+                        if (!v) return null;
+                        return (
+                          <div key={id} className="flex justify-between items-baseline text-[0.78rem] text-[#0A0A0A]/70 py-0.5">
+                            <span>· {v.label_fr}</span>
+                            <span className="tabular-nums">{formatXOF(v.price)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   {packageSelections.length > 0 && specialEvent?.programme && (
                     <div className="border-t border-[#0A0A0A]/10 pt-4 mt-2" data-testid="summary-packages">
                       <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Packages premium</div>

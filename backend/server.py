@@ -427,6 +427,10 @@ class BookingCreate(BaseModel):
     package_selections: Optional[List[PackageSelection]] = None
     # Optional private boat charter — adds boat_charter_amount to the total.
     charter_boat_id: Optional[str] = None
+    # Beach Club only — numbered transats / balinés the customer wants to
+    # reserve for `body.date`. Validated server-side against active spaces +
+    # existing bookings (uniqueness per date) inside create_booking().
+    vip_space_ids: Optional[List[str]] = None
 
 
 class PayBooking(BaseModel):
@@ -2234,6 +2238,19 @@ async def create_booking(body: BookingCreate):
             raise HTTPException(status_code=400, detail="Bateau de privatisation indisponible.")
         charter_amount = int(charter_boat["charter_price"])
         total += charter_amount
+
+    # Beach Club VIP spaces (numbered transats / balinés). Unique per date.
+    vip_spaces_resolved: List[dict] = []
+    vip_spaces_amount = 0
+    if body.vip_space_ids:
+        from routers.vip_spaces import validate_and_resolve_vip_spaces  # local import
+        vip_spaces_resolved, vip_spaces_amount = await validate_and_resolve_vip_spaces(
+            db,
+            offer_type=body.offer_type,
+            date_iso=body.date,
+            vip_space_ids=body.vip_space_ids,
+        )
+        total += vip_spaces_amount
     participants_docs = [
         {
             "name": p.name.strip(),
@@ -2281,6 +2298,10 @@ async def create_booking(body: BookingCreate):
         "charter_boat_id": charter_boat["id"] if charter_boat else None,
         "charter_boat_name": charter_boat["name"] if charter_boat else None,
         "charter_amount": charter_amount,
+        # Beach Club numbered VIP spaces (transats / balinés)
+        "vip_space_ids": [v["id"] for v in vip_spaces_resolved] or None,
+        "vip_spaces": vip_spaces_resolved or None,
+        "vip_spaces_amount": vip_spaces_amount,
         # Premium event packages picked by the customer (flat list).
         "package_lines": package_lines or None,
         "created_at": now_iso(),
@@ -3205,6 +3226,16 @@ async def seed_staff():
                 "created_at": now_iso(),
             })
     logging.info("Staff seeding complete")
+
+
+# Seed Beach Club VIP spaces (transats + balinés) if collection is empty.
+@app.on_event("startup")
+async def seed_vip_spaces_on_startup():
+    try:
+        from routers.vip_spaces import seed_default_vip_spaces  # noqa: WPS433
+        await seed_default_vip_spaces(db)
+    except Exception as ex:  # pragma: no cover
+        logging.warning("VIP spaces seed failed: %s", ex)
 
 
 # =================================================================
@@ -10050,6 +10081,17 @@ app.include_router(
         OFFERS=OFFERS,
         get_current_staff=get_current_staff,
         require_role=_require_role,
+    ),
+    prefix="/api",
+)
+
+# Beach Club VIP spaces — numbered transats & balinés (unique per date).
+from routers import vip_spaces as _vip_spaces_mod  # noqa: E402
+app.include_router(
+    _vip_spaces_mod.build_vip_spaces_router(
+        db=db,
+        require_role=_require_role,
+        get_current_staff=get_current_staff,
     ),
     prefix="/api",
 )
