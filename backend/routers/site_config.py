@@ -40,9 +40,14 @@ class SiteConfigUpdate(BaseModel):
 
 
 async def get_or_create_site_config(db) -> dict:
-    """Return the singleton config doc, creating it on first call."""
+    """Return the singleton config doc, creating it on first call.
+    Auto-heals an empty `email_footer_html` (e.g. cleared by an admin) so the
+    UI / emails always have a working footer to render.
+    """
     doc = await db.site_config.find_one({"_id": DOC_ID}, {"_id": 0})
     if doc:
+        if not (doc.get("email_footer_html") or "").strip():
+            doc["email_footer_html"] = DEFAULT_FOOTER_HTML
         return doc
     seed = {
         "_id": DOC_ID,
@@ -69,7 +74,8 @@ def build_site_config_router(*, db, require_role, get_current_staff) -> APIRoute
 
     @router.patch("/staff/site-config")
     async def staff_patch(body: SiteConfigUpdate, staff=Depends(get_current_staff)):
-        await require_role(staff, ["admin", "manager"])
+        if staff.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Action réservée à l'administrateur")
         update = {k: v for k, v in body.model_dump(exclude_none=True).items()}
         if not update:
             raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour")
@@ -84,7 +90,8 @@ def build_site_config_router(*, db, require_role, get_current_staff) -> APIRoute
     async def staff_upload_livret(
         file: UploadFile = File(...), staff=Depends(get_current_staff)
     ):
-        await require_role(staff, ["admin", "manager"])
+        if staff.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Action réservée à l'administrateur")
         content = await file.read()
         if not content:
             raise HTTPException(status_code=400, detail="Fichier vide")
@@ -120,7 +127,8 @@ def build_site_config_router(*, db, require_role, get_current_staff) -> APIRoute
 
     @router.delete("/staff/site-config/livret")
     async def staff_remove_livret(staff=Depends(get_current_staff)):
-        await require_role(staff, ["admin", "manager"])
+        if staff.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Action réservée à l'administrateur")
         cfg = await get_or_create_site_config(db)
         old = cfg.get("livret_media_id")
         if old:
