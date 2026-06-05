@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "../../lib/api";
 import { formatXOF } from "../../lib/i18n";
 import { Settings, UserPlus, Trash2, Save, X, Plug, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink, Database, Loader2, UploadCloud, SlidersHorizontal } from "lucide-react";
@@ -270,6 +270,15 @@ export default function StaffConfig() {
           data-testid="tab-exclusivity"
         >
           ✦ En exclusivité
+        </button>
+        <button
+          onClick={() => setTab("mail")}
+          className={`px-4 sm:px-5 py-3 text-[0.65rem] sm:text-[0.7rem] uppercase tracking-[0.22em] border-b-2 transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${
+            tab === "mail" ? "border-[#B8922A] text-[#B8922A]" : "border-transparent text-[#0A0A0A]/60 hover:text-[#0A0A0A]"
+          }`}
+          data-testid="tab-mail"
+        >
+          ✉ Mail &amp; Livret
         </button>
       </div>
 
@@ -624,6 +633,8 @@ export default function StaffConfig() {
         <MaintenancePanel />
       ) : tab === "exclusivity" ? (
         <ExclusivityPanel />
+      ) : tab === "mail" ? (
+        <MailLivretPanel />
       ) : null}
 
       {/* Create user modal */}
@@ -1545,4 +1556,211 @@ function MigrateDataUrlsCard() {
     </div>
   );
 }
+
+
+// =====================================================================
+// Mail & Livret panel — configure global email footer + BBR booklet PDF.
+// =====================================================================
+function MailLivretPanel() {
+  const [cfg, setCfg] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [footerDraft, setFooterDraft] = useState("");
+  const fileRef = useRef(null);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/staff/site-config");
+      setCfg(data);
+      setFooterDraft(data?.email_footer_html || "");
+    } catch (ex) {
+      toast.error("Impossible de charger la configuration");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const saveFooter = async () => {
+    setSaving(true);
+    try {
+      await api.patch("/staff/site-config", { email_footer_html: footerDraft });
+      toast.success("Bas de page mis à jour");
+      reload();
+    } catch (ex) {
+      toast.error(ex.response?.data?.detail || "Échec de l'enregistrement");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleLivret = async (next) => {
+    try {
+      await api.patch("/staff/site-config", { livret_enabled: next });
+      toast.success(next ? "Livret activé" : "Livret désactivé");
+      reload();
+    } catch {
+      toast.error("Échec de la mise à jour");
+    }
+  };
+
+  const uploadLivret = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      await api.post("/staff/site-config/livret", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("Livret mis à jour");
+      reload();
+    } catch (ex) {
+      toast.error(ex.response?.data?.detail || "Échec de l'envoi");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const removeLivret = async () => {
+    if (!confirm("Supprimer le livret en ligne ?")) return;
+    try {
+      await api.delete("/staff/site-config/livret");
+      toast.success("Livret retiré");
+      reload();
+    } catch {
+      toast.error("Échec de la suppression");
+    }
+  };
+
+  if (loading) {
+    return <div className="text-sm text-[#0A0A0A]/50">Chargement…</div>;
+  }
+
+  return (
+    <div className="space-y-7 max-w-3xl" data-testid="mail-livret-panel">
+      {/* Footer editor */}
+      <div className="bg-white border border-[#0A0A0A]/8 p-6">
+        <h3 className="font-display-serif text-xl text-[#0A0A0A] mb-1">Bas de page des emails</h3>
+        <p className="text-[0.78rem] text-[#0A0A0A]/55 mb-4">
+          Ce contenu HTML est inséré dans la zone foncée en bas de tous les emails
+          (confirmations de réservation, campagnes, etc.). Vous pouvez utiliser
+          des balises &lt;br/&gt;, &lt;a href=&quot;…&quot;&gt;, &lt;strong&gt;, &lt;em&gt; ainsi que
+          du style inline.
+        </p>
+        <textarea
+          value={footerDraft}
+          onChange={(e) => setFooterDraft(e.target.value)}
+          rows={12}
+          className="w-full px-3 py-2.5 text-xs font-mono border border-[#0A0A0A]/15 bg-[#FAFAF7] focus:border-[#B8922A] outline-none leading-relaxed"
+          data-testid="footer-html-textarea"
+          placeholder="<div>…</div>"
+        />
+        {/* Live preview */}
+        <div className="mt-4">
+          <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Aperçu</div>
+          <div className="bg-[#2A1A0E] text-[#F8EFE7] p-6 text-sm" data-testid="footer-preview"
+            dangerouslySetInnerHTML={{ __html: footerDraft || "<i style='opacity:.5'>(vide)</i>" }} />
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            onClick={saveFooter}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-5 py-2 text-[0.7rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#9d7a23] disabled:opacity-50"
+            data-testid="footer-save-btn"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+            Enregistrer le footer
+          </button>
+          <button
+            onClick={() => setFooterDraft(cfg?.email_footer_html || "")}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-5 py-2 text-[0.7rem] uppercase tracking-[0.22em] border border-[#0A0A0A]/20 text-[#0A0A0A]/70 hover:border-[#B8922A] hover:text-[#B8922A]"
+          >
+            Annuler
+          </button>
+        </div>
+      </div>
+
+      {/* Livret BBR */}
+      <div className="bg-white border border-[#0A0A0A]/8 p-6">
+        <h3 className="font-display-serif text-xl text-[#0A0A0A] mb-1">Livret BBR (PDF)</h3>
+        <p className="text-[0.78rem] text-[#0A0A0A]/55 mb-4">
+          PDF joint automatiquement aux emails de confirmation de réservation.
+          15 Mo max. Vous pouvez désactiver l'envoi temporairement sans le supprimer.
+        </p>
+
+        {cfg?.livret_media_id ? (
+          <div className="border border-[#B8922A]/30 bg-[#FBF8EF] p-4 mb-4" data-testid="livret-current">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] mb-1">Fichier actuel</div>
+                <div className="font-medium text-[#0A0A0A] text-sm truncate">{cfg.livret_filename}</div>
+                <div className="text-[0.7rem] text-[#0A0A0A]/55 mt-0.5">
+                  {(cfg.livret_size / 1024 / 1024).toFixed(2)} Mo · mis à jour {cfg.updated_at?.slice(0, 10)}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`${process.env.REACT_APP_BACKEND_URL || ""}/api/site-config/livret`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border border-[#0A0A0A]/15 hover:border-[#B8922A] hover:text-[#B8922A]"
+                  data-testid="livret-preview-link"
+                >
+                  <ExternalLink size={11} /> Prévisualiser
+                </a>
+                <button
+                  onClick={removeLivret}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border border-red-300 text-red-700 hover:bg-red-50"
+                  data-testid="livret-remove-btn"
+                >
+                  <Trash2 size={11} /> Retirer
+                </button>
+              </div>
+            </div>
+            <label className="mt-4 inline-flex items-center gap-2 text-[0.8rem] text-[#0A0A0A]/75 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!cfg.livret_enabled}
+                onChange={(e) => toggleLivret(e.target.checked)}
+                className="w-4 h-4 accent-[#B8922A]"
+                data-testid="livret-enabled-toggle"
+              />
+              Joindre automatiquement le livret aux confirmations de réservation
+            </label>
+          </div>
+        ) : (
+          <div className="border border-dashed border-[#0A0A0A]/20 bg-[#FAFAF7] p-6 text-center mb-4">
+            <p className="text-[0.85rem] text-[#0A0A0A]/55">
+              Aucun livret BBR uploadé. Aucun PDF ne sera attaché aux emails de confirmation.
+            </p>
+          </div>
+        )}
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/pdf"
+          onChange={(e) => uploadLivret(e.target.files?.[0])}
+          className="hidden"
+          data-testid="livret-file-input"
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="inline-flex items-center gap-2 px-5 py-2 text-[0.7rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#9d7a23] disabled:opacity-50"
+          data-testid="livret-upload-btn"
+        >
+          {uploading ? <Loader2 size={12} className="animate-spin" /> : <UploadCloud size={12} />}
+          {cfg?.livret_media_id ? "Remplacer le livret" : "Uploader un livret PDF"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 

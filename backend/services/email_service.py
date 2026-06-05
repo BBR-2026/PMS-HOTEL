@@ -203,8 +203,16 @@ def _render_template(
     cta_label: Optional[str] = None,
     cta_url: Optional[str] = None,
     preheader: str = "",
+    custom_footer_html: Optional[str] = None,
 ) -> str:
-    """Render the master luxury template matching the BBr mailing artwork."""
+    """Render the master luxury template matching the BBr mailing artwork.
+
+    ``custom_footer_html`` lets the caller inject a fully-configured footer
+    body (rich text from the Dashboard). When provided, it replaces the
+    static contact lines but keeps the dark wrapper + booklet button +
+    legal mention block, so users can re-arrange copy without breaking the
+    visual.
+    """
     paragraphs_html = "".join(
         '<p style="margin:0 0 20px;font-family:' + FONT_STACK + ';'
         f'font-size:16px;line-height:1.6;color:{TEXT};text-align:center;">'
@@ -284,6 +292,7 @@ def _render_template(
           <!-- ===== Footer (centered, all-in-one dark block) ===== -->
           <tr>
             <td bgcolor="{DARK}" align="center" style="background-color:{DARK};text-align:center;color:{CREAM};font-family:{FONT_STACK};font-size:13px;padding:38px 32px 40px;">
+              {(custom_footer_html or f'''
               <div style="font-weight:700;letter-spacing:0.18em;font-size:13px;text-transform:uppercase;color:{CREAM};margin-bottom:14px;">Life Is Here</div>
               <div style="line-height:1.85;font-family:{FONT_STACK};font-size:14px;color:{CREAM};">
                 <a href="{_tel_href(BBR_PHONE_1)}" style="color:{CREAM};text-decoration:none;">{BBR_PHONE_1}</a><br/>
@@ -291,6 +300,7 @@ def _render_template(
                 <a href="{BBR_INSTAGRAM_URL}" style="color:{CREAM};text-decoration:none;">{BBR_INSTAGRAM_HANDLE}</a><br/>
                 <a href="{BBR_WEBSITE_URL}" style="color:{CREAM};text-decoration:none;">{BBR_WEBSITE_LABEL}</a>
               </div>
+              ''')}
               <div style="margin:24px 0 16px;">
                 {_bulletproof_button(label="Télécharger le livret", url=BBR_BOOKLET_URL,
                                     bg=CREAM, color=DARK,
@@ -337,7 +347,8 @@ def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
                                 date_str: str, boat_time: Optional[str],
                                 amount_label: str, ticket_url: Optional[str],
                                 offer_type: str = "",
-                                hero_override: str = "") -> dict:
+                                hero_override: str = "",
+                                custom_footer_html: Optional[str] = None) -> dict:
     """Confirmation de paiement (envoyée après webhook FineoPay).
 
     ``hero_override`` lets the caller force a specific image URL — used to
@@ -371,6 +382,7 @@ def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
         cta_label="Voir mon billet",
         cta_url=ticket_url or BBR_WEBSITE_URL,
         preheader=f"Confirmation de votre réservation {ref}",
+        custom_footer_html=custom_footer_html,
     )
 
     plain = (
@@ -472,11 +484,17 @@ async def send_email(db, *, to_email: str, subject: str, html: str, plain: str,
                      purpose: str = "generic",
                      booking_id: Optional[str] = None,
                      attachments: Optional[List[dict]] = None,
-                     to_name: Optional[str] = None) -> dict:
+                     to_name: Optional[str] = None,
+                     attach_livret: bool = False) -> dict:
     """Send a transactional email via SendGrid.
 
     ``attachments`` is a list of dicts: ``{"content": bytes, "filename": str,
     "mime": str, "disposition": "attachment"|"inline", "content_id": str?}``.
+
+    When ``attach_livret`` is True, the configured BBR booklet (if any) is
+    appended to the attachments list. The footer of pre-rendered HTML is
+    NOT replaced — callers wanting the configured footer must request it
+    via ``email_service.render_*`` helpers with ``custom_footer_html``.
 
     Returns a result dict (never raises). Failures are logged in ``email_messages``.
     """
@@ -532,8 +550,20 @@ async def send_email(db, *, to_email: str, subject: str, html: str, plain: str,
         # --- BCC internal monitoring copy ---
         if SENDGRID_BCC and _is_valid_email(SENDGRID_BCC):
             message.add_bcc(Bcc(SENDGRID_BCC))
+        # --- Livret BBR (configured from Dashboard) auto-attached when requested ---
+        all_attachments = list(attachments or [])
+        if attach_livret:
+            try:
+                from routers.site_config import fetch_livret_attachment
+                livret = await fetch_livret_attachment(db)
+                if livret:
+                    # Avoid duplicates if a caller already attached a livret
+                    if not any(a.get("filename") == livret["filename"] for a in all_attachments):
+                        all_attachments.append(livret)
+            except Exception as ex:
+                log.warning("Livret attach skipped: %s", ex)
         # --- Attachments ---
-        for att in (attachments or []):
+        for att in all_attachments:
             a = Attachment()
             a.file_content = FileContent(base64.b64encode(att["content"]).decode())
             a.file_name = FileName(att["filename"])

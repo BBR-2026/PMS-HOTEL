@@ -59,13 +59,13 @@ function ChipList({ items, onRemove, testid }) {
 
 // ===== Package sub-builder (premium passes for a single event day) =====
 function PackagesSubBuilder({ packages, onChange }) {
-  const [draft, setDraft] = useState({ label: "", description: "", price_adult: 0, price_child: 0, max_persons: 2 });
+  const [draft, setDraft] = useState({ label: "", description: "", price_adult: 0, price_child: 0, max_persons: 2, stock: 0 });
 
   const addPkg = () => {
     if (!draft.label.trim()) { toast.error("Nom du package requis"); return; }
     if (draft.max_persons < 1) { toast.error("Capacité minimum : 1"); return; }
     onChange([...packages, { ...draft, id: Math.random().toString(36).slice(2, 14) }]);
-    setDraft({ label: "", description: "", price_adult: 0, price_child: 0, max_persons: 2 });
+    setDraft({ label: "", description: "", price_adult: 0, price_child: 0, max_persons: 2, stock: 0 });
   };
 
   const updatePkg = (idx, key, val) => {
@@ -104,7 +104,7 @@ function PackagesSubBuilder({ packages, onChange }) {
                     className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                   />
                 </div>
-                <div className="lg:col-span-4">
+                <div className="lg:col-span-3">
                   <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Description (modal)</label>
                   <textarea
                     rows={2}
@@ -114,9 +114,9 @@ function PackagesSubBuilder({ packages, onChange }) {
                     className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none resize-none"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2 lg:contents">
-                  <div className="lg:col-span-3">
-                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Prix du forfait (FCFA)</label>
+                <div className="grid grid-cols-3 gap-2 lg:contents">
+                  <div className="lg:col-span-2">
+                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Prix forfait</label>
                     <input
                       type="number" min={0}
                       value={pkg.price_adult}
@@ -124,7 +124,17 @@ function PackagesSubBuilder({ packages, onChange }) {
                       className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
                     />
                   </div>
-                  <div className="lg:col-span-1">
+                  <div className="lg:col-span-2">
+                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Stock (0=∞)</label>
+                    <input
+                      type="number" min={0} max={10000}
+                      value={pkg.stock || 0}
+                      onChange={(e) => updatePkg(idx, "stock", parseInt(e.target.value, 10) || 0)}
+                      className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                      title="Nombre maximum d'exemplaires de ce forfait vendable ce jour-là. 0 = illimité."
+                    />
+                  </div>
+                  <div className="lg:col-span-2">
                     <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Pers. max</label>
                     <input
                       type="number" min={1} max={50}
@@ -150,7 +160,7 @@ function PackagesSubBuilder({ packages, onChange }) {
             data-testid="pkg-new-label"
           />
         </div>
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-3">
           <input
             value={draft.description}
             onChange={(e) => setDraft({ ...draft, description: e.target.value })}
@@ -159,8 +169,8 @@ function PackagesSubBuilder({ packages, onChange }) {
             data-testid="pkg-new-description"
           />
         </div>
-        <div className="grid grid-cols-2 gap-2 lg:contents">
-          <div className="lg:col-span-3">
+        <div className="grid grid-cols-3 gap-2 lg:contents">
+          <div className="lg:col-span-2">
             <input
               type="number" min={0}
               value={draft.price_adult}
@@ -170,7 +180,18 @@ function PackagesSubBuilder({ packages, onChange }) {
               data-testid="pkg-new-price-adult"
             />
           </div>
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-2">
+            <input
+              type="number" min={0}
+              value={draft.stock}
+              onChange={(e) => setDraft({ ...draft, stock: parseInt(e.target.value, 10) || 0 })}
+              placeholder="Stock"
+              title="0 = illimité"
+              className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+              data-testid="pkg-new-stock"
+            />
+          </div>
+          <div className="lg:col-span-2">
             <input
               type="number" min={1} max={50}
               value={draft.max_persons}
@@ -188,6 +209,132 @@ function PackagesSubBuilder({ packages, onChange }) {
           data-testid="pkg-add-btn"
         >
           <Plus size={11} /> Ajouter un forfait
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+// ===== Matches sub-builder (sports calendar for the day) =====
+function MatchesSubBuilder({ matches, onChange }) {
+  const [draft, setDraft] = useState({ time: "", team_home: "", team_away: "", stage: "", flag_home: "", flag_away: "" });
+
+  const add = () => {
+    if (!draft.time.trim()) { toast.error("Heure du match requise"); return; }
+    if (!draft.team_home.trim() || !draft.team_away.trim()) { toast.error("Équipes requises"); return; }
+    onChange([...matches, { ...draft }]);
+    setDraft({ time: "", team_home: "", team_away: "", stage: "", flag_home: "", flag_away: "" });
+  };
+
+  const update = (idx, key, val) => {
+    const copy = matches.slice();
+    copy[idx] = { ...copy[idx], [key]: val };
+    onChange(copy);
+  };
+
+  const remove = (idx) => onChange(matches.filter((_, i) => i !== idx));
+
+  return (
+    <div className="mt-3 pt-3 border-t border-[#B8922A]/20 lg:col-span-12">
+      <div className="text-[0.55rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2 font-medium">
+        Matchs du jour {matches.length > 0 ? `(${matches.length})` : ""}
+      </div>
+      {matches.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {matches.map((m, idx) => (
+            <div key={idx} className="bg-white border border-[#B8922A]/25 p-2.5 relative pr-8">
+              <button
+                type="button"
+                onClick={() => remove(idx)}
+                className="absolute top-1.5 right-1.5 text-red-600 hover:text-red-800 p-1"
+                data-testid={`match-remove-${idx}`}
+              >
+                <Trash2 size={11} />
+              </button>
+              <div className="grid grid-cols-2 lg:grid-cols-12 gap-2">
+                <div className="lg:col-span-2">
+                  <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Heure</label>
+                  <input
+                    value={m.time}
+                    onChange={(e) => update(idx, "time", e.target.value)}
+                    placeholder="17H00"
+                    className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="lg:col-span-3">
+                  <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Domicile</label>
+                  <input
+                    value={m.team_home}
+                    onChange={(e) => update(idx, "team_home", e.target.value)}
+                    placeholder="France"
+                    className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="lg:col-span-3">
+                  <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Extérieur</label>
+                  <input
+                    value={m.team_away}
+                    onChange={(e) => update(idx, "team_away", e.target.value)}
+                    placeholder="Argentine"
+                    className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="lg:col-span-2">
+                  <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">Phase</label>
+                  <input
+                    value={m.stage || ""}
+                    onChange={(e) => update(idx, "stage", e.target.value)}
+                    placeholder="1/4 finale"
+                    className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-1 lg:contents">
+                  <div className="lg:col-span-1">
+                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">🏠 emoji</label>
+                    <input
+                      value={m.flag_home || ""}
+                      onChange={(e) => update(idx, "flag_home", e.target.value)}
+                      placeholder="🇫🇷"
+                      className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center"
+                    />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <label className="text-[0.5rem] uppercase tracking-[0.15em] text-[#0A0A0A]/50">🏃 emoji</label>
+                    <input
+                      value={m.flag_away || ""}
+                      onChange={(e) => update(idx, "flag_away", e.target.value)}
+                      placeholder="🇦🇷"
+                      className="w-full px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Add row */}
+      <div className="grid grid-cols-2 lg:grid-cols-12 gap-2 items-end bg-[#B8922A]/5 border border-dashed border-[#B8922A]/40 p-2.5">
+        <input value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })}
+          placeholder="17H00" className="lg:col-span-2 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+          data-testid="match-new-time" />
+        <input value={draft.team_home} onChange={(e) => setDraft({ ...draft, team_home: e.target.value })}
+          placeholder="France" className="lg:col-span-3 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+          data-testid="match-new-home" />
+        <input value={draft.team_away} onChange={(e) => setDraft({ ...draft, team_away: e.target.value })}
+          placeholder="Argentine" className="lg:col-span-3 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+          data-testid="match-new-away" />
+        <input value={draft.stage} onChange={(e) => setDraft({ ...draft, stage: e.target.value })}
+          placeholder="1/4 finale (opt.)" className="lg:col-span-2 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none" />
+        <input value={draft.flag_home} onChange={(e) => setDraft({ ...draft, flag_home: e.target.value })}
+          placeholder="🇫🇷" className="lg:col-span-1 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center" />
+        <input value={draft.flag_away} onChange={(e) => setDraft({ ...draft, flag_away: e.target.value })}
+          placeholder="🇦🇷" className="lg:col-span-1 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center" />
+        <button type="button" onClick={add}
+          className="col-span-2 lg:col-span-12 px-2 py-1.5 text-[0.55rem] uppercase tracking-[0.18em] bg-[#B8922A] text-white hover:bg-[#9d7a23] inline-flex items-center justify-center gap-1"
+          data-testid="match-add-btn">
+          <Plus size={11} /> Ajouter un match
         </button>
       </div>
     </div>
@@ -299,6 +446,11 @@ function ProgrammeBuilder({ programme, startDate, endDate, onChange }) {
                   <PackagesSubBuilder
                     packages={item.packages || []}
                     onChange={(pkgs) => update(realIdx, "packages", pkgs)}
+                  />
+                  {/* Sports matches calendar for this day */}
+                  <MatchesSubBuilder
+                    matches={item.matches || []}
+                    onChange={(ms) => update(realIdx, "matches", ms)}
                   />
               </div>
             );

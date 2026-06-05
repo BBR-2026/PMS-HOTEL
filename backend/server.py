@@ -451,20 +451,32 @@ class EventPrivatization(BaseModel):
     message: Optional[str] = ""
 
 
+class EventMatch(BaseModel):
+    """A sports match displayed in the day's "Calendrier des matchs" modal.
+    Optional and unique to event days that carry one (e.g., World Cup, CAN).
+    """
+    time: str = Field(min_length=1, max_length=10)  # "17H00", "21:00"
+    team_home: str = Field(min_length=1, max_length=80)
+    team_away: str = Field(min_length=1, max_length=80)
+    stage: Optional[str] = Field(default="", max_length=80)  # "Match d'ouverture", "1/4 finale"
+    flag_home: Optional[str] = ""  # URL or emoji
+    flag_away: Optional[str] = ""
+
+
 class EventPackage(BaseModel):
     """Premium pass / package offered for one specific day of an event.
 
-    Customers can mix any number of packages within the same booking — the
-    quantities `adults` / `children` per selection are constrained by
-    `max_persons`. Each package keeps its own per-person pricing so the
-    booking total stays predictable.
+    Customers buy a package as a flat forfait (regardless of head-count, up to
+    `max_persons`). `stock` lets the staff cap how many copies of THIS package
+    can be sold for the day (0 = unlimited).
     """
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
     label: str = Field(min_length=1, max_length=120)
     description: Optional[str] = ""  # rich text shown in the "Voir le contenu" modal
-    price_adult: int = Field(default=0, ge=0)
-    price_child: int = Field(default=0, ge=0)
+    price_adult: int = Field(default=0, ge=0)  # flat forfait price (legacy field name)
+    price_child: int = Field(default=0, ge=0)  # kept for schema backward compat
     max_persons: int = Field(default=2, ge=1, le=50)
+    stock: int = Field(default=0, ge=0, le=10_000)  # 0 = unlimited copies/day
 
 
 class ProgrammeItem(BaseModel):
@@ -477,6 +489,7 @@ class ProgrammeItem(BaseModel):
     price_adult: int = Field(default=0, ge=0)
     price_child: int = Field(default=0, ge=0)
     packages: List[EventPackage] = Field(default_factory=list)
+    matches: List[EventMatch] = Field(default_factory=list)
 
 
 class SpecialEventCreate(BaseModel):
@@ -2195,7 +2208,8 @@ async def create_booking(body: BookingCreate):
     # Premium package add-ons (events). Each selection is a flat forfait — the
     # `pkg.price_adult` field holds the package's flat price (legacy name kept
     # for schema compat). Headcount only fills the package's capacity; price
-    # does NOT multiply. We still enforce `max_persons` per package per day.
+    # does NOT multiply. We still enforce `max_persons` per package per day AND
+    # `stock` (max copies of this package that can be sold per day; 0 = ∞).
     package_lines: List[dict] = []
     if is_special and body.package_selections and body.special_event_id:
         ev_doc = await db.special_events.find_one(
@@ -2203,6 +2217,12 @@ async def create_booking(body: BookingCreate):
             {"_id": 0, "programme": 1, "event_dates": 1, "capacity": 1},
         )
         prog = {p.get("date"): p for p in (ev_doc.get("programme") or []) if p.get("date")} if ev_doc else {}
+        # Count requested copies per (date, package_id) within this booking
+        req_count: dict = {}
+        for sel in body.package_selections:
+            if sel.adults <= 0 and sel.children <= 0:
+                continue
+            req_count[(sel.date, sel.package_id)] = req_count.get((sel.date, sel.package_id), 0) + 1
         for sel in body.package_selections:
             if sel.adults <= 0 and sel.children <= 0:
                 continue
@@ -2220,6 +2240,28 @@ async def create_booking(body: BookingCreate):
                     status_code=400,
                     detail=f"Le package « {pkg.get('label')} » accepte {pkg.get('max_persons')} personne(s) max.",
                 )
+            # Stock guard — count already sold copies for this (event, date, pkg).
+            stock = int(pkg.get("stock", 0) or 0)
+            if stock > 0:
+                sold = 0
+                async for b in db.bookings.find(
+                    {"offer_type": "special_event", "special_event_id": body.special_event_id,
+                     "status": {"$ne": "cancelled"}},
+                    {"_id": 0, "package_lines": 1},
+                ):
+                    for line in (b.get("package_lines") or []):
+                        if line.get("date") == sel.date and line.get("package_id") == sel.package_id:
+                            sold += 1
+                requested = req_count.get((sel.date, sel.package_id), 1)
+                if sold + requested > stock:
+                    remaining = max(0, stock - sold)
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Le forfait « {pkg.get('label')} » est limité à {stock} "
+                            f"exemplaire(s) le {sel.date} (reste {remaining})."
+                        ),
+                    )
             # Flat forfait price — independent of headcount.
             line_amount = int(pkg.get("price_adult", pkg.get("price", 0)) or 0)
             total += line_amount
@@ -2868,6 +2910,23 @@ async def get_special_event(event_id: str):
         d = b.get("date") or ""
         booked_per_date[d] = booked_per_date.get(d, 0) + int(b.get("adults", 0)) + int(b.get("children", 0))
     out["seats_per_date"] = {d: max(0, int(ev.get("capacity", 0)) - booked_per_date.get(d, 0)) for d in out["event_dates"]}
+
+    # Per-package remaining stock — only meaningful when stock > 0 on the package.
+    pkg_sold: dict = {}
+    async for b in db.bookings.find(
+        {"offer_type": "special_event", "special_event_id": ev["id"], "status": {"$ne": "cancelled"}},
+        {"_id": 0, "package_lines": 1},
+    ):
+        for line in (b.get("package_lines") or []):
+            key = (line.get("date") or "", line.get("package_id") or "")
+            pkg_sold[key] = pkg_sold.get(key, 0) + 1
+    # Annotate each programme item's packages with `sold` / `remaining`.
+    for p in (out.get("programme") or []):
+        for pkg in (p.get("packages") or []):
+            stock = int(pkg.get("stock", 0) or 0)
+            sold = pkg_sold.get((p.get("date"), pkg.get("id")), 0)
+            pkg["sold"] = sold
+            pkg["remaining"] = (stock - sold) if stock > 0 else None
     return {"event": out}
 
 
@@ -8188,11 +8247,19 @@ async def _send_booking_confirmation_email(booking: dict, temporary: bool = Fals
         if ov and (ov.get("image_url") or "").strip():
             hero_override = ov["image_url"]
 
+    # Pull configured email footer (Dashboard) — falls back to default on first run.
+    try:
+        from routers.site_config import fetch_email_footer_html
+        custom_footer_html = await fetch_email_footer_html(db)
+    except Exception:
+        custom_footer_html = None
+
     tpl = email_service.render_booking_confirmation(
         name=name, ref=ref, offer_label=offer_label, date_str=date_str,
         boat_time=boat, amount_label=amount_label, ticket_url=ticket_url,
         offer_type=booking.get("offer_type", ""),
         hero_override=hero_override,
+        custom_footer_html=custom_footer_html,
     )
     if temporary:
         # Patch the rendered template with a clearly-marked "PROVISOIRE" wrapper.
@@ -8271,6 +8338,7 @@ async def _send_booking_confirmation_email(booking: dict, temporary: bool = Fals
         subject=tpl["subject"], html=tpl["html"], plain=tpl["plain"],
         purpose=purpose, booking_id=booking.get("id"),
         attachments=attachments,
+        attach_livret=not temporary,  # only attach livret on FINAL confirmation
     )
 
     # ---- Per-adult tickets — each non-booker adult who provided their own
@@ -10128,6 +10196,17 @@ app.include_router(
 from routers import vip_spaces as _vip_spaces_mod  # noqa: E402
 app.include_router(
     _vip_spaces_mod.build_vip_spaces_router(
+        db=db,
+        require_role=_require_role,
+        get_current_staff=get_current_staff,
+    ),
+    prefix="/api",
+)
+
+# Site-wide configuration (email footer + livret BBR PDF).
+from routers import site_config as _site_config_mod  # noqa: E402
+app.include_router(
+    _site_config_mod.build_site_config_router(
         db=db,
         require_role=_require_role,
         get_current_staff=get_current_staff,

@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 16 — Site-config (footer + livret PDF) + EventDetail 2-step refactor + matches + per-package stock guard. Backend pytest 11/12 PASS (only the explicit role-403 assertion failed and surfaced a real authz finding — see below). Frontend: EventDetail @390px Step 1 (day-card grid) → Step 2 (day-detail-view with matches-modal auto-opening, 2 match-rows, close + re-open via open-matches-modal, 2 packages with 'Voir le contenu' EN BAS, stock '1 disponible'/'Épuisé' visible, both sticky CTAs day-book-another-cta + day-validate-cta present) — all PASS. StaffConfig /staff/config → tab-mail visible, panel mail-livret-panel mounted with footer-html-textarea + live footer-preview (verified by typing '<p><strong>LIVE PREVIEW TEST</strong></p>' and seeing it rendered styled in preview), footer-save-btn + livret-upload-btn present.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "PATCH /api/staff/site-config",
+        "issue": "AUTHORIZATION BYPASS — the role allowlist on routers/site_config.py is `['admin','manager']`, but ROLE_INCLUDES in server.py:3472 maps hotesse → ['hotesse','manager','receptionist'] (also serveur_caisse → manager, logistique → manager, manager_pole → manager). _require_role expands the user's role via ROLE_INCLUDES and accepts ANY role that inherits 'manager'. Result: a hotesse JWT successfully PATCHes the site footer (verified: HTTP 200, `updated_by: hotesse.test@boulay.ci`). The review brief explicitly states 'serveur_caisse doit échouer 403' — currently every legacy-inheriting role can write to site-config (and probably to other admin-gated endpoints that gate on 'manager'). Fix: restrict to ['admin'] only, OR check `staff.role` literally (no inheritance) for admin-only writes, OR introduce an explicit ROLE_INCLUDES tier for 'site_admin' that hotesse/serveur_caisse do NOT inherit. Same concern applies to POST /api/staff/site-config/livret and DELETE /api/staff/site-config/livret (same allowlist).",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16_site_config_and_stock.py",
+    "/app/test_reports/pytest/iter16.xml"
+  ],
+  "action_items": [
+    "BLOCKER (HIGH): tighten PATCH/POST/DELETE /api/staff/site-config* role check — current ['admin','manager'] gate is bypassed by hotesse, serveur_caisse, logistique, manager_pole because ROLE_INCLUDES grafts them onto 'manager'. Either move to strict role match or restrict to ['admin'] only.",
+    "Minor: GET /api/staff/special-events/{id} returns the event dict directly, while GET /api/special-events/{id} wraps it in {event:...}. Consider unifying the response shape so the frontend doesn't have to special-case the staff endpoint.",
+    "Cleanup: 2 TEST_ bookings remain on event a9119968-09d6-4688-85c8-2915784b3a44 / 2026-12-15 against pkg_bal (stock-saturating test) and 3 bookings against pkg_std (stock=0 test). pkg_bal now shows remaining=0, pkg_std remaining=1. Run `db.bookings.delete_many({'special_event_id':'a9119968-09d6-4688-85c8-2915784b3a44','participants.email': {'$regex':'^TEST_stk_'}})` before user demos to free seats."
+  ],
+  "critical_code_review_comments": [
+    "routers/site_config.py is well-structured (singleton doc with sensible defaults, base64 storage in `media` collection, public livret stream endpoint, helper fetchers for the email module). Good separation of concerns.",
+    "server.py:2244-2264 stock guard is correct AND handles the multi-line same-package case via the `req_count` map — verified by the failing 3rd-booking test returning 409 with French message including 'limité à 2 exemplaire(s)'. Nice.",
+    "server.py:10255 file is still 10255 lines — way over the 700-line guideline. Any further additions should be extracted into routers/ modules (the team has already started this pattern — site_config, vip_spaces, gallery, media, registrations).",
+    "Auth gate inconsistency (see backend_issues.critical): the ROLE_INCLUDES inheritance was designed to make legacy 'manager'-gated endpoints work for the new 7-role catalog, but the side-effect is that any new admin-only endpoint that gates on ['admin','manager'] silently allows hotesse/serveur_caisse/etc. A `STRICT_ROLES = {'admin', ...}` short-circuit in _require_role (or an explicit `strict=True` kwarg) would let callers opt out of inheritance for sensitive writes."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration16_site_config_and_stock.py (NEW — 12 tests)"
+  ],
+  "success_rate": {
+    "backend": "92% (11/12 pytest — single failure exposes a real authz bug, not a test issue)",
+    "frontend": "100% — EventDetail mobile flow (Step1→Step2, matches modal autoopen/close/reopen, packages with stock, sticky CTAs) and StaffConfig /staff/config tab-mail (panel + textarea + live preview + save + upload buttons) all working as specified"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (admin); hotesse.test@boulay.ci / Hotesse@2026 (used to probe role escalation on site-config)",
+  "seed_data_creation": "Backend tests created 2 bookings on pkg_bal (stock=2) and 3 bookings on pkg_std (after temporarily flipping stock to 0). Original stock values were restored. Booker emails matched pattern TEST_stk_<hex>@example.com — easy to cleanup with mongo regex query.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The route for StaffConfig is /staff/config NOT /staff/configuration (the review brief had it wrong — tab-mail and all sub-testids are confirmed at /staff/config). Event a9119968-09d6-4688-85c8-2915784b3a44 / 2026-12-15 has pkg_std (stock=4 originally, now ~remaining=1 because of TEST_stk_ pollution) and pkg_bal (stock=2, now remaining=0). matches[] in programme[0] has 2 entries (France-Argentine 17H00 🇫🇷🇦🇷 + Brésil-Maroc 20H00 🇧🇷🇲🇦). Default footer is auto-seeded by routers/site_config.py:DEFAULT_FOOTER_HTML when the doc is empty. Reused pytest file: backend/tests/test_iteration16_site_config_and_stock.py — re-run with `python -m pytest backend/tests/test_iteration16_site_config_and_stock.py -v --junitxml=test_reports/pytest/iter16.xml`. The role-403 test is intentionally left failing because it points to the real bug; once main agent fixes the authz, the test should turn green without modification.",
+  "rca of the issue": "Authorization bypass on site-config writes — root cause is the interaction between two well-intentioned design choices: (1) routers/site_config.py:72 gates writes on `_require_role(staff, ['admin','manager'])` so the legacy manager seed account (manager@boulay.ci) still works; (2) ROLE_INCLUDES in server.py:3472 grafts hotesse, serveur_caisse, logistique, manager_pole onto 'manager' for legacy backwards-compat. _require_role expands the caller's role through ROLE_INCLUDES and accepts the gate as soon as ONE inherited role matches the allowlist. Therefore every non-admin role that has 'manager' in its inheritance set ends up able to PATCH the site footer, upload/delete the livret PDF, etc. Reproduction: login as hotesse.test@boulay.ci, PATCH /api/staff/site-config with any body → 200 with updated_by=hotesse@. Fix proposal: (a) tighten the gate to ['admin'] for site-config writes since the brief calls it a 'Dashboard admin' feature, OR (b) introduce a strict-role mechanism in _require_role (e.g., `_require_role(staff, ['admin'], strict=True)` that skips ROLE_INCLUDES expansion)."
+}

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Calendar, Users, ArrowRight, ChevronLeft, Check, X, Info } from "lucide-react";
+import {
+  Sparkles, Calendar, Users, ArrowRight, ChevronLeft, ChevronRight,
+  Check, X, Info, Trophy, Plus,
+} from "lucide-react";
 import api from "../lib/api";
 import { formatXOF } from "../lib/i18n";
 
@@ -12,14 +15,23 @@ function fmtDateFR(iso) {
   const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
   return `${parseInt(m[3], 10)} ${months[parseInt(m[2], 10) - 1]} ${m[1]}`;
 }
+function dayOfWeekFR(iso) {
+  if (!iso) return "";
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"][d.getDay()];
+}
 
 /**
- * Public detail page for a special event.
- * - Single-day events redirect straight to the booking tunnel.
- * - Multi-day events render the programme as a grid of sub-offer cards (one
- *   per date) with the concept, capacity left, and per-day pricing — each
- *   with its own "Réserver" CTA that opens the tunnel pre-selected on that
- *   date. Customers can come back and book another date independently.
+ * Public detail page for a special event — 2-step navigation:
+ *   STEP 1  (viewMode = "days")  →  big list of bookable days
+ *   STEP 2  (viewMode = "day")    →  dedicated view for the picked day, with
+ *                                    matches modal + packages + 2 CTAs at
+ *                                    the bottom ("Réserver une autre date"
+ *                                    and "Valider la sélection").
+ * Selections persist across step transitions so customers can stack
+ * forfaits from multiple days into a single booking.
  */
 export default function EventDetail() {
   const { eventId } = useParams();
@@ -31,6 +43,11 @@ export default function EventDetail() {
   const [packageSel, setPackageSel] = useState({});
   // Modal for "Voir le contenu" → shows {date, package} details
   const [modalPkg, setModalPkg] = useState(null);
+  // Matches calendar modal — shown as soon as the user lands on a day
+  // with non-empty matches. Closed via X or "Découvrir les forfaits" CTA.
+  const [matchesOpen, setMatchesOpen] = useState(false);
+  // Day-detail step: which date the user is currently viewing. Null = days list.
+  const [activeDate, setActiveDate] = useState(null);
 
   useEffect(() => {
     api.get(`/special-events/${eventId}`)
@@ -47,7 +64,11 @@ export default function EventDetail() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [ev]);
 
-  // Build flat array of package selections sent to backend
+  const activeDay = useMemo(
+    () => programme.find((p) => p.date === activeDate) || null,
+    [programme, activeDate]
+  );
+
   const packageSelectionsArr = useMemo(() => {
     const out = [];
     for (const [date, byPkg] of Object.entries(packageSel)) {
@@ -62,9 +83,6 @@ export default function EventDetail() {
     return out;
   }, [packageSel]);
 
-  // Auto-derived: a date is "selected" when it has at least one package with
-  // persons ≥ 1. No more "Sélectionner cette date" button — clicking inside
-  // a package is enough.
   const selectedDates = useMemo(() => {
     const set = new Set();
     for (const sel of packageSelectionsArr) set.add(sel.date);
@@ -76,8 +94,6 @@ export default function EventDetail() {
     [programme, selectedDates]
   );
 
-  // Flat package total — each selected package is billed at its forfait price,
-  // not multiplied by headcount. Headcount only fills the package's capacity.
   const eventTotal = useMemo(() => {
     if (!ev) return 0;
     const progByDate = {};
@@ -92,9 +108,20 @@ export default function EventDetail() {
     return sum;
   }, [ev, programme, packageSelectionsArr]);
 
-  // Update package counts. Keeps `persons = adults + children` invariant
-  // when the caller passes the special kind="persons" — it adjusts adults
-  // (children remain user-controlled, with auto-clamp on overflow).
+  // Auto-open matches modal when entering a day that carries one.
+  useEffect(() => {
+    if (activeDay && Array.isArray(activeDay.matches) && activeDay.matches.length > 0) {
+      setMatchesOpen(true);
+    } else {
+      setMatchesOpen(false);
+    }
+  }, [activeDay]);
+
+  // Reset scroll when switching between days list and day detail.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeDate]);
+
   const updatePkgQty = (date, pkgId, kind, value, maxPersons) => {
     setPackageSel((prev) => {
       const day = { ...(prev[date] || {}) };
@@ -103,7 +130,6 @@ export default function EventDetail() {
       let next = { ...cur };
       if (kind === "persons") {
         const clamped = Math.min(val, maxPersons || val);
-        // Keep children as user set, fill the rest with adults.
         const children = Math.min(cur.children || 0, clamped);
         next = { adults: Math.max(0, clamped - children), children };
       } else if (kind === "children") {
@@ -154,18 +180,162 @@ export default function EventDetail() {
     );
   }
 
-  // Single-day → redirect to the existing booking tunnel.
   if ((ev.event_kind || "single_day") !== "multi_day") {
     return <Navigate to={`/booking/special-event/${eventId}`} replace />;
   }
 
-  // Multi-day → show programme as sub-offers (with multi-selection).
-  const today = ev.today;
   const seats = ev.seats_per_date || {};
 
+  // ---------------- STEP 2 : Day-detail view ----------------
+  if (activeDay) {
+    const seatsLeft = seats[activeDay.date];
+    const isFull = typeof seatsLeft === "number" && seatsLeft <= 0;
+    const dayPkgs = Array.isArray(activeDay.packages) ? activeDay.packages : [];
+    const dayPkgSel = packageSel[activeDay.date] || {};
+    const daySelectedCount = Object.values(dayPkgSel).filter(
+      (q) => (q?.adults || 0) + (q?.children || 0) > 0,
+    ).length;
+    const hasMatches = Array.isArray(activeDay.matches) && activeDay.matches.length > 0;
+
+    return (
+      <div className="bg-white text-[#0A0A0A] min-h-screen" data-testid="day-detail-view">
+        <section className="pt-28 sm:pt-32 md:pt-36 pb-8 px-5 sm:px-8 md:px-12 lg:px-20">
+          <div className="max-w-4xl mx-auto">
+            <button
+              onClick={() => setActiveDate(null)}
+              className="inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 hover:text-[#B8922A] mb-6"
+              data-testid="day-back-btn"
+            >
+              <ChevronLeft size={14} /> Retour aux journées
+            </button>
+
+            <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-2">
+              {dayOfWeekFR(activeDay.date)} · {fmtDateFR(activeDay.date)}
+            </div>
+            <h1 className="font-display-serif text-3xl sm:text-4xl md:text-5xl text-[#0A0A0A] tracking-tight leading-[1.05] mb-3 break-words">
+              {activeDay.title || ev.title}
+            </h1>
+            <div className="gold-divider mb-5" />
+            {activeDay.description && (
+              <p className="text-[0.95rem] sm:text-base text-[#0A0A0A]/70 leading-relaxed max-w-2xl">
+                {activeDay.description}
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3 mt-5">
+              {typeof seatsLeft === "number" && (
+                <span className={`text-[0.72rem] inline-flex items-center gap-1 ${seatsLeft <= 5 ? "text-[#B8922A]" : "text-[#0A0A0A]/55"}`}>
+                  <Users size={12} /> {seatsLeft} place{seatsLeft > 1 ? "s" : ""} dispo.
+                </span>
+              )}
+              {hasMatches && (
+                <button
+                  onClick={() => setMatchesOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#B8922A]/40 bg-[#FBF8EF] text-[#B8922A] text-[0.68rem] uppercase tracking-[0.18em] hover:bg-[#B8922A] hover:text-white transition-colors"
+                  data-testid="open-matches-modal"
+                >
+                  <Trophy size={11} /> Voir les matchs du jour ({activeDay.matches.length})
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="px-5 sm:px-8 md:px-12 lg:px-20 pb-32">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">
+              Forfaits disponibles
+            </div>
+            <h2 className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A] tracking-tight mb-6">
+              Choisissez votre forfait
+            </h2>
+
+            {isFull && (
+              <div className="border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm mb-5" data-testid="day-soldout">
+                Cette journée est complète.
+              </div>
+            )}
+
+            {!isFull && dayPkgs.length === 0 && (
+              <div className="border border-dashed border-[#0A0A0A]/15 bg-[#FAFAF7] p-8 text-center text-[#0A0A0A]/55 text-sm">
+                Aucun forfait premium configuré pour cette journée.
+                <div className="mt-4">
+                  <Link
+                    to={`/booking/special-event/${eventId}?date=${activeDay.date}`}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] bg-[#B8922A] text-white hover:bg-[#9d7a23] transition-colors"
+                    data-testid={`day-quick-book-${activeDay.date}`}
+                  >
+                    Réserver cette journée <ArrowRight size={12} />
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {!isFull && dayPkgs.length > 0 && (
+              <div className="space-y-3 sm:space-y-4" data-testid={`packages-${activeDay.date}`}>
+                {dayPkgs.map((pkg) => (
+                  <PackageCard
+                    key={pkg.id}
+                    pkg={pkg}
+                    sel={dayPkgSel[pkg.id] || { adults: 0, children: 0 }}
+                    onToggle={(persons) => updatePkgQty(activeDay.date, pkg.id, "persons", persons, pkg.max_persons)}
+                    onChangePersons={(n) => updatePkgQty(activeDay.date, pkg.id, "persons", n, pkg.max_persons)}
+                    onChangeAdults={(n) => updatePkgQty(activeDay.date, pkg.id, "adults", n, pkg.max_persons)}
+                    onChangeChildren={(n) => updatePkgQty(activeDay.date, pkg.id, "children", n, pkg.max_persons)}
+                    onShowInfo={() => setModalPkg({ day: activeDay, pkg })}
+                    testidPrefix={`${activeDay.date}-${pkg.id}`}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Two-button footer requested by the user */}
+            <div className="sticky bottom-0 mt-10 -mx-5 sm:-mx-8 md:-mx-12 lg:-mx-20 bg-white/95 backdrop-blur-sm border-t border-[#0A0A0A]/10 px-5 sm:px-8 md:px-12 lg:px-20 py-4 sm:py-5" data-testid="day-bottom-bar">
+              <div className="max-w-4xl mx-auto">
+                <div className="text-[0.78rem] text-[#0A0A0A]/65 mb-3 sm:mb-4 text-center">
+                  {daySelectedCount > 0
+                    ? <><span className="text-[#0A0A0A] font-medium">{daySelectedCount}</span> forfait{daySelectedCount > 1 ? "s" : ""} sur cette journée · Total : <span className="text-[#B8922A] font-medium">{formatXOF(eventTotal)}</span></>
+                    : <span>Aucun forfait sélectionné pour cette journée.</span>}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+                  <button
+                    onClick={() => setActiveDate(null)}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-3 text-[0.7rem] uppercase tracking-[0.22em] bg-white text-[#0A0A0A] border border-[#0A0A0A]/20 hover:border-[#B8922A] hover:text-[#B8922A] transition-colors"
+                    data-testid="day-book-another-cta"
+                  >
+                    <Plus size={13} /> Réserver une autre date
+                  </button>
+                  <button
+                    onClick={validateSelection}
+                    disabled={selectedOrdered.length === 0}
+                    className="btn-gold inline-flex items-center justify-center gap-2 text-[0.7rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                    data-testid="day-validate-cta"
+                  >
+                    Valider la sélection <ArrowRight size={12} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Matches calendar modal */}
+        <MatchesModal
+          open={matchesOpen}
+          onClose={() => setMatchesOpen(false)}
+          day={activeDay}
+        />
+
+        {/* Package details modal */}
+        <PackageInfoModal modalPkg={modalPkg} onClose={() => setModalPkg(null)} />
+      </div>
+    );
+  }
+
+  // ---------------- STEP 1 : Days list ----------------
   return (
     <div className="bg-white text-[#0A0A0A] min-h-screen" data-testid="event-detail-page">
-      <section className="pt-32 md:pt-40 pb-10 px-6 md:px-12 lg:px-20">
+      <section className="pt-28 sm:pt-32 md:pt-40 pb-10 px-5 sm:px-8 md:px-12 lg:px-20">
         <div className="max-w-6xl mx-auto">
           <Link
             to="/"
@@ -184,7 +354,7 @@ export default function EventDetail() {
               <div className="inline-flex items-center gap-2 mb-4 px-3 py-1 bg-[#B8922A] text-white text-[0.6rem] uppercase tracking-[0.32em] font-medium">
                 <Sparkles size={11} /> Événement spécial
               </div>
-              <h1 className="font-display-serif text-4xl md:text-5xl lg:text-6xl text-[#0A0A0A] tracking-tight leading-[1.05] mb-3">
+              <h1 className="font-display-serif text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-[#0A0A0A] tracking-tight leading-[1.05] mb-3 break-words">
                 {ev.title}
               </h1>
               {ev.subtitle && (
@@ -218,15 +388,17 @@ export default function EventDetail() {
         </div>
       </section>
 
-      <section className="pb-24 px-6 md:px-12 lg:px-20">
-        <div className="max-w-6xl mx-auto">
+      {/* Days list */}
+      <section className="pb-24 px-5 sm:px-8 md:px-12 lg:px-20">
+        <div className="max-w-5xl mx-auto">
           <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-3">Programme</div>
-          <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] tracking-tight leading-tight mb-6">
+          <h2 className="font-display-serif text-3xl md:text-4xl text-[#0A0A0A] tracking-tight leading-tight mb-4">
             Choisissez votre journée
           </h2>
-          <p className="text-sm text-[#0A0A0A]/55 max-w-2xl mb-10">
-            Chaque date a son propre concept, sa capacité et son tarif. Vous pouvez réserver
-            plusieurs journées indépendamment.
+          <p className="text-sm text-[#0A0A0A]/55 max-w-2xl mb-8 sm:mb-10">
+            Cliquez sur une date pour découvrir son programme, les matchs diffusés et
+            les forfaits disponibles. Vous pourrez ensuite ajouter d'autres dates à
+            votre sélection avant de finaliser votre réservation.
           </p>
 
           {programme.length === 0 ? (
@@ -234,270 +406,354 @@ export default function EventDetail() {
               Les détails du programme ne sont pas encore disponibles.
             </div>
           ) : (
-            <>
-              <div className="space-y-5 max-w-3xl" data-testid="programme-grid">
-                {programme.map((day, idx) => {
-                  const seatsLeft = seats[day.date];
-                  const isFull = typeof seatsLeft === "number" && seatsLeft <= 0;
-                  const isSelected = selectedDates.has(day.date);
-                  const dayPkgs = Array.isArray(day.packages) ? day.packages : [];
-                  const dayPkgSel = packageSel[day.date] || {};
-                  return (
-                    <motion.div
-                      key={`${day.date}-${idx}`}
-                      initial={{ opacity: 0, y: 18 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true, margin: "-60px" }}
-                      transition={{ duration: 0.55, delay: idx * 0.06 }}
-                      className={`border bg-white p-5 sm:p-7 transition-colors ${
-                        isSelected
-                          ? "border-[#B8922A] shadow-[0_0_0_2px_rgba(184,146,42,0.18)]"
-                          : "border-[#0A0A0A]/12 hover:border-[#B8922A]"
-                      }`}
-                      data-testid={`programme-day-${day.date}`}
-                    >
-                      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-                        <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A]">
-                          {fmtDateFR(day.date)}
-                        </div>
-                        {typeof seatsLeft === "number" && (
-                          <span className={`text-[0.7rem] ${seatsLeft <= 5 ? "text-[#B8922A]" : "text-[#0A0A0A]/55"}`}>
-                            <Users size={11} className="inline mr-1" /> {seatsLeft} place{seatsLeft > 1 ? "s" : ""} dispo.
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="font-display-serif text-2xl md:text-3xl text-[#0A0A0A] mb-2 leading-tight">
-                        {day.title || ev.title}
-                      </h3>
-                      {day.description && (
-                        <p className="text-[0.9rem] text-[#0A0A0A]/65 leading-relaxed mb-4">
-                          {day.description}
-                        </p>
-                      )}
-
-                      {/* Sold-out badge (no clickable interactions if full) */}
-                      {isFull && (
-                        <div className="inline-flex items-center justify-center px-4 py-2.5 border border-red-200 text-red-700 text-[0.7rem] uppercase tracking-[0.22em]" data-testid={`day-soldout-${day.date}`}>
-                          Complet
-                        </div>
-                      )}
-
-                      {/* Premium packages — selecting any one auto-marks the date */}
-                      {!isFull && dayPkgs.length > 0 && (
-                        <div className="mt-4 space-y-3" data-testid={`packages-${day.date}`}>
-                          {dayPkgs.map((pkg) => {
-                            const sel = dayPkgSel[pkg.id] || { adults: 0, children: 0 };
-                            const persons = (sel.adults || 0) + (sel.children || 0);
-                            const max = Number(pkg.max_persons) || 0;
-                            const flatPrice = Number(pkg.price_adult || pkg.price || 0);
-                            const lineAmount = persons > 0 ? flatPrice : 0;
-                            const pkgActive = persons > 0;
-                            const togglePackage = () => {
-                              // Click on a non-active package → take the whole capacity (max)
-                              // with adults = max, children = 0 (user can split next).
-                              // Click on an active package → release (set both to 0).
-                              if (pkgActive) {
-                                updatePkgQty(day.date, pkg.id, "persons", 0, max);
-                              } else {
-                                updatePkgQty(day.date, pkg.id, "persons", Math.max(1, max), max);
-                              }
-                            };
-                            return (
-                              <div
-                                key={pkg.id}
-                                className={`border transition-colors ${
-                                  pkgActive
-                                    ? "border-[#B8922A] bg-[#FBF6E9]"
-                                    : "border-[#0A0A0A]/10 bg-[#FAFAF7] hover:border-[#B8922A]"
-                                }`}
-                                data-testid={`pkg-card-${day.date}-${pkg.id}`}
-                              >
-                                {/* Clickable header — selects/deselects the package */}
-                                <button
-                                  type="button"
-                                  onClick={togglePackage}
-                                  className="w-full text-left p-3 sm:p-4 flex flex-wrap items-start justify-between gap-2"
-                                  data-testid={`pkg-toggle-${day.date}-${pkg.id}`}
-                                  aria-pressed={pkgActive}
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 font-medium text-[#0A0A0A]">
-                                      <span className={`w-4 h-4 inline-flex items-center justify-center border ${
-                                        pkgActive ? "bg-[#B8922A] border-[#B8922A] text-white" : "border-[#0A0A0A]/30 bg-white"
-                                      }`}>
-                                        {pkgActive && <Check size={11} />}
-                                      </span>
-                                      {pkg.label}
-                                    </div>
-                                    <div className="text-[0.75rem] text-[#0A0A0A]/55 mt-0.5 ml-6">
-                                      <span className="text-[#B8922A] font-medium">{formatXOF(flatPrice)}</span>
-                                      <span> · forfait · max {pkg.max_persons} pers.</span>
-                                    </div>
-                                  </div>
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={(e) => { e.stopPropagation(); setModalPkg({ day, pkg }); }}
-                                    onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setModalPkg({ day, pkg }); } }}
-                                    className="text-[0.62rem] uppercase tracking-[0.18em] text-[#B8922A] hover:underline inline-flex items-center gap-1 cursor-pointer"
-                                    data-testid={`pkg-info-${day.date}-${pkg.id}`}
-                                  >
-                                    <Info size={11} /> Voir le contenu
-                                  </span>
-                                </button>
-
-                                {/* Persons + Adult/Children split — visible only when selected */}
-                                {pkgActive && (
-                                  <div className="px-3 sm:px-4 pb-4 pt-1 border-t border-[#B8922A]/20 space-y-3" data-testid={`pkg-counts-${day.date}-${pkg.id}`}>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                      <label className="inline-flex items-center gap-2 text-[0.78rem] text-[#0A0A0A]/80 font-medium">
-                                        Nombre de personnes
-                                        <input
-                                          type="number" min={1} max={max}
-                                          value={persons}
-                                          onChange={(e) => updatePkgQty(day.date, pkg.id, "persons", e.target.value, max)}
-                                          className="w-16 px-2 py-1 text-sm border border-[#B8922A]/40 bg-white focus:border-[#B8922A] outline-none text-center"
-                                          data-testid={`pkg-persons-${day.date}-${pkg.id}`}
-                                        />
-                                        <span className="text-[0.7rem] text-[#0A0A0A]/55">/ {max}</span>
-                                      </label>
-                                      <span className="ml-auto text-[0.78rem] font-medium text-[#B8922A]">
-                                        {formatXOF(lineAmount)}
-                                      </span>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[#B8922A]/15">
-                                      <label className="inline-flex items-center gap-2 text-[0.74rem] text-[#0A0A0A]/70">
-                                        Dont adultes
-                                        <input
-                                          type="number" min={0} max={persons}
-                                          value={sel.adults || 0}
-                                          onChange={(e) => updatePkgQty(day.date, pkg.id, "adults", e.target.value, max)}
-                                          className="w-14 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center"
-                                          data-testid={`pkg-adults-${day.date}-${pkg.id}`}
-                                        />
-                                      </label>
-                                      <label className="inline-flex items-center gap-2 text-[0.74rem] text-[#0A0A0A]/70">
-                                        Dont enfants
-                                        <input
-                                          type="number" min={0} max={persons}
-                                          value={sel.children || 0}
-                                          onChange={(e) => updatePkgQty(day.date, pkg.id, "children", e.target.value, max)}
-                                          className="w-14 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center"
-                                          data-testid={`pkg-children-${day.date}-${pkg.id}`}
-                                        />
-                                      </label>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* No packages configured: fall back to a single "Réserver cette date" CTA. */}
-                      {!isFull && dayPkgs.length === 0 && (
-                        <div className="mt-5">
-                          <Link
-                            to={`/booking/special-event/${eventId}?date=${day.date}`}
-                            className="inline-flex items-center gap-2 px-4 py-2.5 text-[0.7rem] uppercase tracking-[0.22em] bg-white text-[#0A0A0A] border border-[#0A0A0A]/20 hover:border-[#B8922A] hover:text-[#B8922A] transition-colors"
-                            data-testid={`day-quick-book-${day.date}`}
-                          >
-                            Réserver cette date
-                          </Link>
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })}
-              </div>
-
-              {/* Sticky validation bar */}
-              <div className="sticky bottom-0 mt-10 -mx-6 md:-mx-12 lg:-mx-20 bg-white/95 backdrop-blur-sm border-t border-[#0A0A0A]/10 px-6 md:px-12 lg:px-20 py-5" data-testid="event-validate-bar">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 max-w-6xl mx-auto">
-                  <div className="text-sm text-[#0A0A0A]/70">
-                    {selectedOrdered.length === 0 ? (
-                      <span className="text-[#0A0A0A]/50">Sélectionnez au moins une offre pour continuer.</span>
-                    ) : (
-                      <>
-                        <span className="font-medium text-[#0A0A0A]">{selectedOrdered.length}</span>{" "}
-                        date{selectedOrdered.length > 1 ? "s" : ""} ·{" "}
-                        <span className="font-medium text-[#0A0A0A]">{packageSelectionsArr.length}</span>{" "}
-                        forfait{packageSelectionsArr.length > 1 ? "s" : ""} ·{" "}
-                        <span className="text-[#B8922A] font-medium" data-testid="event-total">{formatXOF(eventTotal)}</span>
-                      </>
-                    )}
-                  </div>
-                  <button
-                    onClick={validateSelection}
-                    disabled={selectedOrdered.length === 0}
-                    className="btn-gold inline-flex items-center justify-center gap-2 text-[0.7rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                    data-testid="event-validate-cta"
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4" data-testid="days-grid">
+              {programme.map((day, idx) => {
+                const seatsLeft = seats[day.date];
+                const isFull = typeof seatsLeft === "number" && seatsLeft <= 0;
+                const isSelected = selectedDates.has(day.date);
+                const matchCount = (day.matches || []).length;
+                return (
+                  <motion.button
+                    key={`${day.date}-${idx}`}
+                    type="button"
+                    onClick={() => !isFull && setActiveDate(day.date)}
+                    disabled={isFull}
+                    initial={{ opacity: 0, y: 14 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: "-40px" }}
+                    transition={{ duration: 0.45, delay: idx * 0.05 }}
+                    className={`text-left bg-white border p-5 sm:p-6 transition-all relative ${
+                      isFull
+                        ? "border-[#0A0A0A]/10 opacity-55 cursor-not-allowed"
+                        : isSelected
+                          ? "border-[#B8922A] shadow-[0_0_0_2px_rgba(184,146,42,0.18)] hover:shadow-[0_0_0_3px_rgba(184,146,42,0.25)]"
+                          : "border-[#0A0A0A]/12 hover:border-[#B8922A] hover:shadow-md"
+                    }`}
+                    data-testid={`day-card-${day.date}`}
                   >
-                    Valider ma sélection
-                    <ArrowRight size={12} />
-                  </button>
+                    {isSelected && (
+                      <div className="absolute top-3 right-3 inline-flex items-center gap-1 px-2 py-0.5 bg-[#B8922A] text-white text-[0.55rem] uppercase tracking-[0.2em]">
+                        <Check size={10} /> Choisi
+                      </div>
+                    )}
+                    <div className="text-[0.6rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1.5">
+                      {dayOfWeekFR(day.date)}
+                    </div>
+                    <div className="font-display-serif text-3xl sm:text-4xl text-[#0A0A0A] leading-none mb-2">
+                      {fmtDateFR(day.date).split(" ").slice(0, 2).join(" ")}
+                    </div>
+                    <div className="text-[0.7rem] text-[#0A0A0A]/45 mb-4">
+                      {fmtDateFR(day.date).split(" ").slice(-1)[0]}
+                    </div>
+                    <h3 className="font-medium text-[#0A0A0A] text-base sm:text-lg leading-tight mb-2 line-clamp-2 break-words">
+                      {day.title || ev.title}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem] text-[#0A0A0A]/55 mt-3">
+                      {typeof seatsLeft === "number" && (
+                        <span className={`inline-flex items-center gap-1 ${seatsLeft <= 5 && !isFull ? "text-[#B8922A]" : ""}`}>
+                          <Users size={11} /> {isFull ? "Complet" : `${seatsLeft} place${seatsLeft > 1 ? "s" : ""}`}
+                        </span>
+                      )}
+                      {matchCount > 0 && (
+                        <span className="inline-flex items-center gap-1">
+                          <Trophy size={11} /> {matchCount} match{matchCount > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    {!isFull && (
+                      <div className="mt-4 inline-flex items-center gap-1.5 text-[#B8922A] text-[0.7rem] uppercase tracking-[0.18em]">
+                        Voir la journée <ChevronRight size={12} />
+                      </div>
+                    )}
+                  </motion.button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Light validate bar visible when packages are already selected on other days */}
+          {packageSelectionsArr.length > 0 && (
+            <div className="sticky bottom-0 mt-8 -mx-5 sm:-mx-8 md:-mx-12 lg:-mx-20 bg-white/95 backdrop-blur-sm border-t border-[#0A0A0A]/10 px-5 sm:px-8 md:px-12 lg:px-20 py-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 max-w-5xl mx-auto">
+                <div className="text-sm text-[#0A0A0A]/70">
+                  <span className="font-medium text-[#0A0A0A]">{selectedOrdered.length}</span>{" "}
+                  date{selectedOrdered.length > 1 ? "s" : ""} ·{" "}
+                  <span className="font-medium text-[#0A0A0A]">{packageSelectionsArr.length}</span>{" "}
+                  forfait{packageSelectionsArr.length > 1 ? "s" : ""} ·{" "}
+                  <span className="text-[#B8922A] font-medium" data-testid="event-total">{formatXOF(eventTotal)}</span>
                 </div>
+                <button
+                  onClick={validateSelection}
+                  className="btn-gold inline-flex items-center justify-center gap-2 text-[0.7rem]"
+                  data-testid="event-validate-cta"
+                >
+                  Valider ma sélection <ArrowRight size={12} />
+                </button>
               </div>
-            </>
+            </div>
           )}
         </div>
       </section>
 
-      {/* "Voir le contenu" modal */}
-      <AnimatePresence>
-        {modalPkg && (
+      <PackageInfoModal modalPkg={modalPkg} onClose={() => setModalPkg(null)} />
+    </div>
+  );
+}
+
+
+// ---------------- Sub-components ----------------
+
+function PackageCard({ pkg, sel, onToggle, onChangePersons, onChangeAdults, onChangeChildren, onShowInfo, testidPrefix }) {
+  const persons = (sel.adults || 0) + (sel.children || 0);
+  const max = Number(pkg.max_persons) || 0;
+  const flatPrice = Number(pkg.price_adult || pkg.price || 0);
+  const remaining = typeof pkg.remaining === "number" ? pkg.remaining : null;
+  const outOfStock = remaining !== null && remaining <= 0 && persons === 0;
+  const pkgActive = persons > 0;
+
+  return (
+    <div
+      className={`border transition-colors ${
+        pkgActive
+          ? "border-[#B8922A] bg-[#FBF6E9]"
+          : outOfStock
+            ? "border-[#0A0A0A]/8 bg-[#FAFAF7] opacity-60"
+            : "border-[#0A0A0A]/10 bg-[#FAFAF7] hover:border-[#B8922A]"
+      }`}
+      data-testid={`pkg-card-${testidPrefix}`}
+    >
+      {/* Clickable header — selects/deselects */}
+      <button
+        type="button"
+        disabled={outOfStock}
+        onClick={() => onToggle(pkgActive ? 0 : Math.max(1, max))}
+        className="w-full text-left p-3 sm:p-4 flex flex-col gap-2 disabled:cursor-not-allowed"
+        data-testid={`pkg-toggle-${testidPrefix}`}
+        aria-pressed={pkgActive}
+      >
+        {/* Title row — single line, truncated on mobile */}
+        <div className="flex items-center gap-2 w-full min-w-0">
+          <span className={`w-4 h-4 flex-shrink-0 inline-flex items-center justify-center border ${
+            pkgActive ? "bg-[#B8922A] border-[#B8922A] text-white" : "border-[#0A0A0A]/30 bg-white"
+          }`}>
+            {pkgActive && <Check size={11} />}
+          </span>
+          <span className="font-medium text-[#0A0A0A] text-[0.95rem] sm:text-base truncate flex-1 min-w-0" title={pkg.label}>
+            {pkg.label}
+          </span>
+        </div>
+        {/* Info row */}
+        <div className="ml-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.74rem] text-[#0A0A0A]/65">
+          <span className="text-[#B8922A] font-medium">{formatXOF(flatPrice)}</span>
+          <span className="text-[#0A0A0A]/45">·</span>
+          <span>Forfait jusqu'à {pkg.max_persons} pers.</span>
+          {remaining !== null && (
+            <>
+              <span className="text-[#0A0A0A]/45">·</span>
+              <span className={remaining <= 2 ? "text-[#B8922A] font-medium" : ""}>
+                {outOfStock ? "Épuisé" : `${remaining} disponible${remaining > 1 ? "s" : ""}`}
+              </span>
+            </>
+          )}
+        </div>
+        {/* "Voir le contenu" below info — full-width tappable area on mobile */}
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onShowInfo(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onShowInfo(); } }}
+          className="ml-6 mt-1 self-start text-[0.62rem] uppercase tracking-[0.18em] text-[#B8922A] hover:underline inline-flex items-center gap-1 cursor-pointer"
+          data-testid={`pkg-info-${testidPrefix}`}
+        >
+          <Info size={11} /> Voir le contenu
+        </span>
+      </button>
+
+      {pkgActive && (
+        <div className="px-3 sm:px-4 pb-4 pt-1 border-t border-[#B8922A]/20 space-y-3" data-testid={`pkg-counts-${testidPrefix}`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-[0.78rem] text-[#0A0A0A]/80 font-medium">
+              Nombre de personnes
+              <input
+                type="number" min={1} max={max}
+                value={persons}
+                onChange={(e) => onChangePersons(e.target.value)}
+                className="w-16 px-2 py-1 text-sm border border-[#B8922A]/40 bg-white focus:border-[#B8922A] outline-none text-center"
+                data-testid={`pkg-persons-${testidPrefix}`}
+              />
+              <span className="text-[0.7rem] text-[#0A0A0A]/55">/ {max}</span>
+            </label>
+            <span className="ml-auto text-[0.78rem] font-medium text-[#B8922A]">
+              {formatXOF(flatPrice)}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[#B8922A]/15">
+            <label className="inline-flex items-center gap-2 text-[0.74rem] text-[#0A0A0A]/70">
+              Dont adultes
+              <input
+                type="number" min={0} max={persons}
+                value={sel.adults || 0}
+                onChange={(e) => onChangeAdults(e.target.value)}
+                className="w-14 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center"
+                data-testid={`pkg-adults-${testidPrefix}`}
+              />
+            </label>
+            <label className="inline-flex items-center gap-2 text-[0.74rem] text-[#0A0A0A]/70">
+              Dont enfants
+              <input
+                type="number" min={0} max={persons}
+                value={sel.children || 0}
+                onChange={(e) => onChangeChildren(e.target.value)}
+                className="w-14 px-2 py-1 text-xs border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none text-center"
+                data-testid={`pkg-children-${testidPrefix}`}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function MatchesModal({ open, onClose, day }) {
+  const matches = day?.matches || [];
+  return (
+    <AnimatePresence>
+      {open && matches.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center sm:p-4"
+          onClick={onClose}
+          data-testid="matches-modal"
+        >
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4"
-            onClick={() => setModalPkg(null)}
-            data-testid="pkg-modal"
+            initial={{ opacity: 0, y: 40, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 40, scale: 0.97 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white w-full sm:max-w-xl max-h-[85vh] overflow-y-auto sm:rounded-none"
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 10 }}
-              transition={{ duration: 0.25 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white w-full max-w-lg max-h-[88vh] overflow-y-auto"
-            >
-              <div className="p-5 sm:p-7">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="min-w-0">
-                    <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
-                      {fmtDateFR(modalPkg.day.date)}
-                    </div>
-                    <h3 className="font-display-serif text-2xl text-[#0A0A0A] break-words">{modalPkg.pkg.label}</h3>
-                  </div>
-                  <button
-                    onClick={() => setModalPkg(null)}
-                    className="p-1.5 text-[#0A0A0A]/55 hover:text-[#0A0A0A] flex-shrink-0"
-                    data-testid="pkg-modal-close"
-                  >
-                    <X size={18} />
-                  </button>
+            <div className="sticky top-0 bg-white border-b border-[#0A0A0A]/10 px-5 py-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[0.6rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1 inline-flex items-center gap-1">
+                  <Trophy size={11} /> Calendrier du jour
                 </div>
-                <div className="gold-divider mb-4" />
-                <p className="text-sm text-[#0A0A0A]/75 leading-relaxed whitespace-pre-line">
-                  {modalPkg.pkg.description || "Aucune description détaillée pour ce package."}
-                </p>
-                <div className="mt-5 pt-5 border-t border-[#0A0A0A]/8 grid grid-cols-2 gap-3 text-center">
-                  <div>
-                    <div className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/45">Forfait</div>
-                    <div className="text-[#B8922A] font-medium mt-1">{formatXOF(modalPkg.pkg.price_adult || modalPkg.pkg.price || 0)}</div>
+                <h3 className="font-display-serif text-xl sm:text-2xl text-[#0A0A0A] truncate">
+                  {fmtDateFR(day.date)}
+                </h3>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-1.5 text-[#0A0A0A]/55 hover:text-[#0A0A0A] flex-shrink-0"
+                data-testid="matches-modal-close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 sm:p-6 space-y-3" data-testid="matches-list">
+              {matches.map((m, i) => (
+                <div
+                  key={i}
+                  className="border border-[#0A0A0A]/10 bg-[#FAFAF7] p-4 sm:p-5"
+                  data-testid={`match-row-${i}`}
+                >
+                  {m.stage && (
+                    <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">
+                      {m.stage}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                    <div className="text-right">
+                      <div className="font-medium text-[#0A0A0A] text-sm sm:text-base">{m.team_home}</div>
+                    </div>
+                    <div className="flex flex-col items-center px-2 sm:px-4">
+                      {m.flag_home && <span className="text-2xl mb-1">{m.flag_home}</span>}
+                      <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45 mb-0.5">vs</div>
+                      <div className="text-[#B8922A] font-medium text-sm">{m.time}</div>
+                      {m.flag_away && <span className="text-2xl mt-1">{m.flag_away}</span>}
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium text-[#0A0A0A] text-sm sm:text-base">{m.team_away}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/45">Pers. max</div>
-                    <div className="text-[#0A0A0A] font-medium mt-1">{modalPkg.pkg.max_persons}</div>
+                </div>
+              ))}
+            </div>
+            <div className="sticky bottom-0 bg-white border-t border-[#0A0A0A]/10 p-4">
+              <button
+                onClick={onClose}
+                className="btn-gold w-full inline-flex items-center justify-center gap-2 text-[0.7rem]"
+                data-testid="matches-modal-cta"
+              >
+                Découvrir les forfaits <ArrowRight size={12} />
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+
+function PackageInfoModal({ modalPkg, onClose }) {
+  return (
+    <AnimatePresence>
+      {modalPkg && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4"
+          onClick={onClose}
+          data-testid="pkg-modal"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 10 }}
+            transition={{ duration: 0.25 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white w-full max-w-lg max-h-[88vh] overflow-y-auto"
+          >
+            <div className="p-5 sm:p-7">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="min-w-0">
+                  <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
+                    {fmtDateFR(modalPkg.day.date)}
                   </div>
+                  <h3 className="font-display-serif text-2xl text-[#0A0A0A] break-words">{modalPkg.pkg.label}</h3>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="p-1.5 text-[#0A0A0A]/55 hover:text-[#0A0A0A] flex-shrink-0"
+                  data-testid="pkg-modal-close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="gold-divider mb-4" />
+              <p className="text-sm text-[#0A0A0A]/75 leading-relaxed whitespace-pre-line">
+                {modalPkg.pkg.description || "Aucune description détaillée pour ce package."}
+              </p>
+              <div className="mt-5 pt-5 border-t border-[#0A0A0A]/8 grid grid-cols-2 gap-3 text-center">
+                <div>
+                  <div className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/45">Forfait</div>
+                  <div className="text-[#B8922A] font-medium mt-1">{formatXOF(modalPkg.pkg.price_adult || modalPkg.pkg.price || 0)}</div>
+                </div>
+                <div>
+                  <div className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/45">Pers. max</div>
+                  <div className="text-[#0A0A0A] font-medium mt-1">{modalPkg.pkg.max_persons}</div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
