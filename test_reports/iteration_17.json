@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 17 — Booker-only booking tunnel. Frontend now sends ONE participant (the booker) regardless of head-count; backend expands it into N adults + M children on the booking doc and still generates N adult QR codes on /pay with children_attached on the first ticket. Backend pytest 6/6 PASS (new file test_iteration17_booker_only.py). Iter16 regression also re-run: 12/12 PASS (the previously-failing site-config role-403 test is now green — main agent fixed the authz inheritance bug). Frontend e2e on /booking/pass_day (5 adultes + 2 enfants): Step 3 renders ONLY participant-0 (no participant-1..4), bandeau 'Convives accompagnés' shows '5 adultes' + '2 enfants', NEXT enables after the 5 required fields + boat_time, and Step 4 recap shows 'Réservant · Booker Iter17 · France · email · phone' + '7 billets (5 adultes + 2 enfants) envoyés à cet email' + Total 300 000 FCFA. Procéder au paiement CTA visible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "BookingTunnel Step 4 recap", "issues": ["Brief asked for '5 billets envoyés à cet email' but UI says '7 billets (5 adultes + 2 enfants) envoyés à cet email'. Implementation is actually MORE accurate (total ticket count including the children attached on the booker's QR) — recommend keeping it as-is and updating the brief language. Not a bug."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration17_booker_only.py",
+    "/app/test_reports/pytest/iter17.xml"
+  ],
+  "action_items": [
+    "Optional copy alignment: brief expected 'X billets envoyés à cet email' (adults only). Current UI shows total billets including children. Decide which wording to keep (current is more informative).",
+    "Optional cleanup: 5 TEST_ bookings were created on Day Pass (1 with 5A+2C, 1 with 3A, 3 legacy shape bookings). All use booker email test_booker_iter17@example.com (and booker_*/a1/a2/c1@example.com). Run db.bookings.delete_many({'participants.email': {'$regex': '(test_booker_iter17|@example.com)'}}) before user demos."
+  ],
+  "critical_code_review_comments": [
+    "server.py:2053-2072 — flexible participant validation is clean and well-commented: handles p_count == 1 (new flow), p_count == adults (legacy adults-only) and p_count == total_guests (legacy mixed). Good explicit error messages.",
+    "server.py:2316-2332 — booker expansion correctly clones the booker into N adults + M children, with email/phone nulled on children to enforce single-point-of-contact. Comment is excellent.",
+    "server.py:2454-2491 — ticket generation is unchanged (iterates `participants`), which is the whole point of the design: the expansion happens at booking-creation time so the QR-generation code path stays simple. Nice separation.",
+    "BookingTunnel.jsx:815-871 — Step 3 single-form IIFE is clean. The bandeau (lines 802-811) gives the user a clear explanation of WHY they don't fill 5 forms — good UX. data-testid=participant-0 + sub-field testids preserved → playwright-friendly.",
+    "server.py is still 10276 lines — repeatedly flagged in prior reports. Would benefit from extracting booking creation + pay into routers/bookings.py."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration17_booker_only.py (NEW — 6 tests, 100% pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6 new + 12/12 iter16 regression)",
+    "frontend": "100% on the critical pass_day booker-only flow (5A+2C scenario fully validated end-to-end through Step 4)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (not required for this iteration — public booking endpoints are open)",
+  "seed_data_creation": "5 TEST bookings on Day Pass for Mon/Tue/Wed/Thu/Fri of week of 2026-06-08 with booker email test_booker_iter17@example.com (+ booker_0/1/2/a1/a2/c1@example.com for legacy-shape tests). Booking IDs printed in pytest output. All in 'pending' or 'confirmed' state — safe to delete.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Booker-only flow is functionally complete: backend expansion + frontend single-form + recap all align. Pytest file at backend/tests/test_iteration17_booker_only.py covers (a) new shape with 5A+2C, (b) new shape 3A only, (c) child-only booker -> 400, (d) empty list -> 422, (e) legacy 3 participants = 3 adults, (f) legacy 3 participants = 2A+1C. The special-event multi-day flow on event a9119968-09d6-4688-85c8-2915784b3a44 was NOT explicitly retested via UI because the legacy mixed shape (2A+1C) already passes via the backend test, and the UI rendering of Step 3 is shared across offer types (same code path, same data-testid=participant-0 single form). E1 can self-verify event flow by navigating /event/a9119968-09d6-4688-85c8-2915784b3a44 if desired.",
+  "rca of the issue": "N/A — feature implementation is correct. The brief's textual expectation '5 billets envoyés à cet email' is slightly less informative than what's been shipped ('7 billets (5 adultes + 2 enfants)'); this is a copywriting choice, not a defect. Recommend keeping the shipped wording."
+}

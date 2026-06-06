@@ -2045,13 +2045,16 @@ async def create_booking(body: BookingCreate):
     if total_guests <= 0:
         raise HTTPException(status_code=400, detail="At least one guest required")
 
-    # New flow: only adults are collected as participants (1 ticket per adult).
-    # Children are counted via `body.children` and attached to the booker's ticket.
-    # Legacy flow (one entry per guest, adult OR child) still accepted to preserve
-    # backward compatibility with any older API consumer.
+    # NEW booker-only flow: a single participant (the booker) is sent for any
+    # head-count. We still accept the legacy shapes (adults only, or one entry
+    # per guest) for backward compatibility with older API consumers. The
+    # backend then expands the booker into N adult tickets (+ M child tickets
+    # when packages drive the booking) when generating QRs.
     p_count = len(body.participants)
-    if p_count == body.adults:
-        # New shape — all entries must be adults.
+    if p_count == 1:
+        if body.participants[0].kind == "child":
+            raise HTTPException(status_code=400, detail="Le réservant doit être un adulte")
+    elif p_count == body.adults:
         if any(p.kind == "child" for p in body.participants):
             raise HTTPException(status_code=400, detail="Children should not be sent as participants")
     elif p_count == total_guests:
@@ -2065,12 +2068,12 @@ async def create_booking(body: BookingCreate):
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Expected {body.adults} adult participants, received {p_count}",
+            detail=f"Expected 1 booker participant (or {body.adults}/{total_guests}), received {p_count}",
         )
 
     for i, p in enumerate(body.participants):
         if not p.name.strip() or not p.surname.strip() or not p.nationality.strip():
-            raise HTTPException(status_code=400, detail="Nom, prénom et nationalité sont obligatoires pour chaque adulte")
+            raise HTTPException(status_code=400, detail="Nom, prénom et nationalité sont obligatoires pour le réservant")
         # Booker (first adult) must provide email + phone — used for confirmation
         if i == 0 and p.kind == "adult":
             if not (p.email or "").strip() or not (p.phone or "").strip():
@@ -2299,7 +2302,7 @@ async def create_booking(body: BookingCreate):
             vip_space_ids=body.vip_space_ids,
         )
         total += vip_spaces_amount
-    participants_docs = [
+    raw_participants = [
         {
             "name": p.name.strip(),
             "surname": p.surname.strip(),
@@ -2310,6 +2313,23 @@ async def create_booking(body: BookingCreate):
         }
         for p in body.participants
     ]
+    # Booker-only flow: when a single participant is sent, materialise the
+    # full guest list by duplicating the booker into N adult tickets and M
+    # child tickets. This keeps the ticket-generation code (which iterates
+    # `participants`) unchanged while letting the customer fill in just one
+    # form on the public site.
+    if len(raw_participants) == 1 and (body.adults + body.children) > 1:
+        booker = raw_participants[0]
+        participants_docs = []
+        for _ in range(body.adults):
+            participants_docs.append({**booker, "kind": "adult"})
+        for _ in range(body.children):
+            # Children inherit the booker's identity for ticket personalisation
+            # but their email/phone are nulled to discourage future direct
+            # contact (the booker remains the single point of contact).
+            participants_docs.append({**booker, "kind": "child", "email": "", "phone": ""})
+    else:
+        participants_docs = raw_participants
     # Primary contact = first adult (or first participant if none)
     primary = next((p for p in participants_docs if p["kind"] == "adult"), participants_docs[0])
     doc = {

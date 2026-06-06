@@ -154,31 +154,15 @@ export default function BookingTunnel() {
     api.get(`/availability/${offerId}/${iso}`).then((r) => setAvailability(r.data)).catch(() => {});
   }, [selectedDate, offerId, isSpecialEvent, offer, multiDayDates]);
 
-  // Keep participants array in sync. Default flow: only adults (children are
-  // attached to the booker on the backend). Special-event-with-packages flow:
-  // collect ONE entry per person, adults AND children, so each gets a ticket.
+  // Keep participants array in sync. Booker-only flow: we always render a
+  // SINGLE form for the réservant, regardless of head-count. The backend
+  // duplicates the booker's identity across N adult tickets (and N child
+  // tickets when packages drive the booking) so each guest gets a personal
+  // QR e-mail, without forcing the booker to type 10 different identities.
   useEffect(() => {
     setParticipants((prev) => {
-      if (usesPackages) {
-        const prevByKind = { adult: [], child: [] };
-        for (const p of prev) {
-          if (p.kind === "child") prevByKind.child.push(p);
-          else prevByKind.adult.push(p);
-        }
-        const next = [];
-        for (let i = 0; i < adults; i++) {
-          next.push(prevByKind.adult[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "adult" });
-        }
-        for (let i = 0; i < children; i++) {
-          next.push(prevByKind.child[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "child" });
-        }
-        return next;
-      }
-      const prevAdults = prev.filter((p) => p.kind === "adult");
-      const nextAdults = Array.from({ length: adults }, (_, i) =>
-        prevAdults[i] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "adult" }
-      );
-      return nextAdults;
+      const first = prev[0] || { name: "", surname: "", email: "", phone: "", nationality: "", kind: "adult" };
+      return [{ ...first, kind: "adult" }];
     });
   }, [adults, children, usesPackages]);
 
@@ -371,20 +355,16 @@ export default function BookingTunnel() {
     );
   }
 
-  // Validation. Standard flow: only adults required, booker (idx 0) needs
-  // email + phone. Event-with-packages flow: ALL persons (adults + children)
-  // must be filled in, booker (first adult) still owns the email + phone.
-  const expectedParticipants = usesPackages ? (adults + children) : adults;
+  // Validation. Booker-only flow: ONE form, all required fields on it
+  // (name, surname, nationality, email, phone).
   const participantsValid =
-    participants.length === expectedParticipants &&
-    expectedParticipants >= 1 &&
-    participants.every(
-      (p, i) =>
-        p.name.trim() &&
-        p.surname.trim() &&
-        p.nationality.trim() &&
-        (i > 0 || (p.phone.trim() && /\S+@\S+\.\S+/.test(p.email)))
-    );
+    participants.length === 1 &&
+    !!participants[0] &&
+    participants[0].name.trim() &&
+    participants[0].surname.trim() &&
+    participants[0].nationality.trim() &&
+    participants[0].phone.trim() &&
+    /\S+@\S+\.\S+/.test(participants[0].email);
   const contactValid =
     participantsValid &&
     !!contact.boat_time &&
@@ -816,38 +796,28 @@ export default function BookingTunnel() {
                 </h2>
                 <div className="gold-divider mb-6 sm:mb-8" />
 
-                {/* Children attached info — hidden when packages drive the
-                    booking (each child has its own ticket then). */}
-                {children > 0 && !usesPackages && (
-                  <div className="mb-5 sm:mb-6 border border-[#B8922A]/30 bg-[#FBF8EF] px-4 py-3 sm:px-5 sm:py-4">
-                    <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] font-medium mb-1">
-                      Enfants accompagnés
-                    </div>
-                    <div className="text-[0.82rem] text-[#0A0A0A]/75 leading-relaxed">
-                      <strong>{children} enfant{children > 1 ? "s" : ""}</strong> rattaché{children > 1 ? "s" : ""} au billet du réservant. Aucune coordonnée à saisir.
-                    </div>
+                {/* Réservant — ONE form for all bookings, regardless of headcount.
+                    The backend will issue (adults + children) distinct tickets
+                    attached to this booker. */}
+                <div className="mb-5 sm:mb-6 border border-[#B8922A]/30 bg-[#FBF8EF] px-4 py-3 sm:px-5 sm:py-4">
+                  <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] font-medium mb-1">
+                    Convives accompagnés
                   </div>
-                )}
+                  <div className="text-[0.82rem] text-[#0A0A0A]/75 leading-relaxed">
+                    Vous réservez pour <strong>{adults} adulte{adults > 1 ? "s" : ""}</strong>
+                    {children > 0 && <> et <strong>{children} enfant{children > 1 ? "s" : ""}</strong></>}.
+                    Seules vos coordonnées sont demandées — vous recevrez l'ensemble des billets QR par email.
+                  </div>
+                </div>
 
-                {/* Participants — 1 ticket par personne. Booker (1er adulte) renseigne email + téléphone. */}
+                {/* Single booker form */}
                 <div className="space-y-5 sm:space-y-6">
-                  {participants.map((p, i) => {
-                    const isFirst = i === 0;
-                    const isChild = p.kind === "child";
-                    // Compute label depending on flow + person index
-                    let label;
-                    if (isFirst) {
-                      label = `Réservant · ${t.booking.primaryContact}${(!usesPackages && children > 0) ? ` + ${children} enfant${children > 1 ? "s" : ""}` : ""}`;
-                    } else if (isChild) {
-                      const childIdx = participants.slice(0, i).filter((x) => x.kind === "child").length + 1;
-                      label = `Enfant ${childIdx}`;
-                    } else {
-                      const adultIdx = participants.slice(0, i).filter((x) => x.kind === "adult").length + 1;
-                      label = `Adulte ${adultIdx}`;
-                    }
+                  {(() => {
+                    const i = 0;
+                    const p = participants[0] || { name: "", surname: "", email: "", phone: "", nationality: "" };
                     const update = (field) => (e) => {
                       const next = [...participants];
-                      next[i] = { ...next[i], [field]: e.target.value };
+                      next[0] = { ...(next[0] || {}), [field]: e.target.value, kind: "adult" };
                       setParticipants(next);
                     };
                     return (
@@ -857,7 +827,7 @@ export default function BookingTunnel() {
                         className="border border-[#0A0A0A]/10 bg-[#FAFAF7] p-4 sm:p-6 md:p-7"
                       >
                         <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4 sm:mb-5">
-                          {label}
+                          Réservant · {t.booking.primaryContact}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                           <Field
@@ -872,46 +842,20 @@ export default function BookingTunnel() {
                             onChange={update("name")}
                             testId={`participant-${i}-name`}
                           />
-                          {isFirst ? (
-                            <>
-                              <Field
-                                type="email"
-                                label={t.booking.email}
-                                value={p.email}
-                                onChange={update("email")}
-                                testId={`participant-${i}-email`}
-                              />
-                              <Field
-                                type="tel"
-                                label={t.booking.phone}
-                                value={p.phone}
-                                onChange={update("phone")}
-                                testId={`participant-${i}-phone`}
-                              />
-                            </>
-                          ) : isChild ? null : (
-                            <>
-                              <div>
-                                <Field
-                                  type="email"
-                                  label={`${t.booking.email} (optionnel)`}
-                                  value={p.email}
-                                  onChange={update("email")}
-                                  testId={`participant-${i}-email`}
-                                />
-                                <p className="text-[0.68rem] text-[#0A0A0A]/50 mt-1.5 leading-snug">
-                                  Pour envoyer son billet directement à cet adulte. Si vide, le billet partira chez le réservant.
-                                </p>
-                              </div>
-                              <Field
-                                type="tel"
-                                label={`${t.booking.phone} (optionnel)`}
-                                value={p.phone}
-                                onChange={update("phone")}
-                                testId={`participant-${i}-phone`}
-                              />
-                            </>
-                          )}
+                          <Field
+                            type="email"
+                            label={t.booking.email}
+                            value={p.email}
+                            onChange={update("email")}
+                            testId={`participant-${i}-email`}
+                          />
+                          <Field
+                            type="tel"
+                            label={t.booking.phone}
+                            value={p.phone}
+                            onChange={update("phone")}
+                            testId={`participant-${i}-phone`}
+                          />
                           <div className="md:col-span-2">
                             <NationalityAutocomplete
                               label={t.booking.nationality}
@@ -924,7 +868,7 @@ export default function BookingTunnel() {
                         </div>
                       </div>
                     );
-                  })}
+                  })()}
                 </div>
 
                 {/* Boat time(s) */}
@@ -1305,47 +1249,25 @@ export default function BookingTunnel() {
 
                   <div className="pt-4 border-t border-[#0A0A0A]/10">
                     <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-3">
-                      {t.booking.participantsLabel}
+                      Réservant
                     </div>
-                    <ul className="space-y-3">
-                      {participants.map((p, i) => {
-                        const isChild = p.kind === "child";
-                        let lab;
-                        if (i === 0) lab = "Réservant";
-                        else if (isChild) {
-                          const ci = participants.slice(0, i).filter((x) => x.kind === "child").length + 1;
-                          lab = `Enfant ${ci}`;
-                        } else {
-                          const ai = participants.slice(0, i).filter((x) => x.kind === "adult").length + 1;
-                          lab = `Adulte ${ai}`;
-                        }
-                        return (
-                          <li key={i} className="flex items-start justify-between gap-6">
-                            <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
-                              {lab}
-                            </span>
-                            <span className="text-sm text-[#0A0A0A] text-right">
-                              {p.surname} {p.name} · {p.nationality}
-                              {i === 0 && (
-                                <span className="block text-[0.72rem] text-[#0A0A0A]/50 mt-0.5">
-                                  {p.email} · {p.phone}
-                                </span>
-                              )}
-                            </span>
-                          </li>
-                        );
-                      })}
-                      {!usesPackages && children > 0 && (
-                        <li className="flex items-start justify-between gap-6 pt-1">
-                          <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
-                            Enfants
+                    {participants[0] && (
+                      <div className="flex items-start justify-between gap-6">
+                        <span className="text-[0.72rem] uppercase tracking-[0.2em] text-[#0A0A0A]/50 shrink-0">
+                          Coordonnées
+                        </span>
+                        <span className="text-sm text-[#0A0A0A] text-right">
+                          {participants[0].surname} {participants[0].name} · {participants[0].nationality}
+                          <span className="block text-[0.72rem] text-[#0A0A0A]/50 mt-0.5">
+                            {participants[0].email} · {participants[0].phone}
                           </span>
-                          <span className="text-sm text-[#0A0A0A] text-right">
-                            {children} enfant{children > 1 ? "s" : ""} (rattaché{children > 1 ? "s" : ""} au réservant)
+                          <span className="block text-[0.72rem] text-[#0A0A0A]/50 mt-0.5">
+                            {adults + children} billet{(adults + children) > 1 ? "s" : ""} ({adults} adulte{adults > 1 ? "s" : ""}
+                            {children > 0 && <> + {children} enfant{children > 1 ? "s" : ""}</>}) envoyé{(adults + children) > 1 ? "s" : ""} à cet email
                           </span>
-                        </li>
-                      )}
-                    </ul>
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Check-in / Check-out reminder for overnight bookings */}
