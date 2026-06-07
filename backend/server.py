@@ -3768,7 +3768,11 @@ async def list_traversees(date: Optional[str] = None, staff=Depends(get_current_
 
 @api.post("/staff/traversees")
 async def create_traversee(body: Traversee, staff=Depends(get_current_staff)):
-    await _require_role(staff, ["manager", "admin"])
+    # Manual gate — hôtesse inherits 'manager' via ROLE_INCLUDES so we can
+    # not rely on _require_role(['manager','admin']) alone here. Traversee
+    # scheduling is a logistics responsibility.
+    if staff.get("role") not in {"admin", "manager", "logistique"}:
+        raise HTTPException(status_code=403, detail="Action réservée aux managers / logistique")
     bateau = await db.bateaux.find_one({"id": body.bateau_id}, {"_id": 0})
     if not bateau:
         raise HTTPException(status_code=404, detail="Bateau not found")
