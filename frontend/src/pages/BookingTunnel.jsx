@@ -67,6 +67,24 @@ export default function BookingTunnel() {
   useEffect(() => {
     if (!charterEnabled) setCharterBoatId("");
   }, [charterEnabled]);
+
+  // Room add-on (Hébergement upsell) — available on every offer EXCEPT
+  // hebergement itself (which is already a room booking). Defaults to 1 night
+  // starting on the booking date; customer can tweak both via the panel.
+  const [roomAddonEnabled, setRoomAddonEnabled] = useState(false);
+  const [roomAddonTier, setRoomAddonTier] = useState("");
+  const [roomAddonNights, setRoomAddonNights] = useState(1);
+  const [roomAddonRooms, setRoomAddonRooms] = useState(1);
+  const ROOM_ADDON_TIERS = [
+    { id: "superieure", name_fr: "Chambre Supérieure", price: 200000 },
+    { id: "suite_jardin", name_fr: "Suite côté jardin", price: 420000 },
+    { id: "suite_lagune", name_fr: "Suite côté lagune", price: 470000 },
+  ];
+  const isHebergement = offerId === "hebergement";
+  // Reset the panel when user toggles OFF
+  useEffect(() => {
+    if (!roomAddonEnabled) setRoomAddonTier("");
+  }, [roomAddonEnabled]);
   const [availability, setAvailability] = useState(null);
   const [bookingResp, setBookingResp] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -182,6 +200,14 @@ export default function BookingTunnel() {
     return b ? Number(b.charter_price || 0) : 0;
   }, [charterEnabled, charterBoatId, charterBoats]);
 
+  // Room add-on price = tier × nights × rooms (≥1 each)
+  const roomAddonAmount = useMemo(() => {
+    if (!roomAddonEnabled || !roomAddonTier) return 0;
+    const tier = ROOM_ADDON_TIERS.find((t) => t.id === roomAddonTier);
+    if (!tier) return 0;
+    return tier.price * Math.max(1, roomAddonNights) * Math.max(1, roomAddonRooms);
+  }, [roomAddonEnabled, roomAddonTier, roomAddonNights, roomAddonRooms]);
+
   // Beach Club VIP spaces — show numbered transats/balinés selector during Step 3
   // for `pass_day` / `sunset` / `brunch` only. Fetch availability on date change.
   const isBeachClub = !isSpecialEvent && ["pass_day", "sunset", "brunch"].includes(offerId);
@@ -288,8 +314,8 @@ export default function BookingTunnel() {
       const guestsBase = adults * offer.price_adult + children * offer.price_child;
       base = isOvernight ? guestsBase * nights : guestsBase;
     }
-    return base + charterAmount + packagesAmount + vipSpacesAmount;
-  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount, vipSpacesAmount, usesPackages]);
+    return base + charterAmount + packagesAmount + vipSpacesAmount + roomAddonAmount;
+  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount, vipSpacesAmount, usesPackages, roomAddonAmount]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -369,7 +395,8 @@ export default function BookingTunnel() {
     participantsValid &&
     !!contact.boat_time &&
     (!isOvernight || !!contact.return_boat_time) &&
-    (!charterEnabled || !!charterBoatId);
+    (!charterEnabled || !!charterBoatId) &&
+    (!roomAddonEnabled || !!roomAddonTier);
 
   // Human-readable list of what's still missing at step 3 (shown beside the disabled Next button)
   const missingStep3 = [];
@@ -377,6 +404,7 @@ export default function BookingTunnel() {
   if (!contact.boat_time) missingStep3.push(t.booking.missingBoatTime);
   if (isOvernight && !contact.return_boat_time) missingStep3.push(t.booking.missingReturnBoatTime);
   if (charterEnabled && !charterBoatId) missingStep3.push("bateau privatisé");
+  if (roomAddonEnabled && !roomAddonTier) missingStep3.push("catégorie de chambre");
 
   const isMultiDay = isSpecialEvent && multiDayDates.length > 1;
 
@@ -435,6 +463,12 @@ export default function BookingTunnel() {
         special_requests: contact.special_requests,
         charter_boat_id: charterEnabled && charterBoatId ? charterBoatId : null,
         vip_space_ids: selectedVipSpaceIds.length > 0 ? selectedVipSpaceIds : null,
+        room_addon_tier: roomAddonEnabled && roomAddonTier ? roomAddonTier : null,
+        room_addon_checkin: roomAddonEnabled && roomAddonTier && selectedDate ? format(selectedDate, "yyyy-MM-dd") : null,
+        room_addon_checkout: roomAddonEnabled && roomAddonTier && selectedDate
+          ? format(new Date(selectedDate.getTime() + Math.max(1, roomAddonNights) * 86400000), "yyyy-MM-dd")
+          : null,
+        room_addon_rooms: roomAddonEnabled && roomAddonTier ? Math.max(1, roomAddonRooms) : null,
         multi_day_dates: (isSpecialEvent && multiDayDates.length > 1) ? multiDayDates : null,
         package_selections: packageSelections.length > 0 ? packageSelections : null,
       });
@@ -1016,6 +1050,87 @@ export default function BookingTunnel() {
                   </div>
                 )}
 
+                {/* Room add-on — upsell on every offer except Hébergement itself */}
+                {!isHebergement && (
+                  <div className="mt-6 border border-[#B8922A]/20 bg-[#FBF8EF] p-5" data-testid="room-addon-section">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={roomAddonEnabled}
+                        onChange={(e) => setRoomAddonEnabled(e.target.checked)}
+                        className="mt-1 w-4 h-4 accent-[#B8922A]"
+                        data-testid="room-addon-toggle"
+                      />
+                      <div className="flex-1">
+                        <div className="text-[0.78rem] uppercase tracking-[0.18em] text-[#B8922A] font-medium">
+                          Ajouter une chambre ?
+                        </div>
+                        <div className="text-[0.78rem] text-[#0A0A0A]/65 mt-1 leading-relaxed">
+                          Prolongez votre journée : prenez une suite pour la nuit. Idéal pour profiter du coucher de soleil et éviter la traversée tardive.
+                        </div>
+                      </div>
+                    </label>
+
+                    {roomAddonEnabled && (
+                      <div className="mt-5 space-y-4" data-testid="room-addon-panel">
+                        <div className="grid grid-cols-1 gap-3" data-testid="room-addon-tier-list">
+                          {ROOM_ADDON_TIERS.map((t) => {
+                            const selected = roomAddonTier === t.id;
+                            return (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setRoomAddonTier(t.id)}
+                                className={`text-left p-4 border transition-all ${
+                                  selected
+                                    ? "bg-[#B8922A] text-white border-[#B8922A]"
+                                    : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A]"
+                                }`}
+                                data-testid={`room-addon-tier-${t.id}`}
+                              >
+                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                  <div className="font-medium text-sm">{t.name_fr}</div>
+                                  <div className={`font-medium ${selected ? "text-white" : "text-[#B8922A]"}`}>
+                                    {formatXOF(t.price)}<span className={`text-[0.7rem] font-normal ${selected ? "text-white/80" : "text-[#0A0A0A]/55"}`}> / nuit</span>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {roomAddonTier && (
+                          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[#B8922A]/15">
+                            <label className="block">
+                              <span className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Nuits</span>
+                              <input
+                                type="number" min={1} max={30}
+                                value={roomAddonNights}
+                                onChange={(e) => setRoomAddonNights(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                className="mt-1 w-full px-2 py-1.5 text-sm border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                                data-testid="room-addon-nights"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55">Chambres</span>
+                              <input
+                                type="number" min={1} max={10}
+                                value={roomAddonRooms}
+                                onChange={(e) => setRoomAddonRooms(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                className="mt-1 w-full px-2 py-1.5 text-sm border border-[#0A0A0A]/15 bg-white focus:border-[#B8922A] outline-none"
+                                data-testid="room-addon-rooms"
+                              />
+                            </label>
+                            <div className="col-span-2 flex justify-between pt-2 border-t border-[#B8922A]/15 text-[0.85rem]" data-testid="room-addon-subtotal">
+                              <span className="text-[#0A0A0A]/65">Sous-total chambre</span>
+                              <span className="text-[#B8922A] font-medium tabular-nums">+ {formatXOF(roomAddonAmount)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Special requests */}
                 <div className="mt-8">
                   <label className="label-luxury">{t.booking.specialRequests}</label>
@@ -1312,6 +1427,18 @@ export default function BookingTunnel() {
                       })}
                     </div>
                   )}
+                  {roomAddonEnabled && roomAddonTier && (() => {
+                    const tier = ROOM_ADDON_TIERS.find((t) => t.id === roomAddonTier);
+                    if (!tier) return null;
+                    return (
+                      <div className="border-t border-[#0A0A0A]/10 pt-4 mt-2" data-testid="summary-room-addon">
+                        <SummaryRow
+                          label="Chambre en plus"
+                          value={`${tier.name_fr} · ${roomAddonRooms} ch. × ${roomAddonNights} nuit${roomAddonNights > 1 ? "s" : ""} · ${formatXOF(roomAddonAmount)}`}
+                        />
+                      </div>
+                    );
+                  })()}
                   {packageSelections.length > 0 && specialEvent?.programme && (
                     <div className="border-t border-[#0A0A0A]/10 pt-4 mt-2" data-testid="summary-packages">
                       <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Forfaits sélectionnés</div>

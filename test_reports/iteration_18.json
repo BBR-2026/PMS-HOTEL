@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 18 — manual traversee scheduling + Hébergement room add-on upsell. Backend pytest: 9/10 PASS (1 FAIL: hotesse can create a traversee with 200 instead of 403). Frontend smoke on /booking/pass_day Step 3 fully validates room-addon UI (section + toggle + 3 tiers + suite_lagune selection -> nights/rooms/subtotal '+ 470 000 FCFA' rendered). Source-level verification confirms /booking/hebergement hides room-addon-section via `!isHebergement` guard at BookingTunnel.jsx:1054 (Playwright Step 2 advance failed on hebergement due to test-script issue picking a past checkout day — NOT a product bug).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/staff/traversees",
+        "issue": "hotesse.test@boulay.ci returns 200 instead of expected 403. Root cause: ROLE_INCLUDES['hotesse'] = ['hotesse','manager','receptionist'] so the `_require_role([manager, admin])` gate passes via the 'manager' inheritance. Brief expected 403. Either (a) update the brief (inheritance is intentional per server.py:3553-3555 comment 'so she can call PATCH /staff/bookings/*/status etc') OR (b) tighten the traversee POST gate to require role in ['manager','admin'] *without* expansion (or check for the new 'logistique' role explicitly). Recommend (b): traversee scheduling is a logistics responsibility, not hôtesse."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration18_traversee_and_room_addon.py",
+    "/app/test_reports/pytest/iter18.xml"
+  ],
+  "action_items": [
+    "Decide on role policy: should `hotesse` be allowed to schedule traversées? Backend currently lets her (via ROLE_INCLUDES manager inheritance). Brief said 403. Likely fix: in server.py line 3771 replace `await _require_role(staff, ['manager','admin'])` with an explicit role check that excludes hotesse, or restrict via the new 'logistique' role.",
+    "Optional cleanup: ~6 TEST bookings created with email pattern t.iter18*@bbr.ci and ~3 traversees on bateau_id seeded boats for upcoming Mon/Tue weekdays. Run: db.bookings.delete_many({'participants.email': {'$regex': 't.iter18'}}) and db.traversees.delete_many({'date': {'$gte': '<today+14d>'}}) before user demos."
+  ],
+  "critical_code_review_comments": [
+    "server.py:3775-3804 — create_traversee normalisation logic is clean: strip+upper+replace(':','H') applied to BOTH depart_time and return_time; the auto-+5h legacy behaviour is correctly removed and an explicit `parent_id` ties retour to aller. Excellent comment block (lines 3789-3791) explaining the change.",
+    "server.py:2314-2357 — room_addon validation block is well-structured: tier lookup, default checkin=body.date / checkout=+1d, nights>=1 guard, persists `room_addon` doc with tier_name + amount for staff dashboards. Hebergement-itself block at line 2320 is good defensive depth.",
+    "BookingTunnel.jsx:1054 — `{!isHebergement && (...)}` guard correctly hides the upsell on the room booking flow itself. data-testids are comprehensive (room-addon-section/toggle/panel/tier-{id}/nights/rooms/subtotal/summary-room-addon).",
+    "Role inheritance via ROLE_INCLUDES is the right pattern but its current configuration (hotesse → manager) is too broad — it grants traversee scheduling, bateau CRUD, package CRUD etc. to hôtesses. Consider splitting 'manager' into capability scopes or letting each endpoint declare a tighter role list."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration18_traversee_and_room_addon.py (NEW — 10 tests, 9 PASS / 1 FAIL on role gate)"
+  ],
+  "success_rate": {
+    "backend": "90% (9/10 pytest — traversee CRUD + normalisation + room-addon happy-path + 3 validation errors + non-régression baseline all PASS; only the role 403 test fails due to inheritance design)",
+    "frontend": "100% on the asserted pass_day Step 3 room-addon UI (section + toggle ON + 3 tiers + suite_lagune selection + subtotal '+ 470 000 FCFA' rendered)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 ; hotesse.test@boulay.ci / Hotesse@2026 (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "TEST bookings on pass_day with email pattern t.iter18*@bbr.ci (~6 bookings: .lagune, .badtier (rejected), .badrange (rejected), .defaults, .3nights, .baseline). TEST traversees: 1 aller+retour pair on next Mon (08H45 + 21H30), 1 aller alone on next Tue (09H15), 1 aller from hotesse role-test on next Thu (10H — should not have been created, see action item).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 10 pytest cases run from /app/backend/tests/test_iteration18_traversee_and_room_addon.py. Re-run with: `pytest backend/tests/test_iteration18_traversee_and_room_addon.py -v`. The hotesse 403 test will keep failing until E1 decides on the role policy. Room-addon backend math and persistence are 100% green. Frontend Step 4 summary-room-addon was NOT visually tested (the Step 3 -> Step 4 transition requires filling 5 contact fields + boat_time which is orthogonal to this iteration); source-level inspection at BookingTunnel.jsx:1434 shows the `data-testid=summary-room-addon` block is conditionally rendered when room_addon is active — confirmed wired but not e2e-clicked.",
+  "rca of the issue": "Bug: POST /api/staff/traversees accepts hotesse role. Reproduction: login as hotesse.test@boulay.ci, POST /api/staff/traversees with any body -> 200 OK. RCA: server.py:3535-3545 _require_role expands `staff.role` via ROLE_INCLUDES; line 3555 declares `'hotesse': ['hotesse','manager','receptionist']` to allow hôtesses to update booking statuses. Side-effect: every endpoint guarded by `_require_role([manager, admin])` (including traversee POST, bateau CRUD, package CRUD…) is reachable by hôtesses. Mitigation: either drop 'manager' from hotesse inheritance (would require auditing every PATCH /staff/bookings/*/status endpoint to allow 'hotesse' explicitly), or introduce a capability check at the traversee POST endpoint that excludes hotesse — e.g. `if staff.get('role') == 'hotesse': raise 403`."
+}

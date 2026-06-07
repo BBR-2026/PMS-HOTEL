@@ -16,7 +16,7 @@ export default function StaffEmbarquement() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
   const [newBoat, setNewBoat] = useState({ name: "", capacity: 30 });
-  const [newCrossing, setNewCrossing] = useState({ bateau_id: "", depart_time: "10H" });
+  const [newCrossing, setNewCrossing] = useState({ bateau_id: "", depart_time: "10H00", return_time: "", direction: "aller" });
 
   const refresh = async () => {
     setLoading(true);
@@ -55,9 +55,25 @@ export default function StaffEmbarquement() {
       toast.error("Sélectionnez un bateau");
       return;
     }
-    await api.post("/staff/traversees", { ...newCrossing, date, direction: "aller" });
-    toast.success("Traversée créée (aller + retour automatique)");
-    refresh();
+    if (!(newCrossing.depart_time || "").trim()) {
+      toast.error("Heure de départ requise");
+      return;
+    }
+    try {
+      await api.post("/staff/traversees", {
+        bateau_id: newCrossing.bateau_id,
+        date,
+        depart_time: newCrossing.depart_time.trim(),
+        direction: newCrossing.direction,
+        return_time: newCrossing.direction === "aller" ? (newCrossing.return_time || "").trim() || null : null,
+      });
+      const hasRet = newCrossing.direction === "aller" && (newCrossing.return_time || "").trim();
+      toast.success(hasRet ? "Aller + retour programmés" : "Traversée programmée");
+      setNewCrossing({ ...newCrossing, return_time: "" });
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
   };
   const board = async (tid, booking_id) => {
     try {
@@ -211,16 +227,45 @@ export default function StaffEmbarquement() {
               </select>
             </div>
             <div>
-              <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Heure aller</label>
+              <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Sens</label>
               <select
-                value={newCrossing.depart_time}
-                onChange={(e) => setNewCrossing({ ...newCrossing, depart_time: e.target.value })}
+                value={newCrossing.direction}
+                onChange={(e) => setNewCrossing({ ...newCrossing, direction: e.target.value })}
                 className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
-                data-testid="new-crossing-time"
+                data-testid="new-crossing-direction"
               >
-                {BOAT_TIMES.map((t) => <option key={t} value={t}>{t}</option>)}
+                <option value="aller">Aller</option>
+                <option value="retour">Retour</option>
               </select>
             </div>
+            <div>
+              <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">
+                Heure {newCrossing.direction === "aller" ? "aller" : "retour"}
+              </label>
+              <input
+                type="text"
+                value={newCrossing.depart_time}
+                onChange={(e) => setNewCrossing({ ...newCrossing, depart_time: e.target.value })}
+                placeholder="08H45"
+                className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none w-24"
+                data-testid="new-crossing-time"
+              />
+            </div>
+            {newCrossing.direction === "aller" && (
+              <div>
+                <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">
+                  Heure retour <span className="opacity-50 normal-case">(optionnel)</span>
+                </label>
+                <input
+                  type="text"
+                  value={newCrossing.return_time}
+                  onChange={(e) => setNewCrossing({ ...newCrossing, return_time: e.target.value })}
+                  placeholder="18H30"
+                  className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none w-24"
+                  data-testid="new-crossing-return-time"
+                />
+              </div>
+            )}
             <button onClick={addCrossing} className="btn-gold flex items-center gap-2" data-testid="add-crossing-btn">
               <Plus size={13} /> Programmer
             </button>

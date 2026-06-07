@@ -431,6 +431,14 @@ class BookingCreate(BaseModel):
     # reserve for `body.date`. Validated server-side against active spaces +
     # existing bookings (uniqueness per date) inside create_booking().
     vip_space_ids: Optional[List[str]] = None
+    # Optional room add-on — let the customer add a hotel night on top of any
+    # offer (except `hebergement` which is a room booking already). When set
+    # the requested tier price * nights * rooms is added to the total and the
+    # booking persists `room_addon_*` metadata for the staff dashboards.
+    room_addon_tier: Optional[str] = None  # tier id in OFFERS["hebergement"].room_tiers
+    room_addon_checkin: Optional[str] = None  # YYYY-MM-DD (defaults to body.date)
+    room_addon_checkout: Optional[str] = None  # YYYY-MM-DD (defaults to checkin + 1 day)
+    room_addon_rooms: Optional[int] = Field(default=None, ge=1, le=10)
 
 
 class PayBooking(BaseModel):
@@ -2302,6 +2310,51 @@ async def create_booking(body: BookingCreate):
             vip_space_ids=body.vip_space_ids,
         )
         total += vip_spaces_amount
+
+    # Optional room add-on (Hébergement upsell on any non-hebergement booking).
+    # Validates the tier, computes nights, adds tier*nights*rooms to the total
+    # and persists structured metadata for the staff dashboards.
+    room_addon_doc: Optional[dict] = None
+    room_addon_amount = 0
+    if body.room_addon_tier:
+        if body.offer_type == "hebergement":
+            raise HTTPException(
+                status_code=400,
+                detail="L'option chambre n'est pas applicable au pôle Hébergement.",
+            )
+        heb_offer = OFFERS["hebergement"]
+        tier = next((t for t in heb_offer["room_tiers"] if t["id"] == body.room_addon_tier), None)
+        if not tier:
+            raise HTTPException(status_code=400, detail="Catégorie de chambre inconnue.")
+        addon_rooms = max(1, int(body.room_addon_rooms or 1))
+        # Default check-in = booking date ; check-out = next day.
+        ci = (body.room_addon_checkin or body.date).strip()
+        try:
+            ci_date = datetime.strptime(ci, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Date d'arrivée invalide.")
+        if body.room_addon_checkout:
+            try:
+                co_date = datetime.strptime(body.room_addon_checkout, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Date de départ invalide.")
+        else:
+            co_date = ci_date + timedelta(days=1)
+        addon_nights = (co_date - ci_date).days
+        if addon_nights < 1:
+            raise HTTPException(status_code=400, detail="La chambre nécessite au moins une nuit.")
+        room_addon_amount = int(tier["price"]) * addon_nights * addon_rooms
+        total += room_addon_amount
+        room_addon_doc = {
+            "tier_id": tier["id"],
+            "tier_name": tier["name_fr"],
+            "tier_price": int(tier["price"]),
+            "checkin_date": ci_date.isoformat(),
+            "checkout_date": co_date.isoformat(),
+            "nights": addon_nights,
+            "rooms": addon_rooms,
+            "amount": room_addon_amount,
+        }
     raw_participants = [
         {
             "name": p.name.strip(),
@@ -2370,6 +2423,9 @@ async def create_booking(body: BookingCreate):
         "vip_space_ids": [v["id"] for v in vip_spaces_resolved] or None,
         "vip_spaces": vip_spaces_resolved or None,
         "vip_spaces_amount": vip_spaces_amount,
+        # Optional room add-on (Hébergement upsell)
+        "room_addon": room_addon_doc,
+        "room_addon_amount": room_addon_amount,
         # Premium event packages picked by the customer (flat list).
         "package_lines": package_lines or None,
         "created_at": now_iso(),
@@ -3377,8 +3433,12 @@ class BateauUpdate(BaseModel):
 class Traversee(BaseModel):
     bateau_id: str
     date: str  # YYYY-MM-DD
-    depart_time: str  # "12H" etc
+    depart_time: str  # Free-form: "12H", "08H45", "13:30" etc. (staff chooses)
     direction: Literal["aller", "retour"] = "aller"
+    # Optional: when scheduling an "aller", staff can lock-in a custom return
+    # time on the SAME boat. When omitted, no return is auto-created (the staff
+    # can program it manually later). Free-form like depart_time.
+    return_time: Optional[str] = None
 
 
 async def _seed_default_bateaux():
@@ -3712,35 +3772,36 @@ async def create_traversee(body: Traversee, staff=Depends(get_current_staff)):
     bateau = await db.bateaux.find_one({"id": body.bateau_id}, {"_id": 0})
     if not bateau:
         raise HTTPException(status_code=404, detail="Bateau not found")
+    depart_clean = (body.depart_time or "").strip().upper().replace(":", "H")
+    if not depart_clean:
+        raise HTTPException(status_code=400, detail="Heure de départ requise")
     tid = str(uuid.uuid4())
     doc = {
         "id": tid,
         "bateau_id": body.bateau_id,
         "date": body.date,
-        "depart_time": body.depart_time,
+        "depart_time": depart_clean,
         "direction": body.direction,
         "status": "programmé",
         "created_at": now_iso(),
     }
     await db.traversees.insert_one(doc)
-    # Auto-create the corresponding return trip ~5h later, only for "aller"
-    if body.direction == "aller":
-        try:
-            hour = int(body.depart_time.replace("H", ""))
-            ret_hour = min(hour + 5, 22)
-            ret_doc = {
-                "id": str(uuid.uuid4()),
-                "bateau_id": body.bateau_id,
-                "date": body.date,
-                "depart_time": f"{ret_hour}H",
-                "direction": "retour",
-                "status": "programmé",
-                "parent_id": tid,
-                "created_at": now_iso(),
-            }
-            await db.traversees.insert_one(ret_doc)
-        except Exception:
-            pass
+    # When an "aller" is created and the staff supplied a return_time, lock-in
+    # that exact return on the SAME boat. We NO LONGER auto-generate a return
+    # 5h later — staff explicitly schedules each leg now.
+    if body.direction == "aller" and (body.return_time or "").strip():
+        ret_clean = body.return_time.strip().upper().replace(":", "H")
+        ret_doc = {
+            "id": str(uuid.uuid4()),
+            "bateau_id": body.bateau_id,
+            "date": body.date,
+            "depart_time": ret_clean,
+            "direction": "retour",
+            "status": "programmé",
+            "parent_id": tid,
+            "created_at": now_iso(),
+        }
+        await db.traversees.insert_one(ret_doc)
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
