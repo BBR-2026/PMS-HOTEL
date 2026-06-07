@@ -1651,7 +1651,9 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
               </p>
               <p className="text-[0.82rem] sm:text-[0.85rem] text-[#0A0A0A]/65 mt-2 leading-relaxed">
                 Pensez à vérifier vos courriers indésirables (spam). Si vous ne recevez rien, contactez notre équipe :{" "}
-                <a href="tel:+22501234567" className="text-[#B8922A] font-medium hover:underline">+225 01 23 45 67</a>
+                <a href="tel:+22507046000600" className="text-[#B8922A] font-medium hover:underline whitespace-nowrap">+225 07 04 600 600</a>
+                {" "}·{" "}
+                <a href="tel:+22507174000400" className="text-[#B8922A] font-medium hover:underline whitespace-nowrap">+225 07 17 400 400</a>
                 {" "}·{" "}
                 <a href="mailto:contact@boulaybeachresort.com" className="text-[#B8922A] font-medium hover:underline">contact@boulaybeachresort.com</a>
               </p>
