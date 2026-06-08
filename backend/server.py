@@ -323,6 +323,7 @@ def _pole_for_offer(offer_id: str) -> str:
 OfferType = Literal[
     "pass_day", "sunset", "brunch", "le_kaai", "hebergement", "special_event",
     "spa_wellness", "seminaire", "team_building", "offres_loisirs", "lounge",
+    "journee_etude", "dejeuner_diner_entreprise", "formule_personnalisee",
 ]
 BookingStatus = Literal["pending", "confirmed", "arrived", "completed", "cancelled"]
 
@@ -778,6 +779,41 @@ def _format_date_long(date_iso: str, lang: str = "fr") -> str:
         return date_iso
 
 
+def _format_dates_list(dates_iso: List[str], lang: str = "fr") -> str:
+    """Compact human-readable list of dates for the passport ticket.
+    - 2 dates  → "3 août · 5 août 2026"
+    - 3-5 dates same month → "3, 4, 5 août 2026"
+    - 3-5 dates spanning months → "3 août · 5 sept · 7 oct 2026"
+    - 6+ dates → "3 août → 7 octobre 2026 (5 dates)"
+    """
+    if not dates_iso:
+        return ""
+    try:
+        ds = sorted({datetime.strptime(s, "%Y-%m-%d").date() for s in dates_iso})
+    except Exception:
+        return ", ".join(dates_iso)
+    if len(ds) == 1:
+        return _format_date_long(ds[0].isoformat(), lang)
+    months_fr = ["", "janv.", "févr.", "mars", "avr.", "mai", "juin",
+                 "juill.", "août", "sept.", "oct.", "nov.", "déc."]
+    months_en = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    months = months_fr if lang == "fr" else months_en
+    year = ds[-1].year
+    if len(ds) >= 6:
+        sep = " → "
+        return f"{ds[0].day} {months[ds[0].month]}{sep}{ds[-1].day} {months[ds[-1].month]} {year} ({len(ds)} dates)"
+    # If all in the same month/year → compact "3, 4, 5 août 2026"
+    if all(d.month == ds[0].month and d.year == ds[0].year for d in ds):
+        days = ", ".join(str(d.day) for d in ds)
+        return f"{days} {months[ds[0].month]} {year}"
+    # Mixed months → "3 août · 5 sept · 7 oct 2026"
+    parts = [f"{d.day} {months[d.month]}" for d in ds]
+    return " · ".join(parts) + f" {year}"
+
+
+
+
 def make_ticket_image(
     offer_id: str,
     offer_name: str,
@@ -788,6 +824,7 @@ def make_ticket_image(
     ref_code: str,
     lang: str = "fr",
     hero_url: Optional[str] = None,
+    dates_list: Optional[List[str]] = None,
 ) -> str:
     """Render the full luxury ticket as a base64 PNG data URL.
 
@@ -895,15 +932,34 @@ def make_ticket_image(
     # Right column: 4 fields with thin white dividers
     field_y = text_y
     field_h = (H_BROWN - 60) // 4
+    # Passport tickets display the dates list compactly (e.g. "3, 4, 5 août 2026"
+    # or "3 août → 7 août 2026" depending on count). Boarding stays single value.
+    if dates_list and len(dates_list) > 1:
+        date_value = _format_dates_list(dates_list, lang)
+    else:
+        date_value = _format_date_long(date_iso, lang)
     fields = (
         (labels[0], owner_name),
         (labels[1], offer_name),
-        (labels[2], _format_date_long(date_iso, lang)),
+        (labels[2], date_value),
         (labels[3], boat_time),
     )
     for label, value in fields:
         draw.text((col_right_x, field_y), label + " :", fill=(240, 235, 225), font=f_label)
-        draw.text((col_right_x, field_y + 22), value, fill="white", font=f_value)
+        # Use a smaller font when the value is too long to fit on one line —
+        # critical for multi-date passport tickets where the dates string can
+        # easily exceed the column width.
+        col_w = box_x1 - 28 - col_right_x
+        val_font = f_value
+        if value:
+            bbox_v = draw.textbbox((0, 0), value, font=val_font)
+            if (bbox_v[2] - bbox_v[0]) > col_w:
+                val_font = _load_font(14, bold=True)
+                bbox_v = draw.textbbox((0, 0), value, font=val_font)
+                # Still too long → drop to 12pt
+                if (bbox_v[2] - bbox_v[0]) > col_w:
+                    val_font = _load_font(12, bold=True)
+        draw.text((col_right_x, field_y + 22), value, fill="white", font=val_font)
         draw.line(
             [(col_right_x, field_y + field_h - 4), (box_x1 - 28, field_y + field_h - 4)],
             fill=(255, 255, 255),
@@ -959,6 +1015,7 @@ def make_cash_receipt_image(
     ref_code: str,
     lang: str = "fr",
     hero_url: Optional[str] = None,
+    dates_list: Optional[List[str]] = None,
 ) -> str:
     """Render the *temporary cash receipt* template as a base64 PNG data URL.
 
@@ -1099,10 +1156,14 @@ def make_cash_receipt_image(
 
     # Right column: 4 fields with thin grey dividers
     field_y = body_y0 + 40
+    if dates_list and len(dates_list) > 1:
+        date_value = _format_dates_list(dates_list, lang)
+    else:
+        date_value = _format_date_long(date_iso, lang)
     fields = (
         (labels[0], owner_name),
         (labels[1], offer_name),
-        (labels[2], _format_date_long(date_iso, lang)),
+        (labels[2], date_value),
         (labels[3], boat_time),
     )
     for label, value in fields:
@@ -1110,7 +1171,17 @@ def make_cash_receipt_image(
         draw.text((col_right_x, field_y), label_text, fill=LIGHT_DARK, font=f_label)
         bbox = draw.textbbox((0, 0), label_text, font=f_label)
         lw = bbox[2] - bbox[0]
-        draw.text((col_right_x + lw, field_y), value, fill=DARK, font=f_value)
+        # Shrink value font if it would overflow the column.
+        col_w_avail = col_right_end - (col_right_x + lw)
+        val_font = f_value
+        if value:
+            bbox_v = draw.textbbox((0, 0), value, font=val_font)
+            if (bbox_v[2] - bbox_v[0]) > col_w_avail:
+                val_font = _load_font(13, bold=True)
+                bbox_v = draw.textbbox((0, 0), value, font=val_font)
+                if (bbox_v[2] - bbox_v[0]) > col_w_avail:
+                    val_font = _load_font(11, bold=True)
+        draw.text((col_right_x + lw, field_y), value, fill=DARK, font=val_font)
         draw.line(
             [(col_right_x, field_y + 30), (col_right_end, field_y + 30)],
             fill=LINE,
@@ -2512,92 +2583,91 @@ async def pay_booking(booking_id: str, body: PayBooking):
     }
 
     qr_codes = []
-    # Multi-day cumulative bookings → one ticket per (adult × date).
+    # Multi-day bookings → ONE *passport* ticket per adult that covers ALL dates
+    #   with a single QR code (scannable on each valid date, max 2 scans/date).
     # Single-day bookings → unchanged: one ticket per adult.
     ticket_dates: list = list(booking.get("multi_day_dates") or []) or [booking["date"]]
-    for ticket_date in ticket_dates:
-        for adult_i, p in enumerate(adult_participants, start=1):
-            token = uuid.uuid4().hex
-            is_booker = adult_i == 1
-            # Per-day label (if multi-day) so the booker doesn't get N identical
-            # "Réservant" entries — easier to attach individually in the email.
-            day_suffix = ""
-            if len(ticket_dates) > 1:
-                try:
-                    d = datetime.strptime(ticket_date, "%Y-%m-%d").date()
-                    day_suffix = f" · {d.day:02d}/{d.month:02d}"
-                except Exception:
-                    day_suffix = f" · {ticket_date}"
-            # Booker gets a richer label that mentions the children he/she is carrying.
-            if is_booker and children_count > 0:
-                label_fr = f"Réservant · +{children_count} enfant{'s' if children_count > 1 else ''}{day_suffix}"
-                label_en = f"Booker · +{children_count} child{'ren' if children_count > 1 else ''}{day_suffix}"
-            elif is_booker:
-                label_fr = f"Réservant{day_suffix}"
-                label_en = f"Booker{day_suffix}"
-            else:
-                label_fr = f"Adulte #{adult_i}{day_suffix}"
-                label_en = f"Adult #{adult_i}{day_suffix}"
-            guest_payload = {
-                **base_payload,
-                # Override the date with the per-ticket day for multi-day tickets
-                "date": ticket_date,
-                "guest_kind": "adult",
-                "guest_index": adult_i,
-                "guest_label": label_fr,
-                "guest_name": p["name"],
-                "guest_surname": p["surname"],
-                "guest_email": p.get("email", "") or booking.get("email", ""),
-                "guest_phone": p.get("phone", "") or booking.get("phone", ""),
-                "guest_nationality": p["nationality"],
-                "guest_token": token,
-                "children_attached": children_count if is_booker else 0,
-            }
-            payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
-            compact_qr = json.dumps(
-                {"type": "ticket", "token": token, "ref": booking_id[:8].upper()},
-                ensure_ascii=False, separators=(",", ":"),
+    is_passport = len(ticket_dates) > 1
+    primary_date = ticket_dates[0]
+    for adult_i, p in enumerate(adult_participants, start=1):
+        token = uuid.uuid4().hex
+        is_booker = adult_i == 1
+        # Booker gets a richer label that mentions the children he/she is carrying.
+        passport_suffix = " · Passeport multi-dates" if is_passport else ""
+        if is_booker and children_count > 0:
+            label_fr = f"Réservant · +{children_count} enfant{'s' if children_count > 1 else ''}{passport_suffix}"
+            label_en = f"Booker · +{children_count} child{'ren' if children_count > 1 else ''}{passport_suffix}"
+        elif is_booker:
+            label_fr = f"Réservant{passport_suffix}"
+            label_en = f"Booker{passport_suffix}"
+        else:
+            label_fr = f"Adulte #{adult_i}{passport_suffix}"
+            label_en = f"Adult #{adult_i}{passport_suffix}"
+        guest_payload = {
+            **base_payload,
+            "date": primary_date,
+            "valid_dates": ticket_dates,
+            "is_passport": is_passport,
+            "guest_kind": "adult",
+            "guest_index": adult_i,
+            "guest_label": label_fr,
+            "guest_name": p["name"],
+            "guest_surname": p["surname"],
+            "guest_email": p.get("email", "") or booking.get("email", ""),
+            "guest_phone": p.get("phone", "") or booking.get("phone", ""),
+            "guest_nationality": p["nationality"],
+            "guest_token": token,
+            "children_attached": children_count if is_booker else 0,
+        }
+        payload_str = json.dumps(guest_payload, ensure_ascii=False, separators=(",", ":"))
+        compact_qr = json.dumps(
+            {"type": "ticket", "token": token, "ref": booking_id[:8].upper()},
+            ensure_ascii=False, separators=(",", ":"),
+        )
+        token_short = token[:10].upper()
+        entry = {
+            "label_fr": label_fr,
+            "label_en": label_en,
+            "kind": "adult",
+            "event_date": primary_date,
+            "valid_dates": ticket_dates,
+            "is_passport": is_passport,
+            "guest_name": p["name"],
+            "guest_surname": p["surname"],
+            "guest_email": p.get("email", "") or booking.get("email", ""),
+            "guest_phone": p.get("phone", "") or booking.get("phone", ""),
+            "guest_nationality": p["nationality"],
+            "qr_token": token,
+            "qr_payload": payload_str,
+            "qr_code": make_qr(compact_qr, styled=styled_qr),
+            "children_attached": children_count if is_booker else 0,
+        }
+        if styled_qr:
+            entry["ticket_image"] = make_ticket_image(
+                offer_id=booking["offer_type"],
+                offer_name=offer["name_fr"],
+                date_iso=primary_date,
+                boat_time=booking.get("boat_time", ""),
+                owner_name=f"{p['name']} {p['surname']}",
+                qr_payload=compact_qr,
+                ref_code=token_short,
+                lang="fr",
+                hero_url=offer.get("image_url") or None,
+                dates_list=ticket_dates if is_passport else None,
             )
-            token_short = token[:10].upper()
-            entry = {
-                "label_fr": label_fr,
-                "label_en": label_en,
-                "kind": "adult",
-                "event_date": ticket_date,
-                "guest_name": p["name"],
-                "guest_surname": p["surname"],
-                "guest_email": p.get("email", "") or booking.get("email", ""),
-                "guest_phone": p.get("phone", "") or booking.get("phone", ""),
-                "guest_nationality": p["nationality"],
-                "qr_token": token,
-                "qr_payload": payload_str,
-                "qr_code": make_qr(compact_qr, styled=styled_qr),
-                "children_attached": children_count if is_booker else 0,
-            }
-            if styled_qr:
-                entry["ticket_image"] = make_ticket_image(
-                    offer_id=booking["offer_type"],
-                    offer_name=offer["name_fr"],
-                    date_iso=ticket_date,
-                    boat_time=booking.get("boat_time", ""),
-                    owner_name=f"{p['name']} {p['surname']}",
-                    qr_payload=compact_qr,
-                    ref_code=token_short,
-                    lang="fr",
-                    hero_url=offer.get("image_url") or None,
-                )
-            else:
-                entry["ticket_image"] = make_cash_receipt_image(
-                    offer_id=booking["offer_type"],
-                    offer_name=offer["name_fr"],
-                    date_iso=ticket_date,
-                    boat_time=booking.get("boat_time", ""),
-                    owner_name=f"{p['name']} {p['surname']}",
-                    ref_code=token_short,
-                    lang="fr",
-                    hero_url=offer.get("image_url") or None,
-                )
-            qr_codes.append(entry)
+        else:
+            entry["ticket_image"] = make_cash_receipt_image(
+                offer_id=booking["offer_type"],
+                offer_name=offer["name_fr"],
+                date_iso=primary_date,
+                boat_time=booking.get("boat_time", ""),
+                owner_name=f"{p['name']} {p['surname']}",
+                ref_code=token_short,
+                lang="fr",
+                hero_url=offer.get("image_url") or None,
+                dates_list=ticket_dates if is_passport else None,
+            )
+        qr_codes.append(entry)
 
     paid_at = now_iso()
 
@@ -4806,14 +4876,35 @@ async def checkin_qr(
     if idx == -1:
         raise HTTPException(status_code=404, detail="QR code non reconnu")
     scans = qrs[idx].get("scans") or []
-    if len(scans) >= 2:
-        raise HTTPException(status_code=400, detail="QR code déjà scanné (aller + retour). Plus aucun embarquement possible.")
+    # Passport tickets: this QR is scannable on each booked date, max 2 scans
+    # (aller + retour) per date. Validate that today matches one of the valid
+    # dates of the ticket, and count scans for today only.
+    valid_dates = qrs[idx].get("valid_dates") or [booking.get("date")]
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    is_passport_qr = len(valid_dates) > 1
+    if is_passport_qr and today_iso not in valid_dates:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ce passeport n'est pas valide aujourd'hui. Dates autorisées : {', '.join(valid_dates)}",
+        )
+    if is_passport_qr:
+        today_scans = [s for s in scans if (s.get("scan_date") or s.get("boat_date")) == today_iso]
+        if len(today_scans) >= 2:
+            raise HTTPException(status_code=400, detail=f"QR code déjà scanné (aller + retour) pour le {today_iso}.")
+    else:
+        if len(scans) >= 2:
+            raise HTTPException(status_code=400, detail="QR code déjà scanné (aller + retour). Plus aucun embarquement possible.")
     # Direction may be forced by the staff (rare: scan a 'retour' before 'aller' has been done).
     forced_dir = (body.direction if body else None) if body else None
-    direction = forced_dir or ("aller" if len(scans) == 0 else "retour")
+    if is_passport_qr:
+        prior_today_count = len([s for s in scans if (s.get("scan_date") or s.get("boat_date")) == today_iso])
+        direction = forced_dir or ("aller" if prior_today_count == 0 else "retour")
+        boat_date = today_iso
+    else:
+        direction = forced_dir or ("aller" if len(scans) == 0 else "retour")
+        boat_date = booking.get("date") if direction == "aller" else (booking.get("checkout_date") or booking.get("date"))
     # Default boat from the booking; can be overridden by the staff (missed boat, etc.)
     planned_boat = booking.get("boat_time") if direction == "aller" else (booking.get("return_boat_time") or booking.get("boat_time"))
-    boat_date = booking.get("date") if direction == "aller" else (booking.get("checkout_date") or booking.get("date"))
     boat_time = (body.boat_time if body else None) or planned_boat
     boat_id = (body.boat_id if body else None)
     boat_name = (body.boat_name if body else None)
@@ -4830,6 +4921,7 @@ async def checkin_qr(
     entry = {
         "direction": direction,
         "scanned_at": now_iso(),
+        "scan_date": today_iso,
         "staff_email": staff.get("email"),
         "staff_name": staff.get("name") or "",
         "boat_time": boat_time,
@@ -4844,13 +4936,28 @@ async def checkin_qr(
     scans = scans + [entry]
     # Aggregate booking-level status across all QR codes:
     #  - 'arrived' if at least one aller scan and not everyone has done a return
-    #  - 'completed' once all participants have done both aller + retour
+    #  - 'completed' once all participants have done both aller + retour for
+    #    every valid date (single QR per adult for passport tickets).
     all_scans_after = [
         (q.get("scans") or []) + ([entry] if i == idx else [])
         for i, q in enumerate(qrs)
     ]
-    all_arrived = all(len(s) >= 1 for s in all_scans_after)
-    all_completed = all(len(s) >= 2 for s in all_scans_after)
+
+    def _qr_arrived(q_scans: list, q_meta: dict) -> bool:
+        """True iff this QR has at least 1 scan (any date)."""
+        return len(q_scans) >= 1
+
+    def _qr_completed(q_scans: list, q_meta: dict) -> bool:
+        """True iff this QR has aller+retour for each of its valid dates."""
+        vd = q_meta.get("valid_dates") or [booking.get("date")]
+        if len(vd) <= 1:
+            return len(q_scans) >= 2
+        from collections import Counter
+        per_day = Counter(s.get("scan_date") or s.get("boat_date") for s in q_scans)
+        return all(per_day.get(d, 0) >= 2 for d in vd)
+
+    all_arrived = all(_qr_arrived(s, qrs[i]) for i, s in enumerate(all_scans_after))
+    all_completed = all(_qr_completed(s, qrs[i]) for i, s in enumerate(all_scans_after))
     new_status = booking.get("status")
     set_ops = {f"qr_codes.{idx}.scans": scans}
     if all_completed:
@@ -7202,6 +7309,7 @@ async def export_hebergement_pdf(period: str = "month", staff=Depends(get_curren
 class StaffBookingCreate(BaseModel):
     """Body for POST /staff/bookings — manager creates a booking on behalf of a guest."""
     offer_type: OfferType
+    event_id: Optional[str] = None  # required when offer_type='special_event'
     date: str
     checkout_date: Optional[str] = None
     room_tier: Optional[str] = None
@@ -7224,6 +7332,7 @@ async def staff_create_booking(body: StaffBookingCreate, staff=Depends(get_curre
     # Step 1: create booking (reuses public validator)
     payload = BookingCreate(
         offer_type=body.offer_type,
+        event_id=body.event_id,
         date=body.date,
         checkout_date=body.checkout_date,
         room_tier=body.room_tier,
@@ -9518,6 +9627,63 @@ async def list_email_notifications(limit: int = 50, purpose: Optional[str] = Non
         q["purpose"] = purpose
     items = await db.email_messages.find(q, {"_id": 0}).sort("created_at", -1).limit(min(200, max(1, limit))).to_list(length=200)
     return {"items": items, "count": len(items), "sendgrid_enabled": email_service.SENDGRID_ENABLED}
+
+
+@api.get("/staff/notifications/new-bookings")
+async def list_new_bookings(since: Optional[str] = None,
+                            limit: int = 20,
+                            staff=Depends(get_current_staff)):
+    """In-dashboard notification feed: returns bookings created since `since`
+    (ISO timestamp, exclusive). Used by the bell icon to badge unread count
+    + dropdown list. No mutation; pure read.
+
+    Returns the latest `limit` bookings sorted by created_at desc, plus
+    `latest_created_at` so the client can advance its cursor on next poll.
+    """
+    q: dict = {"status": {"$ne": "cancelled"}}
+    if since:
+        q["created_at"] = {"$gt": since}
+    cursor = db.bookings.find(
+        q,
+        {
+            "_id": 0,
+            "id": 1, "offer_type": 1, "label": 1, "date": 1,
+            "boat_time": 1, "adults": 1, "children": 1,
+            "total_amount": 1, "status": 1, "payment_method": 1,
+            "created_at": 1, "pole": 1,
+            "booker_name": 1, "booker_email": 1, "booker_phone": 1,
+            "participants": 1,
+        },
+    ).sort("created_at", -1).limit(min(100, max(1, limit)))
+    items: list = []
+    async for b in cursor:
+        # Derive a friendly customer label
+        booker = b.get("booker_name") or ""
+        if not booker:
+            parts = b.get("participants") or []
+            if parts:
+                p0 = parts[0]
+                booker = f"{(p0.get('name') or '').strip()} {(p0.get('surname') or '').strip()}".strip()
+        items.append({
+            "id": b.get("id"),
+            "offer_type": b.get("offer_type"),
+            "label": b.get("label") or b.get("offer_type"),
+            "date": b.get("date"),
+            "boat_time": b.get("boat_time"),
+            "adults": b.get("adults") or 0,
+            "children": b.get("children") or 0,
+            "guests_total": (b.get("adults") or 0) + (b.get("children") or 0),
+            "total_amount": b.get("total_amount") or 0,
+            "status": b.get("status"),
+            "payment_method": b.get("payment_method"),
+            "pole": b.get("pole"),
+            "booker": booker or "Client",
+            "created_at": b.get("created_at"),
+        })
+    latest = items[0]["created_at"] if items else since
+    return {"items": items, "count": len(items), "latest_created_at": latest}
+
+
 
 
 @api.post("/staff/bookings/{booking_id}/resend-ticket-email")

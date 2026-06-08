@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { NavLink, Outlet, useNavigate, Navigate, useLocation } from "react-router-dom";
 import { useStaffAuth } from "../../context/StaffAuthContext";
+import NotificationsBell from "./NotificationsBell";
 import {
   LayoutDashboard,
   Ticket,
@@ -241,8 +242,13 @@ export default function StaffLayout() {
           alt="BBR"
           className="h-9 w-auto"
         />
-        <div className="w-9" />
+        <NotificationsBell />
       </header>
+
+      {/* Desktop top-right notifications bell (fixed, above content) */}
+      <div className="hidden lg:flex fixed top-3 right-5 z-40">
+        <NotificationsBell />
+      </div>
 
       {/* Mobile drawer */}
       {mobileOpen && (

@@ -8,8 +8,7 @@ Sends transactional emails matching the new BBr luxury identity:
 - Secondary hero image
 - Dark CTA bar
 - Dark footer: "Life Is Here", clickable phones, Instagram, website,
-  "Télécharger notre livret" button (links to /bbr-presentation.pdf) and
-  "Embarquement dès 11H · Départ toutes les heures" with boat icon.
+  "Télécharger notre livret" button (links to /bbr-presentation.pdf).
 
 Every send is logged in MongoDB collection ``email_messages``.
 """
@@ -306,9 +305,6 @@ def _render_template(
                                     bg=CREAM, color=DARK,
                                     font_size=12, padding_v=11, padding_h=26,
                                     letter_spacing="0.12em", uppercase=True)}
-              </div>
-              <div style="color:{CREAM};font-size:12px;line-height:1.6;letter-spacing:0.04em;opacity:0.85;margin-bottom:28px;">
-                Embarquement dès 11H<br/>Départ toutes les heures
               </div>
               <div style="font-size:11px;line-height:1.65;color:{CREAM};opacity:0.55;letter-spacing:0.02em;padding-top:18px;border-top:1px solid rgba(248,239,231,0.18);">
                 {BBR_POSTAL_ADDRESS}<br/>

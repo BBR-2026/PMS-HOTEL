@@ -28,9 +28,6 @@ DEFAULT_FOOTER_HTML = (
     '<a href="https://instagram.com/boulaybeachresort" style="color:inherit;text-decoration:none;">@BoulayBeachResort</a><br/>'
     '<a href="https://workflow-boulaybeachresort.com" style="color:inherit;text-decoration:none;">boulaybeachresort.com</a>'
     '</div>'
-    '<div style="text-align:center;font-size:12px;line-height:1.6;letter-spacing:0.04em;opacity:0.85;margin:20px 0 0;">'
-    'Embarquement dès 11H · Départ toutes les heures'
-    '</div>'
 )
 
 

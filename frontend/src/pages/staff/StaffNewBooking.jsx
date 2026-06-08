@@ -45,6 +45,26 @@ export default function StaffNewBooking() {
 
   useEffect(() => {
     api.get("/offers").then((r) => setOffers(r.data)).catch(() => {});
+    // Also fetch all published+active special events so they can be booked
+    // alongside catalog offers (pôle Activités & Événements).
+    api.get("/staff/special-events").then((r) => {
+      const events = (r.data?.items || []).filter((e) => e.status === "published");
+      const eventOffers = events.map((e) => ({
+        id: `special_event:${e.id}`,
+        _event_id: e.id,
+        _is_event: true,
+        name_fr: e.title || e.label || "Événement",
+        schedule_fr: e.subtitle || (e.event_dates?.[0] || "Événement spécial"),
+        price_adult: e.price_adult || 0,
+        price_child: e.price_child || 0,
+        boat_times: [],
+        boat_times_weekday: null,
+        boat_times_weekend: null,
+        is_overnight: false,
+        room_tiers: [],
+      }));
+      setOffers((prev) => [...prev, ...eventOffers]);
+    }).catch(() => {});
   }, []);
 
   const offer = useMemo(() => offers.find((o) => o.id === offerId), [offers, offerId]);
@@ -135,8 +155,9 @@ export default function StaffNewBooking() {
     if (!canSubmit) return;
     setCreating(true);
     try {
+      const isEvent = !!offer?._is_event;
       const body = {
-        offer_type: offer.id,
+        offer_type: isEvent ? "special_event" : offer.id,
         date,
         checkout_date: isOvernight ? checkoutDate : null,
         room_tier: hasTiers ? roomTier : null,
@@ -157,6 +178,7 @@ export default function StaffNewBooking() {
         payment_method: paymentMethod,
         deposit_pct: paymentMethod === "deposit" ? depositPct : null,
       };
+      if (isEvent) body.event_id = offer._event_id;
       const { data } = await api.post("/staff/bookings", body);
       toast.success(`Réservation créée · #${data.id.slice(0, 8).toUpperCase()}`);
       navigate("/staff/reservations");

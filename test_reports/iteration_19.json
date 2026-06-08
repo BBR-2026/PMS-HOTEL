@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 19 — verified 6 shipped changes (passport tickets, notifications bell, VIP removal, corporate skyscrapers image, email 'dès 11H' cleanup, StaffNewBooking special_events). Backend pytest: 10/11 PASS. 1 FAIL is a real backend bug — POST /api/staff/bookings with offer_type='special_event' returns 400 because server.py:7335 passes `event_id` to BookingCreate(...) which expects `special_event_id`. Pydantic silently drops the unknown field. Frontend smoke 4/4 PASS.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/staff/bookings",
+        "issue": "Field name mismatch — server.py:7333-7346 builds BookingCreate(event_id=body.event_id, ...) but BookingCreate (server.py:419) declares `special_event_id`. Pydantic v2 silently ignores the extra `event_id` so the call falls through to validator at server.py:2022 which raises 400 'special_event_id is required for special_event bookings'. Result: the staff /staff/nouvelle-resa flow can never submit a special_event booking even though the new card UI exposes it. Fix: change line 7335 to `special_event_id=body.event_id`.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration19_passport_and_notifs.py",
+    "/app/test_reports/pytest/iter19.xml"
+  ],
+  "action_items": [
+    "FIX server.py:7335 — rename keyword `event_id=body.event_id` → `special_event_id=body.event_id` in staff_create_booking BookingCreate(...) call. Without this fix, the StaffNewBooking 'special_events' cards added in iteration 19 will all 400 on submit.",
+    "Optional cleanup: ~4 TEST_ special events + ~3 TEST_ bookings created with email t.iter19*@bbr.ci. Run db.special_events.delete_many({'title': {'$regex': '^TEST Iter19'}}) and db.bookings.delete_many({'participants.email': {'$regex': 't.iter19'}})."
+  ],
+  "critical_code_review_comments": [
+    "server.py:2585-2670 — multi-day passport block is clean: `is_passport = len(ticket_dates) > 1`, ONE QR per adult (loop over adult_participants, not over dates × adults), `valid_dates: ticket_dates` persisted on every entry, suffix ' · Passeport multi-dates' added to label. `make_ticket_image` & `make_cash_receipt_image` both receive `dates_list` so the ticket image lists all valid dates. Excellent.",
+    "server.py:4878-4905 — passport scan logic is correct: rejects when today not in valid_dates with explicit message; caps 2 scans per date (passport) vs 2 scans total (legacy); direction (aller/retour) computed from today_scans count. Edge case verified by tests.",
+    "server.py:9632-9684 — notifications endpoint uses strict $gt cursor (idempotent polling) and projects required fields. `_id` is correctly excluded. Booker fallback (booker_name → participants[0]) is robust.",
+    "server.py:7335 — KEYWORD BUG (see critical issue). The staff endpoint completely silently breaks the special_event path.",
+    "NotificationsBell.jsx:47 — frontend correctly URL-encodes the `since` cursor; backend tests had to mirror this with requests params=. Cursor scheme is sound.",
+    "BookingTunnel.jsx — VIP spaces section fully removed (no `vip-spaces-section` data-testid left anywhere). Confirmed by Playwright on /booking/pass_day."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration19_passport_and_notifs.py (NEW — 11 tests)"
+  ],
+  "success_rate": {
+    "backend": "91% (10/11). The 1 failure is a real backend bug, not a flaky test.",
+    "frontend": "100% (4/4 smoke checks: /welcome title+CTA+logo, landing corporate skyscrapers img URL, /booking/pass_day no VIP section, /staff bell+dropdown both render and open)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026",
+  "seed_data_creation": "~4 TEST_ special events (titles 'TEST Iter19 Multi-Day *' and 'TEST Iter19 Today *') + ~3 paid TEST_ bookings (cash) with booker email t.iter19*@bbr.ci. Two scans recorded on the 'today' passport booking.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Re-run with: `pytest backend/tests/test_iteration19_passport_and_notifs.py -v`. Once main agent fixes the server.py:7335 keyword rename, ALL 11 tests should pass. The passport test (most complex change) is fully green: 2 adults × 3 dates → 2 QRs, both is_passport=True, both valid_dates=[d1,d2,d3], scanner correctly caps at 2 scans/day and rejects when today not in valid_dates. Notifications cursor uses strict $gt — when calling from any client, MUST URL-encode the ISO timestamp (the `+00:00` zone offset becomes a space otherwise). Frontend NotificationsBell.jsx already does this correctly.",
+  "rca of the issue": "Bug: POST /api/staff/bookings with offer_type='special_event' + event_id=<id> returns 400 'special_event_id is required for special_event bookings'. Reproduction: login as admin, POST /api/staff/bookings {offer_type:'special_event', event_id:'<valid_event>', date:'<event_date>', boat_time:'08H45', adults:1, children:0, participants:[<booker>], payment_method:'cash'} → 400. RCA: server.py StaffBookingCreate model (line 7311) names the field `event_id`. server.py line 7333-7346 builds BookingCreate(event_id=body.event_id, ...) but BookingCreate (line 419) names it `special_event_id`. Pydantic v2 default config silently drops unknown kwargs, so `special_event_id` ends up None and the validator at line 2022 raises 400. Mitigation: change server.py:7335 from `event_id=body.event_id,` to `special_event_id=body.event_id,`. One-line fix."
+}

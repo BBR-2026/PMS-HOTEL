@@ -8,7 +8,7 @@ import { ArrowRight } from "lucide-react";
 const POLE_IMAGES = {
   beach_club: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/trz2j0jd_BEACH%20CLUB.png",
   hebergement: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/7bcipz8w_HEBERGEMENT.png",
-  corporate: "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1600&q=80",
+  corporate: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/z5tyysqq_IMAGES%20BOOKING%20BBr%20WORKFLOW-07.png",
   activites_events: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ocqva33h_ACTIVITE.png",
   le_kaai: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/v2f73qqm_KAAI.png",
 };
