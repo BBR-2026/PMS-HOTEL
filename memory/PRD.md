@@ -150,6 +150,20 @@ See `/app/memory/test_credentials.md`.
 
 - 2026-06-06: **Iteration 17 — Tunnel "réservant uniquement"** — Un seul formulaire de coordonnées (le réservant), peu importe le nombre de personnes. Le backend expand automatiquement en N+M tickets. Tests 6/6 PASS + rétrocompat.
 
+- 2026-06-08: **Refonte complète Landing `/welcome` (premium, vidéo, charte BBR)** —
+  Suppression de l'ancienne splash page minimaliste et création d'une **landing 6 sections** alignée à la direction artistique du site (palette `#0A0A0A` / `#B8922A` / `#E5D9C0`, font Optima, animations framer-motion `[0.22, 1, 0.36, 1]`) :
+  1. **Hero plein écran** avec **vidéo background** autoplay/muted/loop (CDN Pexels — aerial lagoon, libre commercial), overlay sombre cinématique + grain SVG, parallax sur le titre via `useScroll` + `useTransform`. Logo BBR top-left + CTA pill top-right + scroll-indicator animé. Titre `Life is here.` en Optima clamp(48→128px). Poster fallback = `BBR_SHOOT 2_140.jpg` (la page reste élégante même si la vidéo ne charge pas).
+  2. **L'île de Boulay** : 2 colonnes asymétriques (5/7), image grand format + bloc texte storytelling + caption box noire en débord (-bottom-8 -left-8).
+  3. **Cinq univers, une seule île.** : grid 5 colonnes, aspect 3/4, image par pôle (depuis POLE_PREVIEW_IMAGES), nom en serif sur gradient sombre, hover gold ring.
+  4. **Manifesto** : section noire avec citation italique serif `“Une île à soi…”` + cercles concentriques cream décoratifs.
+  5. **CTA final** : `Le bateau vous attend.` sur fond `#F8F1DC`, bouton noir → hover or.
+  6. **Footer premium** : logo + bloc contacts en gras (2 phones + email cliquables) + Instagram/LinkedIn + mentions légales.
+
+  Données dynamiques : fetch `/api/poles` pour récupérer les noms réels des pôles, fallback hardcodé sur les 5 IDs connus.
+  Routing : 2 CTAs "Réserver" résolvent automatiquement preview vs production via `window.location.hostname`.
+  data-testids : `welcome-landing`, `welcome-hero`, `welcome-hero-video`, `welcome-title`, `welcome-reserve-top/cta`, `welcome-scroll-indicator`, `welcome-eyebrow`, `welcome-baseline`, `welcome-island`, `welcome-poles`, `welcome-pole-{id}`, `welcome-poles-cta`, `welcome-manifesto`, `welcome-final-cta`, `welcome-final-cta-btn`, `welcome-footer`, `footer-phone-1/2`, `footer-email`, `footer-instagram`, `footer-linkedin`.
+  Smoke test : 10/10 sections présentes, titre conforme.
+
 - 2026-06-08: **Iteration 20 — Gestion flotte (carburant, skippers, traversées éditables)** —
   1. **Litres par trajet par bateau** : nouveau champ `fuel_litres_per_trip` (0-2000 L) sur le modèle `Bateau`, exposé dans la création + éditable inline sur chaque carte bateau (`/staff/embarquement`). Backfill idempotent au démarrage pour les bateaux existants. data-testids : `new-bateau-fuel`, `fuel-litres-{id_short}`.
   2. **Catalogue Skippers** : nouvelle collection `skippers` + entité complète `Skipper {id, name, phone, license_no, status}`. CRUD : `POST/GET/PATCH/DELETE /api/staff/skippers`. Validation : nom dupliqué (case-insensitive) → 409. Suppression cascadée propre : désassigne automatiquement le skipper sur toutes les traversées programmées. L'endpoint legacy d'autocomplete (noms historiques saisis en texte libre) déplacé vers `/api/staff/skippers/recent`. UI : section "Skippers" sur `/staff/embarquement` avec liste + formulaire d'ajout (nom, téléphone, licence) + suppression admin. data-testids : `skippers-section`, `add-skipper-btn`, `delete-skipper-{id_short}`.
