@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 20 (fleet management — fuel litres on boats, Skipper CRUD, PATCH/DELETE scheduled traversées, fleet block in /stats/advanced) — fully verified. Backend pytest 14/14 PASS. Frontend smoke 6/6 PASS (skippers-section, skipper add form, new-crossing-skipper dropdown, per-boat + new-boat 'Litres par trajet' fields, Stats avancées toggle, fleet-stats table with rows).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Console (any staff page)", "issues": ["Pre-existing React hydration warning: '<span> cannot be a child of <option>'. Not introduced by iter20 but visible on /staff/embarquement — appears to be in an unrelated <select><option> on the layout. Cosmetic only."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration20_fleet_skippers.py",
+    "/app/test_reports/pytest/iter20.xml"
+  ],
+  "action_items": [
+    "Optional cleanup: any leftover TEST_iter20_* skippers / boats / traversées (the test suite cleans up after itself, but if a run was aborted, db.skippers.delete_many({'name': {'$regex': '^TEST_iter20_'}}) and db.bateaux.delete_many({'name': {'$regex': '^TEST_iter20_'}})."
+  ],
+  "critical_code_review_comments": [
+    "server.py:3503 — Bateau.fuel_litres_per_trip is bounded 0..2000 with default=0; BateauUpdate mirror is Optional. Backfill at server.py:3565 idempotently sets the field on legacy boats. Clean.",
+    "server.py:3534-3546 — Skipper / SkipperUpdate models with status Literal['actif','inactif'] and name min_length=2 — solid.",
+    "server.py:3940-3966 PATCH /staff/traversees/{tid} — status guard (must be 'programmé'), depart_time normalization (upper + ':'→'H'), and skipper_clear vs skipper_id semantics are correctly mutually-exclusive. depart_time empty-string is also handled.",
+    "server.py:3969-3991 DELETE /staff/traversees/{tid} — cascade-deletes child return leg only when child.status is in (None, 'programmé'). traversee_passengers also cleaned. Correct.",
+    "server.py:5247-5253 POST /staff/skippers — case-insensitive duplicate check via regex anchor. WARNING: name is interpolated raw into a regex; a malicious skipper name containing regex metachars (e.g., `.*`) could trigger ReDoS or match unintended entries. Recommend re.escape(name_clean). Low-risk since route is staff-only but worth a one-line fix.",
+    "server.py:5288-5300 DELETE /staff/skippers — admin-only (correct per spec). Detaches from programmé traversées before deletion. Good.",
+    "server.py:3892-3935 create_traversee — skipper_id must be 'actif' (404 otherwise). Return leg inherits skipper unless return_skipper_id is explicitly provided. Matches spec.",
+    "server.py:8325-8385 stats/advanced fleet block — counts only status='terminé' for target year, splits aller/retour, multiplies litres correctly. Test verified math.",
+    "StaffEmbarquement.jsx — all data-testids present (skippers-section, new-skipper-name/phone/license, add-skipper-btn, new-crossing-skipper, edit/delete-traversee-* and edit-traversee-skipper in modal). Manager-only buttons gated on isManager && status==='programmé'.",
+    "StaffRevenue.jsx — fleet-stats table renders one row per boat with fuel_litres_per_trip, trips, litres."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration20_fleet_skippers.py (NEW — 14 pytest tests across 5 test classes)"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14)",
+    "frontend": "100% (6/6 smoke checks)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (staff login at POST /api/auth/staff/login → returns {access_token,...})",
+  "seed_data_creation": "Test suite auto-cleans: creates ~3 TEST_iter20_* skippers, 1 TEST_iter20_* boat, 1 traversée pair (aller+retour for 2026-01-15) — all removed in session-scoped teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Re-run with `REACT_APP_BACKEND_URL=<url> pytest backend/tests/test_iteration20_fleet_skippers.py -v`. Staff login endpoint is `/api/auth/staff/login` and returns `access_token` (not `token`). Skippers list endpoint returns `{items:[...]}`. The scanner endpoint that previously returned aggregated history is now at `/api/staff/skippers/recent` (separate). All iteration 20 features fully working.",
+  "rca of the issue": "No issues found."
+}

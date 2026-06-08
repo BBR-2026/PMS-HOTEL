@@ -479,6 +479,55 @@ function AdvancedStats({ data }) {
           ))}
         </div>
       </div>
+
+      {/* Fleet — fuel consumption per boat */}
+      {data.fleet && (
+        <div className="bg-white border border-[#0A0A0A]/8 p-4 sm:p-6" data-testid="fleet-stats">
+          <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+            <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A]">Consommation flotte — {data.year}</div>
+            <div className="text-[0.7rem] text-[#0A0A0A]/55">
+              <span className="font-medium tabular-nums text-[#0A0A0A]">{data.fleet.total_trips || 0}</span> trajets ·{" "}
+              <span className="font-medium tabular-nums text-[#0A0A0A]">{new Intl.NumberFormat("fr-FR").format(data.fleet.total_litres || 0)} L</span> total
+            </div>
+          </div>
+          {(data.fleet.boats || []).length === 0 ? (
+            <div className="text-sm text-[#0A0A0A]/50">Aucun bateau enregistré.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/10">
+                    <th className="text-left py-2 pr-3">Bateau</th>
+                    <th className="text-right py-2 px-3">L / trajet</th>
+                    <th className="text-right py-2 px-3">Aller</th>
+                    <th className="text-right py-2 px-3">Retour</th>
+                    <th className="text-right py-2 px-3">Trajets</th>
+                    <th className="text-right py-2 pl-3">Litres totaux</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.fleet.boats.map((b) => (
+                    <tr key={b.id} className="border-b border-[#0A0A0A]/5 last:border-0" data-testid={`fleet-row-${b.id.slice(0, 8)}`}>
+                      <td className="py-2.5 pr-3">
+                        <div className="font-display-serif text-[#0A0A0A]">{b.name}</div>
+                        <div className="text-[0.65rem] text-[#0A0A0A]/45">{b.capacity} places · {b.status}</div>
+                      </td>
+                      <td className="text-right py-2.5 px-3 tabular-nums text-[#0A0A0A]/70">{b.fuel_litres_per_trip || 0}</td>
+                      <td className="text-right py-2.5 px-3 tabular-nums text-[#0A0A0A]/70">{b.trips_aller}</td>
+                      <td className="text-right py-2.5 px-3 tabular-nums text-[#0A0A0A]/70">{b.trips_retour}</td>
+                      <td className="text-right py-2.5 px-3 tabular-nums text-[#0A0A0A]/85 font-medium">{b.trips_completed}</td>
+                      <td className="text-right py-2.5 pl-3 tabular-nums text-[#B8922A] font-medium">{new Intl.NumberFormat("fr-FR").format(b.fuel_litres_total)} L</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="text-[0.65rem] text-[#0A0A0A]/45 mt-3 leading-relaxed">
+                Litres totaux = (litres par trajet × nombre de trajets terminés). Configurez la consommation par bateau dans Opérations → Embarquement.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

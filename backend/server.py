@@ -3498,6 +3498,9 @@ class Bateau(BaseModel):
     capacity: int = Field(ge=1, le=300)
     status: Literal["actif", "maintenance"] = "actif"
     charter_price: int = Field(default=0, ge=0)  # FCFA — private charter rate
+    # Fuel consumption per single-leg trip (aller OR retour). Used by the
+    # advanced stats to compute total litres used across all completed trips.
+    fuel_litres_per_trip: int = Field(default=0, ge=0, le=2000)
 
 
 class BateauUpdate(BaseModel):
@@ -3505,6 +3508,7 @@ class BateauUpdate(BaseModel):
     capacity: Optional[int] = None
     status: Optional[Literal["actif", "maintenance"]] = None
     charter_price: Optional[int] = Field(default=None, ge=0)
+    fuel_litres_per_trip: Optional[int] = Field(default=None, ge=0, le=2000)
 
 
 class Traversee(BaseModel):
@@ -3512,10 +3516,34 @@ class Traversee(BaseModel):
     date: str  # YYYY-MM-DD
     depart_time: str  # Free-form: "12H", "08H45", "13:30" etc. (staff chooses)
     direction: Literal["aller", "retour"] = "aller"
+    skipper_id: Optional[str] = None  # optional skipper assignment at creation
     # Optional: when scheduling an "aller", staff can lock-in a custom return
     # time on the SAME boat. When omitted, no return is auto-created (the staff
     # can program it manually later). Free-form like depart_time.
     return_time: Optional[str] = None
+    return_skipper_id: Optional[str] = None  # optional skipper for the return leg
+
+
+class TraverseeUpdate(BaseModel):
+    """Body for PATCH /staff/traversees/{tid} — staff edits depart_time and/or skipper."""
+    depart_time: Optional[str] = None
+    skipper_id: Optional[str] = None
+    skipper_clear: bool = False  # set to true to unassign the skipper
+
+
+class Skipper(BaseModel):
+    """A boat skipper — independent entity that can be assigned to a Traversee."""
+    name: str = Field(min_length=2, max_length=80)
+    phone: Optional[str] = None
+    license_no: Optional[str] = None
+    status: Literal["actif", "inactif"] = "actif"
+
+
+class SkipperUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    license_no: Optional[str] = None
+    status: Optional[Literal["actif", "inactif"]] = None
 
 
 async def _seed_default_bateaux():
@@ -3532,6 +3560,11 @@ async def _seed_default_bateaux():
     await db.bateaux.update_many(
         {"charter_price": {"$exists": False}},
         {"$set": {"charter_price": 0}},
+    )
+    # Backfill fuel_litres_per_trip on existing boats (idempotent)
+    await db.bateaux.update_many(
+        {"fuel_litres_per_trip": {"$exists": False}},
+        {"$set": {"fuel_litres_per_trip": 0}},
     )
 
 
@@ -3856,6 +3889,14 @@ async def create_traversee(body: Traversee, staff=Depends(get_current_staff)):
     depart_clean = (body.depart_time or "").strip().upper().replace(":", "H")
     if not depart_clean:
         raise HTTPException(status_code=400, detail="Heure de départ requise")
+    # Resolve optional skipper (must exist + be actif)
+    skipper_doc = None
+    if body.skipper_id:
+        skipper_doc = await db.skippers.find_one(
+            {"id": body.skipper_id, "status": "actif"}, {"_id": 0},
+        )
+        if not skipper_doc:
+            raise HTTPException(status_code=404, detail="Skipper introuvable ou inactif")
     tid = str(uuid.uuid4())
     doc = {
         "id": tid,
@@ -3864,6 +3905,8 @@ async def create_traversee(body: Traversee, staff=Depends(get_current_staff)):
         "depart_time": depart_clean,
         "direction": body.direction,
         "status": "programmé",
+        "skipper_id": skipper_doc["id"] if skipper_doc else None,
+        "skipper_name": skipper_doc["name"] if skipper_doc else None,
         "created_at": now_iso(),
     }
     await db.traversees.insert_one(doc)
@@ -3872,6 +3915,11 @@ async def create_traversee(body: Traversee, staff=Depends(get_current_staff)):
     # 5h later — staff explicitly schedules each leg now.
     if body.direction == "aller" and (body.return_time or "").strip():
         ret_clean = body.return_time.strip().upper().replace(":", "H")
+        ret_skipper = None
+        if body.return_skipper_id:
+            ret_skipper = await db.skippers.find_one(
+                {"id": body.return_skipper_id, "status": "actif"}, {"_id": 0},
+            )
         ret_doc = {
             "id": str(uuid.uuid4()),
             "bateau_id": body.bateau_id,
@@ -3879,11 +3927,68 @@ async def create_traversee(body: Traversee, staff=Depends(get_current_staff)):
             "depart_time": ret_clean,
             "direction": "retour",
             "status": "programmé",
+            "skipper_id": ret_skipper["id"] if ret_skipper else (skipper_doc["id"] if skipper_doc else None),
+            "skipper_name": ret_skipper["name"] if ret_skipper else (skipper_doc["name"] if skipper_doc else None),
             "parent_id": tid,
             "created_at": now_iso(),
         }
         await db.traversees.insert_one(ret_doc)
     return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api.patch("/staff/traversees/{tid}")
+async def update_traversee(tid: str, body: TraverseeUpdate, staff=Depends(get_current_staff)):
+    """Edit a scheduled traversée: change the departure time and/or the assigned skipper.
+    The traversée must still be in 'programmé' status (cannot edit en_cours / terminé)."""
+    if staff.get("role") not in {"admin", "manager", "logistique"}:
+        raise HTTPException(status_code=403, detail="Action réservée aux managers / logistique")
+    existing = await db.traversees.find_one({"id": tid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Traversée introuvable")
+    if existing.get("status") not in (None, "programmé"):
+        raise HTTPException(status_code=400, detail="Seules les traversées programmées sont modifiables")
+    update: dict = {}
+    if body.depart_time and body.depart_time.strip():
+        update["depart_time"] = body.depart_time.strip().upper().replace(":", "H")
+    if body.skipper_clear:
+        update["skipper_id"] = None
+        update["skipper_name"] = None
+    elif body.skipper_id:
+        skp = await db.skippers.find_one({"id": body.skipper_id, "status": "actif"}, {"_id": 0})
+        if not skp:
+            raise HTTPException(status_code=404, detail="Skipper introuvable ou inactif")
+        update["skipper_id"] = skp["id"]
+        update["skipper_name"] = skp["name"]
+    if not update:
+        raise HTTPException(status_code=400, detail="Aucun champ à modifier")
+    update["updated_at"] = now_iso()
+    await db.traversees.update_one({"id": tid}, {"$set": update})
+    return {"ok": True, **update}
+
+
+@api.delete("/staff/traversees/{tid}")
+async def delete_traversee(tid: str, staff=Depends(get_current_staff)):
+    """Delete a scheduled traversée. Also detaches any boarded bookings. Cannot
+    delete a traversée that has already started (status != 'programmé')."""
+    if staff.get("role") not in {"admin", "manager", "logistique"}:
+        raise HTTPException(status_code=403, detail="Action réservée aux managers / logistique")
+    existing = await db.traversees.find_one({"id": tid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Traversée introuvable")
+    if existing.get("status") not in (None, "programmé"):
+        raise HTTPException(status_code=400, detail="Impossible de supprimer une traversée en cours ou terminée")
+    # Unboard passengers + cascade-delete the return leg if this is an 'aller'.
+    await db.traversee_passengers.delete_many({"traversee_id": tid})
+    children_deleted = 0
+    if existing.get("direction") == "aller":
+        # Find and remove the matching auto-created return leg, if any.
+        child = await db.traversees.find_one({"parent_id": tid}, {"_id": 0})
+        if child and child.get("status") in (None, "programmé"):
+            await db.traversee_passengers.delete_many({"traversee_id": child["id"]})
+            r = await db.traversees.delete_one({"id": child["id"]})
+            children_deleted = r.deleted_count
+    await db.traversees.delete_one({"id": tid})
+    return {"ok": True, "children_deleted": children_deleted}
 
 
 @api.patch("/staff/traversees/{tid}/status")
@@ -5106,11 +5211,21 @@ async def checkins_history(
 
 
 @api.get("/staff/skippers")
-async def list_recent_skippers(staff=Depends(get_current_staff)):
-    """Return the distinct list of skipper names that have already been entered
-    on a previous scan. Used by the scanner modal to autocomplete the field.
-    Sorted by most-recently used first. Max 30 entries.
-    """
+async def list_skippers(staff=Depends(get_current_staff)):
+    """Return the list of registered skippers (catalog). Each entry has id,
+    name, phone, license_no, status. Sorted alphabetically by name. Adds an
+    optional `recent_scans_count` field aggregated from past QR scans so the
+    UI can hint at activity, but the catalog itself is independent."""
+    # Backfill: ensure the `skippers` collection has an _id-style id field
+    items = await db.skippers.find({}, {"_id": 0}).sort("name", 1).to_list(length=500)
+    return {"items": items}
+
+
+@api.get("/staff/skippers/recent")
+async def list_recent_skipper_names(staff=Depends(get_current_staff)):
+    """Return distinct skipper *names* that have been entered on past scans —
+    used by the scanner modal autocomplete. Kept separate from the catalog so
+    historical free-text entries remain available."""
     pipeline = [
         {"$match": {"qr_codes.scans.skipper_name": {"$nin": [None, ""]}}},
         {"$unwind": "$qr_codes"},
@@ -5127,6 +5242,62 @@ async def list_recent_skippers(staff=Depends(get_current_staff)):
     ]
     items = [r async for r in db.bookings.aggregate(pipeline)]
     return {"items": items}
+
+
+@api.post("/staff/skippers")
+async def create_skipper(body: Skipper, staff=Depends(get_current_staff)):
+    if staff.get("role") not in {"admin", "manager", "logistique"}:
+        raise HTTPException(status_code=403, detail="Action réservée aux managers / logistique")
+    name_clean = body.name.strip()
+    if await db.skippers.find_one({"name": {"$regex": f"^{name_clean}$", "$options": "i"}}):
+        raise HTTPException(status_code=409, detail="Un skipper avec ce nom existe déjà")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "name": name_clean,
+        "phone": (body.phone or "").strip() or None,
+        "license_no": (body.license_no or "").strip() or None,
+        "status": body.status,
+        "created_at": now_iso(),
+    }
+    await db.skippers.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api.patch("/staff/skippers/{skipper_id}")
+async def update_skipper(skipper_id: str, body: SkipperUpdate, staff=Depends(get_current_staff)):
+    if staff.get("role") not in {"admin", "manager", "logistique"}:
+        raise HTTPException(status_code=403, detail="Action réservée aux managers / logistique")
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "name" in update:
+        update["name"] = update["name"].strip()
+    if not update:
+        raise HTTPException(status_code=400, detail="Aucun champ à modifier")
+    update["updated_at"] = now_iso()
+    res = await db.skippers.update_one({"id": skipper_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Skipper introuvable")
+    # Propagate the name change to scheduled (not yet started) traversées
+    if "name" in update:
+        await db.traversees.update_many(
+            {"skipper_id": skipper_id, "status": "programmé"},
+            {"$set": {"skipper_name": update["name"]}},
+        )
+    return {"ok": True}
+
+
+@api.delete("/staff/skippers/{skipper_id}")
+async def delete_skipper(skipper_id: str, staff=Depends(get_current_staff)):
+    if staff.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Action réservée aux administrateurs")
+    # Detach from any scheduled traversées first.
+    await db.traversees.update_many(
+        {"skipper_id": skipper_id, "status": "programmé"},
+        {"$set": {"skipper_id": None, "skipper_name": None}},
+    )
+    res = await db.skippers.delete_one({"id": skipper_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Skipper introuvable")
+    return {"ok": True}
 
 
 @api.post("/staff/bookings/{booking_id}/arrived")
@@ -8146,6 +8317,51 @@ async def stats_advanced(year: Optional[int] = None, staff=Depends(get_current_s
     available_nights = total_inventory * max(days_elapsed, 1)
     occupancy_rate = round((nights_sold / available_nights * 100), 1) if available_nights > 0 else 0
 
+    # Boat stats — fuel consumption per boat (litres × completed trips)
+    # A "trip" = one leg (aller or retour) marked as 'terminé'. We sum scans
+    # across qr_codes for each boat name to get an approximate trip count if
+    # no traversee record exists, but the canonical source is the traversees
+    # collection itself with status='terminé'.
+    boats = await db.bateaux.find(
+        {}, {"_id": 0, "id": 1, "name": 1, "capacity": 1, "fuel_litres_per_trip": 1, "status": 1},
+    ).to_list(length=200)
+    # Traversées completed within the target year
+    completed_pipeline = [
+        {"$match": {
+            "status": "terminé",
+            "date": {"$gte": year_from, "$lt": year_to},
+        }},
+        {"$group": {
+            "_id": "$bateau_id",
+            "trips_completed": {"$sum": 1},
+            "trips_aller": {"$sum": {"$cond": [{"$eq": ["$direction", "aller"]}, 1, 0]}},
+            "trips_retour": {"$sum": {"$cond": [{"$eq": ["$direction", "retour"]}, 1, 0]}},
+        }},
+    ]
+    by_boat = {r["_id"]: r async for r in db.traversees.aggregate(completed_pipeline)}
+    fleet_stats = []
+    total_litres = 0
+    total_trips = 0
+    for b in boats:
+        stats = by_boat.get(b["id"], {})
+        trips = int(stats.get("trips_completed", 0))
+        litres_per = int(b.get("fuel_litres_per_trip") or 0)
+        litres = trips * litres_per
+        total_litres += litres
+        total_trips += trips
+        fleet_stats.append({
+            "id": b["id"],
+            "name": b["name"],
+            "capacity": b.get("capacity", 0),
+            "status": b.get("status", "actif"),
+            "fuel_litres_per_trip": litres_per,
+            "trips_completed": trips,
+            "trips_aller": int(stats.get("trips_aller", 0)),
+            "trips_retour": int(stats.get("trips_retour", 0)),
+            "fuel_litres_total": litres,
+        })
+    fleet_stats.sort(key=lambda x: x["fuel_litres_total"], reverse=True)
+
     return {
         "year": target_year,
         "previous_year": prev_year,
@@ -8161,6 +8377,11 @@ async def stats_advanced(year: Optional[int] = None, staff=Depends(get_current_s
             "available_nights": available_nights,
             "occupancy_rate_pct": occupancy_rate,
             "days_elapsed": days_elapsed,
+        },
+        "fleet": {
+            "boats": fleet_stats,
+            "total_trips": total_trips,
+            "total_litres": total_litres,
         },
     }
 

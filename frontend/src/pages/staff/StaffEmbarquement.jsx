@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { toast } from "sonner";
-import { Anchor, Plus, Ship, Trash2, CheckCircle2, Circle } from "lucide-react";
+import { Anchor, Plus, Ship, Trash2, CheckCircle2, Circle, UserCircle2, Edit3, Fuel, X } from "lucide-react";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 
 const BOAT_TIMES = ["10H", "12H", "14H", "16H", "18H", "20H"];
@@ -11,24 +11,29 @@ export default function StaffEmbarquement() {
   const isAdmin = user?.role === "admin";
   const isManager = ["manager", "admin"].includes(user?.role);
   const [bateaux, setBateaux] = useState([]);
+  const [skippers, setSkippers] = useState([]);
   const [traversees, setTraversees] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
-  const [newBoat, setNewBoat] = useState({ name: "", capacity: 30 });
-  const [newCrossing, setNewCrossing] = useState({ bateau_id: "", depart_time: "10H00", return_time: "", direction: "aller" });
+  const [newBoat, setNewBoat] = useState({ name: "", capacity: 30, fuel_litres_per_trip: 0 });
+  const [newSkipper, setNewSkipper] = useState({ name: "", phone: "", license_no: "" });
+  const [newCrossing, setNewCrossing] = useState({ bateau_id: "", depart_time: "10H00", return_time: "", direction: "aller", skipper_id: "" });
+  const [editingTraversee, setEditingTraversee] = useState(null); // { id, depart_time, skipper_id }
 
   const refresh = async () => {
     setLoading(true);
     try {
-      const [bs, ts, dashboard] = await Promise.all([
+      const [bs, ts, dashboard, sks] = await Promise.all([
         api.get("/staff/bateaux"),
         api.get(`/staff/traversees?date=${date}`),
         api.get("/staff/dashboard"),
+        api.get("/staff/skippers"),
       ]);
       setBateaux(bs.data);
       setTraversees(ts.data);
       setBookings(dashboard.data.bookings_today || []);
+      setSkippers(sks.data?.items || []);
     } catch {
       toast.error("Erreur de chargement");
     } finally {
@@ -40,7 +45,7 @@ export default function StaffEmbarquement() {
   const addBoat = async () => {
     if (!newBoat.name) return;
     await api.post("/staff/bateaux", newBoat);
-    setNewBoat({ name: "", capacity: 30 });
+    setNewBoat({ name: "", capacity: 30, fuel_litres_per_trip: 0 });
     toast.success("Bateau ajouté");
     refresh();
   };
@@ -49,6 +54,30 @@ export default function StaffEmbarquement() {
     await api.delete(`/staff/bateaux/${id}`);
     toast.success("Bateau supprimé");
     refresh();
+  };
+  const addSkipper = async () => {
+    if (!newSkipper.name?.trim()) {
+      toast.error("Nom du skipper requis");
+      return;
+    }
+    try {
+      await api.post("/staff/skippers", newSkipper);
+      setNewSkipper({ name: "", phone: "", license_no: "" });
+      toast.success("Skipper ajouté");
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+  const deleteSkipper = async (id) => {
+    if (!window.confirm("Supprimer ce skipper ? Il sera désassigné des traversées programmées.")) return;
+    try {
+      await api.delete(`/staff/skippers/${id}`);
+      toast.success("Skipper supprimé");
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
   };
   const addCrossing = async () => {
     if (!newCrossing.bateau_id) {
@@ -65,11 +94,44 @@ export default function StaffEmbarquement() {
         date,
         depart_time: newCrossing.depart_time.trim(),
         direction: newCrossing.direction,
+        skipper_id: newCrossing.skipper_id || null,
         return_time: newCrossing.direction === "aller" ? (newCrossing.return_time || "").trim() || null : null,
       });
       const hasRet = newCrossing.direction === "aller" && (newCrossing.return_time || "").trim();
       toast.success(hasRet ? "Aller + retour programmés" : "Traversée programmée");
-      setNewCrossing({ ...newCrossing, return_time: "" });
+      setNewCrossing({ ...newCrossing, return_time: "", skipper_id: "" });
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+  const saveTraverseeEdit = async () => {
+    if (!editingTraversee) return;
+    const payload = {};
+    if (editingTraversee.depart_time?.trim()) payload.depart_time = editingTraversee.depart_time.trim();
+    if (editingTraversee.skipper_id === "__clear__") {
+      payload.skipper_clear = true;
+    } else if (editingTraversee.skipper_id) {
+      payload.skipper_id = editingTraversee.skipper_id;
+    }
+    try {
+      await api.patch(`/staff/traversees/${editingTraversee.id}`, payload);
+      toast.success("Traversée modifiée");
+      setEditingTraversee(null);
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+  const deleteTraversee = async (tid) => {
+    if (!window.confirm("Supprimer cette traversée programmée ?")) return;
+    try {
+      const { data } = await api.delete(`/staff/traversees/${tid}`);
+      toast.success(
+        data.children_deleted
+          ? `Traversée supprimée (aller + retour)`
+          : "Traversée supprimée",
+      );
       refresh();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erreur");
@@ -138,11 +200,11 @@ export default function StaffEmbarquement() {
                 )}
               </div>
               {isManager && (
-                <div className="mt-3 pt-3 border-t border-[#0A0A0A]/8">
-                  <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1">
-                    Tarif privatisation (FCFA)
-                  </label>
-                  <div className="flex gap-2">
+                <div className="mt-3 pt-3 border-t border-[#0A0A0A]/8 space-y-3">
+                  <div>
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1">
+                      Tarif privatisation (FCFA)
+                    </label>
                     <input
                       type="number"
                       min={0}
@@ -159,12 +221,40 @@ export default function StaffEmbarquement() {
                           toast.error("Échec");
                         }
                       }}
-                      className="flex-1 border border-[#0A0A0A]/15 px-2 py-1.5 text-sm focus:border-[#B8922A] outline-none"
+                      className="w-full border border-[#0A0A0A]/15 px-2 py-1.5 text-sm focus:border-[#B8922A] outline-none"
                       data-testid={`charter-price-${b.id.slice(0, 8)}`}
                     />
+                    <div className="text-[0.6rem] text-[#0A0A0A]/45 mt-1">
+                      0 = privatisation désactivée
+                    </div>
                   </div>
-                  <div className="text-[0.6rem] text-[#0A0A0A]/45 mt-1">
-                    0 = privatisation désactivée pour ce bateau
+                  <div>
+                    <label className="text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 mb-1 flex items-center gap-1">
+                      <Fuel size={10} /> Litres par trajet (aller ou retour)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={2000}
+                      step={1}
+                      defaultValue={b.fuel_litres_per_trip || 0}
+                      onBlur={async (e) => {
+                        const v = parseInt(e.target.value || 0);
+                        if (v === (b.fuel_litres_per_trip || 0)) return;
+                        try {
+                          await api.patch(`/staff/bateaux/${b.id}`, { fuel_litres_per_trip: v });
+                          toast.success("Consommation mise à jour");
+                          refresh();
+                        } catch {
+                          toast.error("Échec");
+                        }
+                      }}
+                      className="w-full border border-[#0A0A0A]/15 px-2 py-1.5 text-sm focus:border-[#B8922A] outline-none"
+                      data-testid={`fuel-litres-${b.id.slice(0, 8)}`}
+                    />
+                    <div className="text-[0.6rem] text-[#0A0A0A]/45 mt-1">
+                      Consommation d'un trajet simple en litres
+                    </div>
                   </div>
                 </div>
               )}
@@ -195,7 +285,95 @@ export default function StaffEmbarquement() {
                 data-testid="new-bateau-capacity"
               />
             </div>
+            <div>
+              <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 mb-1 flex items-center gap-1">
+                <Fuel size={10} /> Litres / trajet
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={2000}
+                value={newBoat.fuel_litres_per_trip}
+                onChange={(e) => setNewBoat({ ...newBoat, fuel_litres_per_trip: parseInt(e.target.value || 0) })}
+                placeholder="0"
+                className="w-28 border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+                data-testid="new-bateau-fuel"
+              />
+            </div>
             <button onClick={addBoat} className="btn-gold flex items-center gap-2" data-testid="add-bateau-btn">
+              <Plus size={13} /> Ajouter
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Skippers catalog */}
+      <section className="bg-white border border-[#0A0A0A]/8 p-6 mb-8" data-testid="skippers-section">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-display-serif text-xl text-[#0A0A0A] flex items-center gap-2">
+            <UserCircle2 size={16} className="text-[#B8922A]" /> Skippers ({skippers.length})
+          </h2>
+        </div>
+        {skippers.length === 0 ? (
+          <p className="text-sm text-[#0A0A0A]/45 mb-5">Aucun skipper enregistré. Créez-en un ci-dessous pour pouvoir l'assigner aux traversées.</p>
+        ) : (
+          <ul className="divide-y divide-[#0A0A0A]/8 mb-5" data-testid="skippers-list">
+            {skippers.map((s) => (
+              <li key={s.id} className="flex items-center justify-between py-2.5" data-testid={`skipper-${s.id.slice(0, 8)}`}>
+                <div className="min-w-0 flex-1">
+                  <div className="font-display-serif text-base text-[#0A0A0A]">{s.name}</div>
+                  <div className="text-[0.7rem] text-[#0A0A0A]/55 mt-0.5">
+                    {s.phone ? <span>{s.phone}</span> : null}
+                    {s.phone && s.license_no ? <span> · </span> : null}
+                    {s.license_no ? <span>Licence {s.license_no}</span> : null}
+                    {!s.phone && !s.license_no ? <span className="opacity-60">Aucune info supplémentaire</span> : null}
+                  </div>
+                </div>
+                <span className={`text-[0.62rem] uppercase tracking-[0.18em] px-2 py-1 ${s.status === "actif" ? "bg-green-50 text-green-700" : "bg-[#0A0A0A]/5 text-[#0A0A0A]/45"}`}>
+                  {s.status}
+                </span>
+                {isAdmin && (
+                  <button onClick={() => deleteSkipper(s.id)} className="ml-3 text-[#0A0A0A]/30 hover:text-red-600" data-testid={`delete-skipper-${s.id.slice(0, 8)}`}>
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {isManager && (
+          <div className="flex flex-wrap items-end gap-3 pt-4 border-t border-[#0A0A0A]/10">
+            <div>
+              <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Nom complet *</label>
+              <input
+                value={newSkipper.name}
+                onChange={(e) => setNewSkipper({ ...newSkipper, name: e.target.value })}
+                placeholder="Kouassi Yapo"
+                className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+                data-testid="new-skipper-name"
+              />
+            </div>
+            <div>
+              <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Téléphone</label>
+              <input
+                value={newSkipper.phone}
+                onChange={(e) => setNewSkipper({ ...newSkipper, phone: e.target.value })}
+                placeholder="+225 07…"
+                className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+                data-testid="new-skipper-phone"
+              />
+            </div>
+            <div>
+              <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">N° de licence</label>
+              <input
+                value={newSkipper.license_no}
+                onChange={(e) => setNewSkipper({ ...newSkipper, license_no: e.target.value })}
+                placeholder="CIV-…"
+                className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+                data-testid="new-skipper-license"
+              />
+            </div>
+            <button onClick={addSkipper} className="btn-gold flex items-center gap-2" data-testid="add-skipper-btn">
               <Plus size={13} /> Ajouter
             </button>
           </div>
@@ -251,6 +429,22 @@ export default function StaffEmbarquement() {
                 data-testid="new-crossing-time"
               />
             </div>
+            <div>
+              <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">
+                Skipper <span className="opacity-50 normal-case">(optionnel)</span>
+              </label>
+              <select
+                value={newCrossing.skipper_id}
+                onChange={(e) => setNewCrossing({ ...newCrossing, skipper_id: e.target.value })}
+                className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+                data-testid="new-crossing-skipper"
+              >
+                <option value="">— Non assigné —</option>
+                {skippers.filter((s) => s.status === "actif").map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
             {newCrossing.direction === "aller" && (
               <div>
                 <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">
@@ -285,14 +479,22 @@ export default function StaffEmbarquement() {
               return (
                 <li key={t.id} className="border border-[#0A0A0A]/10 p-5" data-testid={`traversee-${t.id.slice(0, 8)}`}>
                   <div className="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-1">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-3 mb-1 flex-wrap">
                         <span className="font-display-serif text-2xl text-[#B8922A]">{t.depart_time}</span>
                         <span className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">
                           {t.direction === "aller" ? "Aller (vers l'île)" : "Retour"}
                         </span>
                       </div>
                       <div className="text-sm text-[#0A0A0A]/70">{t.bateau?.name || "—"}</div>
+                      <div className="text-[0.72rem] text-[#0A0A0A]/55 mt-0.5 flex items-center gap-1">
+                        <UserCircle2 size={11} />
+                        {t.skipper_name ? (
+                          <span className="font-medium text-[#0A0A0A]/80">{t.skipper_name}</span>
+                        ) : (
+                          <span className="opacity-60">Skipper non assigné</span>
+                        )}
+                      </div>
                     </div>
                     <div className="text-right">
                       <div className="text-2xl tabular-nums">
@@ -311,6 +513,26 @@ export default function StaffEmbarquement() {
                         <option value="en_cours">En cours</option>
                         <option value="terminé">Terminé</option>
                       </select>
+                      {isManager && t.status === "programmé" && (
+                        <div className="flex items-center justify-end gap-1.5 mt-2">
+                          <button
+                            onClick={() => setEditingTraversee({ id: t.id, depart_time: t.depart_time, skipper_id: t.skipper_id || "" })}
+                            className="text-[#0A0A0A]/55 hover:text-[#B8922A] p-1"
+                            data-testid={`edit-traversee-${t.id.slice(0, 8)}`}
+                            title="Modifier"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                          <button
+                            onClick={() => deleteTraversee(t.id)}
+                            className="text-[#0A0A0A]/55 hover:text-red-600 p-1"
+                            data-testid={`delete-traversee-${t.id.slice(0, 8)}`}
+                            title="Supprimer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -364,6 +586,62 @@ export default function StaffEmbarquement() {
           </ul>
         )}
       </section>
+
+      {/* Edit traversée modal */}
+      {editingTraversee && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" data-testid="edit-traversee-modal">
+          <div className="bg-white max-w-sm w-full p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-display-serif text-xl text-[#0A0A0A]">Modifier la traversée</h3>
+              <button onClick={() => setEditingTraversee(null)} className="text-[#0A0A0A]/55 hover:text-[#0A0A0A]" aria-label="Fermer">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Heure de départ</label>
+                <input
+                  type="text"
+                  value={editingTraversee.depart_time}
+                  onChange={(e) => setEditingTraversee({ ...editingTraversee, depart_time: e.target.value })}
+                  className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+                  data-testid="edit-traversee-time"
+                />
+              </div>
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Skipper</label>
+                <select
+                  value={editingTraversee.skipper_id}
+                  onChange={(e) => setEditingTraversee({ ...editingTraversee, skipper_id: e.target.value })}
+                  className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none"
+                  data-testid="edit-traversee-skipper"
+                >
+                  <option value="">— Non modifié —</option>
+                  <option value="__clear__">— Désassigner —</option>
+                  {skippers.filter((s) => s.status === "actif").map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setEditingTraversee(null)}
+                className="px-4 py-2 text-sm text-[#0A0A0A]/70 hover:text-[#0A0A0A]"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveTraverseeEdit}
+                className="btn-gold"
+                data-testid="save-traversee-edit"
+              >
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
