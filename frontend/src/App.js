@@ -5,6 +5,7 @@ import { LanguageProvider } from "./context/LanguageContext";
 import { StaffAuthProvider } from "./context/StaffAuthContext";
 import Header from "./components/Header";
 import LandingPage from "./pages/LandingPage";
+import WelcomeLanding from "./pages/WelcomeLanding";
 import BookingTunnel from "./pages/BookingTunnel";
 import FineoResult from "./pages/FineoResult";
 import StaffNotifications from "./pages/staff/StaffNotifications";
@@ -86,6 +87,7 @@ function App() {
             }}
           />
           <Routes>
+            <Route path="/welcome" element={<WelcomeLanding />} />
             <Route element={<PublicLayout />}>
               <Route path="/" element={<LandingPage />} />
               <Route path="/pole/:poleId" element={<PolePage />} />
