@@ -1426,14 +1426,19 @@ def _with_boat_times(offer: dict) -> dict:
 
 @api.get("/offers")
 async def list_offers():
-    return [_with_boat_times(o) for o in OFFERS.values()]
+    out = []
+    for o in OFFERS.values():
+        merged = await _apply_overrides(o)
+        out.append(_with_boat_times(merged))
+    return out
 
 
 @api.get("/offers/{offer_id}")
 async def get_offer(offer_id: str):
     if offer_id not in OFFERS:
         raise HTTPException(status_code=404, detail="Offer not found")
-    out = _with_boat_times(OFFERS[offer_id])
+    merged = await _apply_overrides(OFFERS[offer_id])
+    out = _with_boat_times(merged)
     out["pole"] = _pole_for_offer(offer_id)
     return out
 
@@ -1465,7 +1470,8 @@ async def list_poles():
                     "kind": "events_list",
                 })
             elif oid in OFFERS:
-                o = dict(OFFERS[oid])
+                o = await _apply_overrides(OFFERS[oid])
+                o = dict(o)
                 o.update(_with_boat_times(o))
                 sub_offers.append(o)
         out.append({**p, "sub_offers": sub_offers})
@@ -1504,7 +1510,8 @@ async def get_pole(pole_id: str):
                 "events": evs,
             })
         elif oid in OFFERS:
-            o = _with_boat_times(OFFERS[oid])
+            o = await _apply_overrides(OFFERS[oid])
+            o = _with_boat_times(o)
             sub_offers.append(o)
     return {**p, "sub_offers": sub_offers}
 

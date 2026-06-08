@@ -386,15 +386,19 @@ export default function StaffConfig() {
                     <div className="font-display-serif text-xl text-[#0A0A0A]">{o.name_fr}</div>
                     <div className="text-[0.7rem] text-[#0A0A0A]/55">{o.schedule_fr}</div>
                   </div>
-                  {dirty && (
-                    <button
-                      onClick={() => saveOffer(o.id)}
-                      className="inline-flex items-center gap-2 bg-[#B8922A] text-white px-4 py-2 text-[0.65rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23]"
-                      data-testid={`save-offer-${o.id}`}
-                    >
-                      <Save size={11} /> Enregistrer
-                    </button>
-                  )}
+                  <button
+                    onClick={() => saveOffer(o.id)}
+                    disabled={!dirty}
+                    className={`inline-flex items-center gap-2 px-4 py-2 text-[0.65rem] uppercase tracking-[0.22em] transition-colors ${
+                      dirty
+                        ? "bg-[#B8922A] text-white hover:bg-[#9d7a23]"
+                        : "bg-[#0A0A0A]/5 text-[#0A0A0A]/35 cursor-not-allowed"
+                    }`}
+                    data-testid={`save-offer-${o.id}`}
+                    title={dirty ? "Enregistrer les modifications" : "Aucune modification à enregistrer"}
+                  >
+                    <Save size={11} /> {dirty ? "Enregistrer" : "Enregistré"}
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
