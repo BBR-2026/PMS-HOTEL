@@ -1,5 +1,22 @@
-import { Link } from "react-router-dom";
 import { Instagram, Linkedin } from "lucide-react";
+
+/**
+ * Resolves the reservation entry URL depending on the environment.
+ * - Preview (Emergent): https://reserve-bbr.preview.emergentagent.com/
+ * - Production (custom domain): https://workflow-boulaybeachresort.com/
+ * - Any other host (local dev, alt previews): falls back to the site root.
+ */
+const RESERVATION_URL = (() => {
+  if (typeof window === "undefined") return "/";
+  const host = window.location.hostname;
+  if (host.includes("workflow-boulaybeachresort.com")) {
+    return "https://workflow-boulaybeachresort.com/";
+  }
+  if (host.includes("preview.emergentagent.com") || host.includes("emergent")) {
+    return "https://reserve-bbr.preview.emergentagent.com/";
+  }
+  return "/";
+})();
 
 /**
  * BBr splash landing — pixel-faithful reproduction of the marketing mockup.
@@ -57,8 +74,8 @@ export default function WelcomeLanding() {
           </div>
           {/* "Réserver" pill top-right */}
           <div className="flex justify-end items-center pt-2">
-            <Link
-              to="/"
+            <a
+              href={RESERVATION_URL}
               className="inline-flex items-center justify-center uppercase transition-opacity hover:opacity-90"
               style={{
                 background: CREAM,
@@ -72,7 +89,7 @@ export default function WelcomeLanding() {
               data-testid="welcome-reserve-top"
             >
               Réserver
-            </Link>
+            </a>
           </div>
         </header>
 
@@ -128,8 +145,8 @@ export default function WelcomeLanding() {
           </div>
 
           {/* Lower CTA — slimmer, thicker outline, Optima bold */}
-          <Link
-            to="/"
+          <a
+            href={RESERVATION_URL}
             className="inline-flex items-center justify-center mt-10 sm:mt-14 uppercase transition-all hover:bg-white hover:text-[#3D2F1A]"
             style={{
               border: "1.5px solid rgba(255,255,255,0.95)",
@@ -145,7 +162,7 @@ export default function WelcomeLanding() {
             data-testid="welcome-reserve-cta"
           >
             Réserver
-          </Link>
+          </a>
         </div>
       </div>
 
