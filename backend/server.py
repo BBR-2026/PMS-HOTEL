@@ -7332,7 +7332,7 @@ async def staff_create_booking(body: StaffBookingCreate, staff=Depends(get_curre
     # Step 1: create booking (reuses public validator)
     payload = BookingCreate(
         offer_type=body.offer_type,
-        event_id=body.event_id,
+        special_event_id=body.event_id,
         date=body.date,
         checkout_date=body.checkout_date,
         room_tier=body.room_tier,
