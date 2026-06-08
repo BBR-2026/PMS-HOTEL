@@ -1,4 +1,45 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Allura&display=swap');
+
+/* ===== Optima — official BBr brand font (self-hosted) =====
+   Used by the WelcomeLanding splash page. 5 weights extracted from the
+   client-provided Optima.ttc collection. */
+@font-face {
+    font-family: 'Optima';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('./assets/fonts/Optima-Regular.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Optima';
+    font-style: italic;
+    font-weight: 400;
+    font-display: swap;
+    src: url('./assets/fonts/Optima-Italic.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Optima';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('./assets/fonts/Optima-Bold.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Optima';
+    font-style: italic;
+    font-weight: 700;
+    font-display: swap;
+    src: url('./assets/fonts/Optima-BoldItalic.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Optima';
+    font-style: normal;
+    font-weight: 900;
+    font-display: swap;
+    src: url('./assets/fonts/Optima-Black.woff2') format('woff2');
+}
+.font-optima { font-family: 'Optima','Optima Web',sans-serif; }
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
