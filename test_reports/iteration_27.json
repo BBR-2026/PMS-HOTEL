@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 27 deep second-pass bug sweep — 23/24 backend tests PASS, 1 SKIP (no published special_event in DB). Frontend smoke OK on /booking/pass_day + /staff/scanner after admin login (0 console errors). Both fresh iter26→iter27 fixes verified: (a) APScheduler campaign_runner async wrapper at server.py:8978-8983 — no 'coroutine never awaited' warning since last uvicorn restart (counted offenders=0 across the post-startup window); (b) i18n.js payNow key appears exactly 2 times (one FR locale L101, one EN locale L289 — no duplicate within a locale). Full booking tunnel cash flow validated end-to-end: POST /bookings (2 adults + 1 child, pass_day, weekday) → POST /bookings/{id}/pay (cash + reference_token) → status=pending_cash_payment → POST /staff/bookings/{id}/confirm-cash-payment → status=confirmed + paid_at + QR regenerated (verified via GET) → re-confirm correctly returns 400 (idempotent) → GET /staff/scan/{token} resolves → POST /staff/scan/{token}/checkin marks arrived (aller leg). Hebergement with 30% deposit passes. Wallet lookup tolerant of dashes-stripped tokens. RBAC enforced: direction.test (management_general) POST → 403; manager_pole token carries pole_id=hebergement (seed differs from doc that says beach_club — flagged below); hotesse.test reaches /staff/dashboard. All 4 export endpoints (clients.pdf, revenue.pdf, traversees/history.pdf, traversees/history.xlsx) return proper PDF/XLSX magic bytes. FineoPay /payments/fineo/checkout returns 200 (sandbox accepted in this env, no 500). Brute-force probe: 6 wrong passwords for admin@boulay.ci → all 6 returned 401, NO 423/429 rate-limit — flagged as missing security control.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/staff/login", "issue": "No brute-force / rate-limit protection. 6 consecutive wrong passwords for admin@boulay.ci all return 401 — no 429/423. Recommend adding slowapi or per-IP/per-email exponential backoff."},
+      {"endpoint": "Seed data — mgr.pole.test@boulay.ci", "issue": "memory/test_credentials.md L11 says pole_id='beach_club' but the actual seeded user carries pole_id='hebergement'. Either fix the seed in server.py auth startup migration OR update test_credentials.md so docs and code agree."},
+      {"endpoint": "GET /api/special-events/featured + /api/special-events?status=published", "issue": "No published special events present in current DB → special_event booking path is untested in iter27. Not a code bug, but seed/fixture would let this assertion run instead of skipping."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration27_deep_sweep.py",
+    "/app/test_reports/pytest/iter27.xml"
+  ],
+  "action_items": [
+    "[MEDIUM-SECURITY] Add rate-limit / brute-force protection on POST /api/auth/staff/login (e.g., slowapi: 5/min per IP, lockout after 5 fails per email). Currently zero protection — observed 6/6 wrong passwords accepted with plain 401.",
+    "[LOW] Reconcile /app/memory/test_credentials.md (says mgr.pole pole_id='beach_club') with the actual seed in server.py (assigns 'hebergement'). Either change the seed back to 'beach_club' or update docs.",
+    "[INFO] Add a seed/fixture for a published special_event so the iter27 special_event booking assertion runs (currently skips when DB has none)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:8978-8983 — async _run_campaigns wrapper correctly awaits campaign_service.run_due_campaigns(db) inside APScheduler's job. Recent supervisor err.log (post-startup window) shows 0 'never awaited' warnings — fix verified.",
+    "server.py:5473-5596 confirm_cash_payment — returns minimal {ok, status, paid_at} response; QR regeneration is persisted but NOT echoed in the response. Frontend must re-fetch the booking via GET /staff/bookings/{id} to pull the regenerated qr_codes. Worth documenting in the API contract for any future FE consumer.",
+    "server.py:2162-2168 booker email+phone validation confirmed on first-participant. Public POST /bookings rejects with FR detail 'Email et téléphone obligatoires pour le réservant' when missing.",
+    "server.py: brute-force protection absence — POST /auth/staff/login has no per-IP/email throttling visible. In a public preview this is exploitable.",
+    "i18n.js — payNow appears exactly twice (FR L101 + EN L289). No duplicate within either locale block. Iter26 fix preserved."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration27_deep_sweep.py (NEW — 24 pytest tests, 23 pass + 1 skip for missing published special_event seed)"
+  ],
+  "success_rate": {
+    "backend": "96% (23/24 pass, 1 skip due to missing seed — special_event)",
+    "frontend": "100% (booking tunnel + staff scanner smoke, 0 console errors after admin login)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026, mgr.pole.test@boulay.ci / MgrPole@2026 (pole_id=hebergement actual), direction.test@boulay.ci / Direction@2026, hotesse.test@boulay.ci / Hotesse@2026",
+  "seed_data_creation": "Creates TEST_iter27_* bookings (pass_day + hebergement). NOT cleaned up automatically — recommend adding a teardown that DELETEs by booker name prefix. Doesn't pollute production data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run with: pytest /app/backend/tests/test_iteration27_deep_sweep.py -v. Both iter26 + iter27 fully runnable in same session. Iter27 adds: full booking-tunnel cash-flow E2E + scan + check-in, hebergement deposit, wallet token tolerance (with/without dashes) + close validation, RBAC matrix (direction/mgr_pole/hotesse), 4 export formats, FineoPay graceful, brute-force probe. KEY GOTCHAS for next agent: (a) POST /bookings/{id}/pay REQUIRES reference_token in body even for cash (it's the booker's reference returned by POST /bookings); (b) confirm-cash-payment returns ONLY {ok,status,paid_at} — to verify QR regeneration you must GET /staff/bookings/{id}; (c) boat_time format is '10H' style ('10H','12H','14H','16H','18H','20H'), NOT '10h00'; (d) mgr.pole seed pole_id is 'hebergement' not 'beach_club' as doc claims; (e) brute-force protection is NOT implemented, login probe is informational not hard-fail.",
+  "rca of the issue": "No production blockers found. Two iter26→iter27 fresh fixes verified clean: APScheduler async wrapper (server.py:8978) eliminates 'coroutine never awaited' (0 offenders in recent log window) and i18n.js payNow duplicate is gone (exactly 2 occurrences = 1 FR + 1 EN). One MEDIUM-severity security observation: no brute-force/rate-limit on staff login — recommend adding slowapi before going to production. Two LOW doc/seed drift items (pole_id seed mismatch, missing published special_event for full coverage)."
+}
