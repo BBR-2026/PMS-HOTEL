@@ -150,6 +150,29 @@ See `/app/memory/test_credentials.md`.
 
 - 2026-06-06: **Iteration 17 — Tunnel "réservant uniquement"** — Un seul formulaire de coordonnées (le réservant), peu importe le nombre de personnes. Le backend expand automatiquement en N+M tickets. Tests 6/6 PASS + rétrocompat.
 
+- 2026-06-11: **Iteration 21 — 12 améliorations groupées** (livrées & testées 19/19 ✅)
+  1. **Auto-détection langue** : `LanguageContext` lit `navigator.language` au boot (`en` → English, sinon `fr`).
+  2. **Corporate · Liens d'inscription** : nouveau dashboard `/staff/corporate-requests`. Le manager crée une demande (nom entreprise, type, nb places, mode paiement free/paid/configurable) → token partageable `/corporate-form/{token}`. Décompte serveur (403 quand max atteint). Stats par groupe (by_kind, top_nationalities, with_whatsapp, paid_count). Exports CSV + PDF. Backend: `routers/corporate_requests.py`.
+  3. **Formulaire public Corporate** `/corporate-form/{token}` : 4 kinds (client / personnel / prestataire / invité). Si kind ≠ client → pas d'offre ni paiement, QR transport gratuit auto-généré. Décompte places restantes affiché. Toast succès avec qr_token.
+  4. **Page Staff Enregistrement** `/staff/enregistrement` (nouveau) : 4 tuiles (client/personnel/prestataire/invité) avec compteurs. Bouton "Nouveau" sur client → redirige vers Nouvelle Résa ; sur les 3 autres → mini-formulaire (WhatsApp, nationalité autocomplete, dropdown traversées **programmées seulement**, entreprise) → POST `/api/staff/visitor-registrations` génère un QR gratuit. Filtrage par kind/date/recherche. Export CSV.
+  5. **WhatsApp** : champ ajouté sur `Participant` (Pydantic) + tous les formulaires d'inscription (corporate + enregistrement). Stocké tel quel ou fallback sur téléphone.
+  6. **Nationalité autocomplete** : composant `NationalityAutocomplete` réutilisé partout (corporate, enregistrement) — propose 8 suggestions FR/EN avec navigation flèches + free-text si la nationalité n'est pas dans la liste.
+  7. **QR aller-retour confirmé** : un QR = 2 scans max par date (déjà implémenté en iteration 19, passeport multi-dates).
+  8. **Traversée programmée pour l'enregistrement** : dropdown filtre côté frontend ET côté backend (POST visitor-registrations rejette les traversées `en_cours`/`terminé` avec 400).
+  9. **Bouton "Rafraîchir"** dans Départs & embarquement (`refresh-traversees-btn`) avec icône spinner pendant le chargement.
+  10. **Export PDF manifeste de traversée** : nouveau endpoint `GET /api/staff/traversees/{tid}/passengers.pdf` → A4 stylé avec bateau, skipper, liste passagers (clients + visiteurs). Bouton "Manifeste PDF" sur chaque carte traversée.
+  11. **Filtre "Type de ticket" dans Historique embarquements** : nouveau `<select>` peuplé depuis `/api/offers` + entrée "Événements spéciaux". Backend `/staff/checkins/history` accepte `?offer_type=...`.
+  12. **Offres & Loisirs configurable** : nouveau pôle Loisirs CRUD `/staff/configuration/loisirs` (créer/éditer/supprimer activités avec prix adulte/enfant, durée, capacité, catégorie, is_active). Backend `routers/loisirs.py` avec endpoint public `/api/loisirs-activities` pour le tunnel.
+
+  **Endpoints nouveaux** :
+  - `GET /api/loisirs-activities`, `GET/POST/PATCH/DELETE /api/staff/loisirs-activities`
+  - `GET/POST/PATCH/DELETE /api/staff/corporate-requests`, `GET /api/staff/corporate-requests/{id}/stats|participants.csv|.pdf`
+  - `GET /api/corporate-form/{token}`, `POST /api/corporate-form/{token}/register` (public)
+  - `GET/POST/PATCH/DELETE /api/staff/visitor-registrations`, `GET /api/staff/visitor-registrations/export.csv`
+  - `GET /api/staff/traversees/{tid}/passengers.pdf`
+
+  **Tests** : 19/19 pytest PASS (`/app/backend/tests/test_iteration21_corporate_visitors_loisirs.py`). Frontend smoke 5/5 PASS.
+
 - 2026-06-08: **Refonte complète Landing `/welcome` (premium, vidéo, charte BBR)** —
   Suppression de l'ancienne splash page minimaliste et création d'une **landing 6 sections** alignée à la direction artistique du site (palette `#0A0A0A` / `#B8922A` / `#E5D9C0`, font Optima, animations framer-motion `[0.22, 1, 0.36, 1]`) :
   1. **Hero plein écran** avec **vidéo background** autoplay/muted/loop (CDN Pexels — aerial lagoon, libre commercial), overlay sombre cinématique + grain SVG, parallax sur le titre via `useScroll` + `useTransform`. Logo BBR top-left + CTA pill top-right + scroll-indicator animé. Titre `Life is here.` en Optima clamp(48→128px). Poster fallback = `BBR_SHOOT 2_140.jpg` (la page reste élégante même si la vidéo ne charge pas).
