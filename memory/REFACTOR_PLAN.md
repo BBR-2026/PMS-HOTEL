@@ -30,15 +30,17 @@ distributing routes/models across focused router modules.
 - `routers/corporate_requests.py` — `/staff/corporate-requests/*` + public form (iter 21-23)
 - `routers/visitor_registrations.py` — `/staff/visitor-registrations/*` (iter 21)
 - `routers/stats.py` — `/staff/stats/advanced` (iter 24)
+- `routers/scanner_history.py` — `/staff/checkins/history` (iter 25 — première slice du module scanner)
 
 ## Modules still to extract (priority order)
 
 ### P0 — High ROI (touched frequently, easy to isolate)
 
-1. **`routers/scanner.py`** (~400 lines)
-   - `/staff/scan/{token}`, `/staff/scan/{token}/checkin`, `/staff/scan/override`
-   - `/staff/checkins/history`
-   - Dependencies: `_resolve_qr_token`, `make_qr` — inject as helpers
+1. **`routers/scanner.py`** (~300 lines remaining)
+   - **PARTIALLY DONE** : `/staff/checkins/history` already extracted into `scanner_history.py` (iter 25)
+   - **Remaining** : `/staff/scan/{token}`, `/staff/scan/{token}/checkin`, `/staff/scan/{token}/charge`, `/staff/scan/override`
+   - Dependencies: `_resolve_qr_token`, `make_qr`, `OFFERS`, wallet logic — inject as helpers
+   - When done, merge `scanner_history.py` into the consolidated `scanner.py`
 
 2. **`routers/traversees.py`** (~600 lines)
    - `/staff/bateaux/*`, `/staff/skippers/*`

@@ -150,6 +150,8 @@ See `/app/memory/test_credentials.md`.
 
 - 2026-06-06: **Iteration 17 — Tunnel "réservant uniquement"** — Un seul formulaire de coordonnées (le réservant), peu importe le nombre de personnes. Le backend expand automatiquement en N+M tickets. Tests 6/6 PASS + rétrocompat.
 
+- 2026-06-11: **Iteration 25 — Refactor server.py · Phase 2 (Scanner history)** — Extraction de `GET /staff/checkins/history` → `routers/scanner_history.py` (~140 lignes). Validé curl (total scans, pagination, summary, filtre offer_type identiques). server.py: 10 701 → 10 600 lignes. Le reste du module scanner (`/staff/scan/*`) reste à extraire dans une session dédiée (implique `_resolve_qr_token`, `make_qr`, wallet + OFFERS).
+
 - 2026-06-11: **Iteration 24 — Refactor server.py · Phase 1 (Stats)** — Démarrage modularisation. Pattern validé : `build_router(db, get_current_staff, require_role, **injected)`. Module extrait : `routers/stats.py` (~220 lignes) pour `GET /staff/stats/advanced`. Validé curl + 19/19 pytest. server.py: 10 887 → 10 701 lignes. Plan complet dans `/app/memory/REFACTOR_PLAN.md` : 10 modules déjà extraits, 11 restants. Prochaine extraction : `routers/scanner.py`.
 
 - 2026-06-11: **Iteration 23 — Ticket d'embarquement Corporate scannable** —
