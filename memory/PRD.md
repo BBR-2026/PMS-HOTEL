@@ -150,6 +150,12 @@ See `/app/memory/test_credentials.md`.
 
 - 2026-06-06: **Iteration 17 — Tunnel "réservant uniquement"** — Un seul formulaire de coordonnées (le réservant), peu importe le nombre de personnes. Le backend expand automatiquement en N+M tickets. Tests 6/6 PASS + rétrocompat.
 
+- 2026-06-11: **Iteration 27 — Deep second-pass bug sweep + brute-force protection** — 23/24 backend pytest PASS sur le 2e sweep (test_iteration27_deep_sweep.py — booking tunnel E2E avec cash + confirm + scan + checkin, hebergement deposit, wallet tolerance dash/no-dash, RBAC matrix 3 rôles, 4 exports PDF/XLSX, FineoPay graceful). **0 bug critique, 0 bug UI**. 2 corrections appliquées :
+  1. **Brute-force protection sur `POST /api/auth/staff/login`** — Collection `login_attempts` MongoDB indexée par `{client_ip}:{email}` (avec `X-Forwarded-For` honoré pour k8s/cloudflare). 5 échecs en 15 min → HTTP 423 Locked avec header `Retry-After`. Succès clear l'historique. Validé curl : 5×401 → 6e=423 → 7e=423, login admin sur autre identité reste 200 (isolation par email). Implémentation playbook intégration.
+  2. **Doc drift `test_credentials.md`** — corrigé : `mgr.pole.test@boulay.ci` pole_id était `beach_club` dans la doc alors que le seed assigne `hebergement`. Mis à jour la doc pour coller au seed (le seed actuel reste autoritaire car des managers pôles `hebergement` existent en production).
+
+  Rapport : `/app/test_reports/iteration_27.json`. Tests : `/app/backend/tests/test_iteration27_deep_sweep.py` (24 tests).
+
 - 2026-06-11: **Iteration 26 — Bug sweep complet (zéro bug critique trouvé)** — Sur ordre utilisateur "Fait une analyse complète et corrige les bugs". 2 bugs corrigés par l'agent principal avant le sweep :
   1. **APScheduler · campaign_runner jamais awaited** : `scheduler.add_job(lambda: campaign_service.run_due_campaigns(db), ...)` retournait une coroutine non awaitée à chaque tick d'1 min (RuntimeWarning visible dans les logs). Remplacé par une `async def _run_campaigns()` wrapper. Les campagnes scheduled sont maintenant réellement envoyées.
   2. **i18n.js · clé dupliquée `payNow`** (EN section) : ligne 289 "Pay by bank card" écrasée par ligne 315 "Pay online". Supprimé le doublon, gardé "Pay online" (cohérent avec le FR "Payer en ligne").

@@ -1471,10 +1471,47 @@ async def root():
 
 # ----- Auth: Staff (kept for back-office) -----
 @api.post("/auth/staff/login", response_model=TokenResponse)
-async def login_staff(body: StaffLogin):
-    user = await db.staff.find_one({"email": body.email.lower()})
+async def login_staff(body: StaffLogin, request: Request):
+    email = body.email.lower()
+    # Honor X-Forwarded-For (k8s/cloudflare) before falling back to the direct peer
+    fwd = request.headers.get("x-forwarded-for", "")
+    client_ip = (fwd.split(",")[0].strip() if fwd else None) or (request.client.host if request.client else "unknown")
+    identifier = f"{client_ip}:{email}"
+
+    # Brute-force lockout: 5 failed attempts within 15 minutes -> 423 Locked
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(minutes=15)
+    attempt_doc = await db.login_attempts.find_one({"identifier": identifier})
+    if attempt_doc:
+        recent = [a for a in attempt_doc.get("attempts", []) if a >= window_start.isoformat()]
+        if len(recent) >= 5:
+            # Compute retry-after from oldest recent failure
+            oldest = min(recent)
+            retry_after = max(1, int((datetime.fromisoformat(oldest) + timedelta(minutes=15) - now).total_seconds()))
+            raise HTTPException(
+                status_code=423,
+                detail=f"Trop de tentatives. Réessayez dans {retry_after // 60 + 1} minute(s).",
+                headers={"Retry-After": str(retry_after)},
+            )
+
+    user = await db.staff.find_one({"email": email})
     if not user or not verify_password(body.password, user["password_hash"]):
+        # Log failure (keep only attempts within the window)
+        await db.login_attempts.update_one(
+            {"identifier": identifier},
+            {"$push": {"attempts": now.isoformat()}, "$set": {"last_failure_at": now.isoformat()}},
+            upsert=True,
+        )
+        # Trim to last 10 attempts to avoid unbounded growth
+        await db.login_attempts.update_one(
+            {"identifier": identifier},
+            {"$push": {"attempts": {"$each": [], "$slice": -10}}},
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Success: clear all attempts for this identifier
+    await db.login_attempts.delete_one({"identifier": identifier})
+
     token = create_token({"sub": user["id"], "type": "staff", "role": user["role"]})
     public = {
         "id": user["id"], "name": user["name"], "email": user["email"],
