@@ -10837,7 +10837,14 @@ app.include_router(
     prefix="/api",
 )
 app.include_router(
-    _corp_req_mod.build_router(db=db, get_current_staff=get_current_staff, require_role=_require_role),
+    _corp_req_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+        # Inject the helpers required by the corporate ticket generator
+        make_qr=make_qr,
+        make_ticket_image=make_ticket_image,
+    ),
     prefix="/api",
 )
 app.include_router(

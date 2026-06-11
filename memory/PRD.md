@@ -150,6 +150,23 @@ See `/app/memory/test_credentials.md`.
 
 - 2026-06-06: **Iteration 17 — Tunnel "réservant uniquement"** — Un seul formulaire de coordonnées (le réservant), peu importe le nombre de personnes. Le backend expand automatiquement en N+M tickets. Tests 6/6 PASS + rétrocompat.
 
+- 2026-06-11: **Iteration 23 — Ticket d'embarquement Corporate scannable** —
+  Quand un participant s'inscrit via le formulaire corporate (`/corporate-form/{slug}`), le système :
+  1. Génère un **vrai ticket BBR stylé** avec QR code (même rendu que les tickets de réservations classiques) via `make_ticket_image()`
+  2. Crée une réservation complète dans la collection `bookings` (offer_type='special_event', pole='corporate', total=0 si gratuit) avec `corporate_request_id` + `corporate_request_slug` pour traçabilité
+  3. Conserve un doc allégé dans `corporate_participants` pour les analytics du dashboard corporate
+  4. **Le QR est scannable** par `/api/staff/scan/{token}` et `/staff/scan/{token}/checkin` (aller+retour) — flux identique aux clients normaux
+  5. **L'inscrit peut être boardé** sur une traversée via `POST /staff/traversees/{tid}/board` (booking_id) → apparaît dans le manifeste PDF avec son nom, email, téléphone
+  6. La page de succès du formulaire affiche **l'image du ticket** + un bouton "Télécharger le ticket" (PNG)
+
+  **Endpoints injectés** : `make_qr` et `make_ticket_image` passés du `server.py` au router via `build_router(make_qr=..., make_ticket_image=...)`. Aucune dépendance circulaire.
+
+  **Validation curl** : création slug → register → ticket_image présent (data:image PNG) → /staff/scan retrouve la réservation → checkin OK ("aller", status="arrived") → board sur traversée → manifeste PDF généré (2.4 Ko, magic %PDF-1.4).
+
+  **Fichiers modifiés** :
+  - Backend : `routers/corporate_requests.py` (génération booking + ticket), `server.py` (injection des helpers)
+  - Frontend : `CorporateRegistration.jsx` (affichage du ticket + bouton download)
+
 - 2026-06-11: **Iteration 22 — Affinements Corporate + image Loisirs** (4 demandes utilisateur)
   1. **Système Corporate isolé du flow Enregistrement** : suppression du kind picker (client/personnel/prestataire/invité) du formulaire public corporate. Tous les inscrits via lien corporate sont désormais des invités événement classiques (kind="client" forcé côté frontend). Le flow "Enregistrement" staff conserve ses 4 kinds indépendamment.
   2. **Image par activité Loisir** : champ `image_url` ajouté au modèle `LoisirActivity` + upload dans l'éditeur via `/api/staff/uploads/image` (max 8 Mo, JPG/PNG/WebP) avec aperçu et bouton de suppression. Thumbnail 12×12 affiché dans la liste des activités.

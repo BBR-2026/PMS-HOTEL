@@ -98,19 +98,43 @@ export default function CorporateRegistration() {
   if (submitted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7] px-6 py-10">
-        <div className="max-w-md w-full bg-white border border-[#0A0A0A]/8 p-10 text-center" data-testid="corporate-form-success">
+        <div className="max-w-md w-full bg-white border border-[#0A0A0A]/8 p-8 text-center" data-testid="corporate-form-success">
           <Check size={32} className="mx-auto text-green-600 mb-4" />
-          <h1 className="font-display-serif text-3xl text-[#0A0A0A] mb-3">Inscription confirmée</h1>
+          <h1 className="font-display-serif text-2xl text-[#0A0A0A] mb-2">Inscription confirmée</h1>
           <p className="text-sm text-[#0A0A0A]/65 mb-5">
             Votre place pour <b>{meta.company_name}</b> est réservée.
           </p>
-          <div className="bg-[#FAFAF7] border border-[#0A0A0A]/8 p-4 text-left text-[0.78rem] text-[#0A0A0A]/70 leading-relaxed">
-            <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">Référence</div>
-            <code className="text-[#0A0A0A] block break-all">{submitted.qr_token}</code>
-            <div className="mt-3 text-[0.7rem]">
+          {submitted.ticket_image && (
+            <div className="mb-5">
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] mb-2">
+                Votre ticket d&apos;embarquement
+              </div>
+              <img
+                src={submitted.ticket_image}
+                alt="Ticket d'embarquement"
+                className="w-full border border-[#0A0A0A]/10"
+                data-testid="corp-ticket-image"
+              />
+              <a
+                href={submitted.ticket_image}
+                download={`bbr-ticket-${submitted.ref_code || submitted.qr_token.slice(0, 8)}.png`}
+                className="inline-block mt-3 px-4 py-2 bg-[#0A0A0A] text-white text-[0.65rem] uppercase tracking-[0.22em] hover:bg-[#B8922A] transition-colors"
+                data-testid="corp-ticket-download"
+              >
+                Télécharger le ticket
+              </a>
+            </div>
+          )}
+          <div className="bg-[#FAFAF7] border border-[#0A0A0A]/8 p-3 text-left text-[0.72rem] text-[#0A0A0A]/65 leading-relaxed">
+            <div className="text-[0.55rem] uppercase tracking-[0.22em] text-[#B8922A] mb-1">Référence</div>
+            <code className="text-[#0A0A0A] block break-all text-[0.78rem] font-medium">{submitted.ref_code || submitted.qr_token}</code>
+            <div className="mt-2 text-[0.7rem]">
               Places restantes : <b>{submitted.remaining_seats}</b> / {meta.max_participants}
             </div>
           </div>
+          <p className="text-[0.7rem] text-[#0A0A0A]/50 mt-4">
+            Conservez ce ticket et présentez le QR à l&apos;embarquement.
+          </p>
         </div>
       </div>
     );

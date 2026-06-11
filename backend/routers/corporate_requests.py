@@ -20,6 +20,7 @@ from pydantic import BaseModel, EmailStr, Field
 import uuid
 import csv
 import io
+import json
 import re
 from datetime import datetime, timezone
 
@@ -87,7 +88,21 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def build_router(db, get_current_staff, require_role) -> APIRouter:
+def build_router(
+    db,
+    get_current_staff,
+    require_role,
+    make_qr=None,
+    make_ticket_image=None,
+    email_service=None,
+) -> APIRouter:
+    """Build the corporate router.
+
+    Injected helpers (optional, but required for ticket generation):
+      - make_qr(payload, styled=True) → PNG bytes (base64-encoded data URI)
+      - make_ticket_image(...) → base64 PNG of the styled BBR ticket
+      - email_service → module with `send_corporate_ticket(...)` (auto-imported)
+    """
     r = APIRouter()
 
     async def _request_or_404(rid: str) -> dict:
@@ -342,13 +357,104 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         payment = body.payment_method or "free"
         if body.kind != "client":
             payment = "free"
-        # Generate a free boat-transport QR token so the participant has a scannable
-        # ticket on arrival. The actual scanning is handled by the existing scanner
-        # logic via the visitor_registrations or corporate_participants collection.
         qr_token = uuid.uuid4().hex
+        ref_code = qr_token[:10].upper()
+
+        # ---------- Build a real booking-shaped record so the QR is scannable
+        # and the participant shows up in the regular passenger list flow.
+        booking_id = str(uuid.uuid4())
+        offer_name = d.get("reservation_type") or "Événement corporate"
+        booking_date = d.get("event_date") or datetime.now(timezone.utc).date().isoformat()
+        guest_full_name = f"{body.name.strip()} {body.surname.strip()}".strip()
+        compact_qr = json.dumps(
+            {"type": "ticket", "token": qr_token, "ref": booking_id[:8].upper()},
+            ensure_ascii=False, separators=(",", ":"),
+        )
+        # Ticket image — only if the helpers were injected (server.py wires them).
+        ticket_image: Optional[str] = None
+        qr_image: Optional[str] = None
+        if make_qr is not None:
+            try:
+                qr_image = make_qr(compact_qr, styled=True)
+            except Exception:
+                qr_image = None
+        if make_ticket_image is not None:
+            try:
+                ticket_image = make_ticket_image(
+                    offer_id="corporate",
+                    offer_name=offer_name,
+                    date_iso=booking_date,
+                    boat_time="—",
+                    owner_name=guest_full_name,
+                    qr_payload=compact_qr,
+                    ref_code=ref_code,
+                    lang="fr",
+                )
+            except Exception:
+                ticket_image = None
+
+        # Insert a thin booking so the existing scanner / boarding endpoints work.
+        booking_doc = {
+            "id": booking_id,
+            "offer_type": "special_event",
+            "offer_name": offer_name,
+            "label": f"{d['company_name']} · {offer_name}",
+            "pole": "corporate",
+            "date": booking_date,
+            "boat_time": "—",
+            "adults": 1,
+            "children": 0,
+            "rooms": 0,
+            "total_amount": 0,
+            "amount_paid": 0,
+            "amount_due": 0,
+            "payment_method": payment,
+            "payment_status": "paid" if payment == "free" else "pending",
+            "status": "confirmed",
+            "email": body.email.lower().strip(),
+            "phone": body.phone.strip(),
+            "booker_name": guest_full_name,
+            "booker_email": body.email.lower().strip(),
+            "booker_phone": body.phone.strip(),
+            "participants": [{
+                "name": body.name.strip(),
+                "surname": body.surname.strip(),
+                "email": body.email.lower().strip(),
+                "phone": body.phone.strip(),
+                "whatsapp": (body.whatsapp or "").strip() or None,
+                "nationality": body.nationality.strip(),
+                "kind": "adult",
+            }],
+            "qr_codes": [{
+                "label_fr": "Inscrit corporate",
+                "label_en": "Corporate guest",
+                "kind": "adult",
+                "event_date": booking_date,
+                "valid_dates": [booking_date],
+                "is_passport": False,
+                "guest_name": body.name.strip(),
+                "guest_surname": body.surname.strip(),
+                "guest_email": body.email.lower().strip(),
+                "guest_phone": body.phone.strip(),
+                "guest_nationality": body.nationality.strip(),
+                "qr_token": qr_token,
+                "qr_payload": compact_qr,
+                "qr_code": qr_image,
+                "ticket_image": ticket_image,
+                "scans": [],
+            }],
+            "corporate_request_id": d["id"],
+            "corporate_request_slug": d.get("slug"),
+            "source": "corporate_form",
+            "created_at": _now(),
+        }
+        await db.bookings.insert_one(booking_doc)
+
+        # Keep the lightweight participant doc for the corporate dashboard analytics.
         doc = {
             "id": str(uuid.uuid4()),
             "request_id": d["id"],
+            "booking_id": booking_id,
             "company_name": d["company_name"],
             "name": body.name.strip(),
             "surname": body.surname.strip(),
@@ -359,6 +465,7 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             "kind": body.kind,
             "payment_method": payment,
             "qr_token": qr_token,
+            "ref_code": ref_code,
             "notes": (body.notes or "").strip() or None,
             "registered_at": _now(),
         }
@@ -367,6 +474,9 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         return {
             "ok": True,
             "qr_token": qr_token,
+            "ref_code": ref_code,
+            "booking_id": booking_id,
+            "ticket_image": ticket_image,
             "registered_count": new_count,
             "remaining_seats": max(d["max_participants"] - new_count, 0),
             "is_full": new_count >= d["max_participants"],
