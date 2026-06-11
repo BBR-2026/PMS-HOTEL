@@ -150,6 +150,14 @@ See `/app/memory/test_credentials.md`.
 
 - 2026-06-06: **Iteration 17 — Tunnel "réservant uniquement"** — Un seul formulaire de coordonnées (le réservant), peu importe le nombre de personnes. Le backend expand automatiquement en N+M tickets. Tests 6/6 PASS + rétrocompat.
 
+- 2026-06-11: **Iteration 22 — Affinements Corporate + image Loisirs** (4 demandes utilisateur)
+  1. **Système Corporate isolé du flow Enregistrement** : suppression du kind picker (client/personnel/prestataire/invité) du formulaire public corporate. Tous les inscrits via lien corporate sont désormais des invités événement classiques (kind="client" forcé côté frontend). Le flow "Enregistrement" staff conserve ses 4 kinds indépendamment.
+  2. **Image par activité Loisir** : champ `image_url` ajouté au modèle `LoisirActivity` + upload dans l'éditeur via `/api/staff/uploads/image` (max 8 Mo, JPG/PNG/WebP) avec aperçu et bouton de suppression. Thumbnail 12×12 affiché dans la liste des activités.
+  3. **Formulaire corporate simplifié** : layout repensé — header noir avec logo + nom entreprise + type + places restantes en haut, puis formulaire (Nom, Prénom, Email, Téléphone, WhatsApp, Nationalité) suivi d'un seul bouton "**Enregistrer**". Plus de baratin commercial.
+  4. **URL slug personnalisée** : chaque demande corporate génère un slug court & lisible style `acme-corp-cie-seminaire-annuel-a31a` (slugify du nom entreprise + type + suffixe 4-char anti-collision). L'ancienne URL `/corporate-form/{32-char-hex}` reste fonctionnelle pour les liens déjà partagés (backward-compat). Le bouton "Copier lien" du dashboard utilise désormais le slug. Endpoint `_request_by_token` accepte les deux. Backfill auto exécuté sur les requêtes existantes.
+
+  **Tests** : validation curl end-to-end (création slug → GET by slug → register → image_url persistance) PASS. Smoke screenshot du formulaire simplifié : 0 kind buttons, header noir + body épuré + bouton "Enregistrer" confirmés.
+
 - 2026-06-11: **Iteration 21 — 12 améliorations groupées** (livrées & testées 19/19 ✅)
   1. **Auto-détection langue** : `LanguageContext` lit `navigator.language` au boot (`en` → English, sinon `fr`).
   2. **Corporate · Liens d'inscription** : nouveau dashboard `/staff/corporate-requests`. Le manager crée une demande (nom entreprise, type, nb places, mode paiement free/paid/configurable) → token partageable `/corporate-form/{token}`. Décompte serveur (403 quand max atteint). Stats par groupe (by_kind, top_nationalities, with_whatsapp, paid_count). Exports CSV + PDF. Backend: `routers/corporate_requests.py`.

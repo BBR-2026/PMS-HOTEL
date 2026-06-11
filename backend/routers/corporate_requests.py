@@ -20,7 +20,25 @@ from pydantic import BaseModel, EmailStr, Field
 import uuid
 import csv
 import io
+import re
 from datetime import datetime, timezone
+
+
+def _slugify(text: str) -> str:
+    """Generate a URL-safe slug from arbitrary text. Latin-1 chars are
+    transliterated; everything else collapses to hyphens. Empty input
+    returns 'event'."""
+    if not text:
+        return "event"
+    out = text.strip().lower()
+    # Common French accent stripping
+    repl = (("àâä", "a"), ("éèêë", "e"), ("îï", "i"), ("ôö", "o"),
+            ("ùûü", "u"), ("ÿ", "y"), ("ç", "c"), ("œ", "oe"), ("æ", "ae"))
+    for chars, target in repl:
+        for ch in chars:
+            out = out.replace(ch, target)
+    out = re.sub(r"[^a-z0-9]+", "-", out).strip("-")
+    return out or "event"
 
 
 VISITOR_KIND = Literal["client", "personnel", "prestataire", "invite"]
@@ -79,7 +97,11 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         return d
 
     async def _request_by_token(token: str) -> dict:
-        d = await db.corporate_requests.find_one({"shareable_token": token}, {"_id": 0})
+        # Resolve either by short slug or the legacy 32-char hex token.
+        d = await db.corporate_requests.find_one(
+            {"$or": [{"slug": token}, {"shareable_token": token}]},
+            {"_id": 0},
+        )
         if not d:
             raise HTTPException(status_code=404, detail="Lien invalide")
         return d
@@ -108,6 +130,20 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         doc = body.model_dump()
         doc["id"] = str(uuid.uuid4())
         doc["shareable_token"] = uuid.uuid4().hex
+        # URL-friendly slug from company_name + reservation_type + 4-char suffix
+        # to guarantee uniqueness without exposing the full UUID token. Example:
+        # "acme-corp-seminaire-a8f3".
+        base = f"{_slugify(body.company_name)}-{_slugify(body.reservation_type)}".strip("-")
+        # Trim very long bases so the final URL stays compact (~ 60 chars max)
+        if len(base) > 50:
+            base = base[:50].rstrip("-")
+        suffix = uuid.uuid4().hex[:4]
+        slug = f"{base}-{suffix}" if base else suffix
+        # Extremely unlikely collision but defensive: keep regenerating on conflict
+        while await db.corporate_requests.find_one({"slug": slug}):
+            suffix = uuid.uuid4().hex[:4]
+            slug = f"{base}-{suffix}"
+        doc["slug"] = slug
         doc["status"] = "open"
         doc["created_at"] = _now()
         doc["created_by"] = staff.get("email")
@@ -283,6 +319,7 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         # Strip private fields
         return {
             "id": d["id"],
+            "slug": d.get("slug"),
             "company_name": d["company_name"],
             "reservation_type": d["reservation_type"],
             "offer_type": d.get("offer_type"),

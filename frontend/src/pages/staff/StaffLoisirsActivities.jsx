@@ -72,6 +72,25 @@ export default function StaffLoisirsActivities() {
     }
   };
 
+  const uploadImage = async (file) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("Image trop volumineuse (max 8 Mo)");
+      return;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const { data } = await api.post("/staff/uploads/image", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setEditing((cur) => cur ? { ...cur, image_url: data.url } : cur);
+      toast.success("Image téléchargée");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Échec de l'upload");
+    }
+  };
+
   const toggleActive = async (item) => {
     try {
       await api.patch(`/staff/loisirs-activities/${item.id}`, { is_active: !item.is_active });
@@ -120,8 +139,17 @@ export default function StaffLoisirsActivities() {
               {items.map((it) => (
                 <tr key={it.id} className="border-b border-[#0A0A0A]/5 last:border-0" data-testid={`loisir-row-${it.id.slice(0,8)}`}>
                   <td className="py-3 px-4">
-                    <div className="font-display-serif text-[#0A0A0A]">{it.name_fr}</div>
-                    {it.description_fr && <div className="text-[0.7rem] text-[#0A0A0A]/55 mt-0.5">{it.description_fr}</div>}
+                    <div className="flex items-center gap-3">
+                      {it.image_url ? (
+                        <img src={it.image_url} alt="" className="w-12 h-12 object-cover border border-[#0A0A0A]/10 shrink-0" />
+                      ) : (
+                        <div className="w-12 h-12 bg-[#FAFAF7] border border-dashed border-[#0A0A0A]/10 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-display-serif text-[#0A0A0A] truncate">{it.name_fr}</div>
+                        {it.description_fr && <div className="text-[0.7rem] text-[#0A0A0A]/55 mt-0.5 truncate max-w-xs">{it.description_fr}</div>}
+                      </div>
+                    </div>
                   </td>
                   <td className="py-3 px-4 text-[#0A0A0A]/65">{it.category || "—"}</td>
                   <td className="py-3 px-4 text-right tabular-nums">{fmtXOF(it.price_adult)}</td>
@@ -162,6 +190,38 @@ export default function StaffLoisirsActivities() {
               <Field label="Nom (EN)" value={editing.name_en || ""} onChange={(v) => setEditing({ ...editing, name_en: v })} testId="loisir-name-en" />
               <Field label="Description (FR)" value={editing.description_fr || ""} onChange={(v) => setEditing({ ...editing, description_fr: v })} multiline testId="loisir-desc-fr" />
               <Field label="Catégorie" value={editing.category || ""} onChange={(v) => setEditing({ ...editing, category: v })} testId="loisir-category" />
+
+              <div>
+                <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Image de l&apos;activité</label>
+                {editing.image_url && (
+                  <div className="mb-2 relative inline-block">
+                    <img
+                      src={editing.image_url}
+                      alt="aperçu"
+                      className="h-24 w-32 object-cover border border-[#0A0A0A]/10"
+                      data-testid="loisir-image-preview"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ ...editing, image_url: "" })}
+                      className="absolute -top-2 -right-2 w-5 h-5 bg-[#0A0A0A] text-white rounded-full text-[0.6rem]"
+                      data-testid="loisir-image-clear"
+                      aria-label="Supprimer l'image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => uploadImage(e.target.files?.[0])}
+                  className="text-xs"
+                  data-testid="loisir-image-input"
+                />
+                <div className="text-[0.6rem] text-[#0A0A0A]/45 mt-1">JPG/PNG/WebP — max 8 Mo</div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Prix adulte (FCFA) *" value={editing.price_adult} type="number" onChange={(v) => setEditing({ ...editing, price_adult: parseInt(v || 0) })} testId="loisir-price-adult" />
                 <Field label="Prix enfant" value={editing.price_child} type="number" onChange={(v) => setEditing({ ...editing, price_child: parseInt(v || 0) })} testId="loisir-price-child" />

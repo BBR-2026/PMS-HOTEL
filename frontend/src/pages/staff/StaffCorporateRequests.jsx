@@ -106,8 +106,10 @@ export default function StaffCorporateRequests() {
     }
   };
 
-  const copyLink = (token) => {
-    const url = `${window.location.origin}/corporate-form/${token}`;
+  const copyLink = (slugOrToken) => {
+    // Prefer the human-readable slug; fall back to the legacy hex token for
+    // pre-iter22 requests that have no slug yet.
+    const url = `${window.location.origin}/corporate-form/${slugOrToken}`;
     navigator.clipboard.writeText(url).then(
       () => toast.success("Lien copié dans le presse-papiers"),
       () => toast.error("Impossible de copier — copiez manuellement"),
@@ -201,9 +203,10 @@ export default function StaffCorporateRequests() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => copyLink(r.shareable_token)}
+                    onClick={() => copyLink(r.slug || r.shareable_token)}
                     className="inline-flex items-center gap-1 text-[0.62rem] uppercase tracking-[0.18em] text-[#B8922A] hover:text-[#9d7a23] border border-[#B8922A]/30 px-2.5 py-1.5"
                     data-testid={`copy-link-${r.id.slice(0, 8)}`}
+                    title={`/corporate-form/${r.slug || r.shareable_token}`}
                   >
                     <Copy size={11} /> Copier lien
                   </button>

@@ -17,6 +17,7 @@ class LoisirActivity(BaseModel):
     name_fr: str = Field(min_length=2, max_length=120)
     name_en: Optional[str] = None
     description_fr: Optional[str] = None
+    image_url: Optional[str] = None  # public URL or /api/media/{id} of the activity photo
     price_adult: int = Field(ge=0)
     price_child: int = Field(default=0, ge=0)
     duration_min: int = Field(default=30, ge=5, le=480)
@@ -30,6 +31,7 @@ class LoisirActivityUpdate(BaseModel):
     name_fr: Optional[str] = None
     name_en: Optional[str] = None
     description_fr: Optional[str] = None
+    image_url: Optional[str] = None
     price_adult: Optional[int] = Field(default=None, ge=0)
     price_child: Optional[int] = Field(default=None, ge=0)
     duration_min: Optional[int] = Field(default=None, ge=5, le=480)

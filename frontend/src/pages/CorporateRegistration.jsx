@@ -13,13 +13,6 @@ import NationalityAutocomplete from "../components/NationalityAutocomplete";
 const BBR_LOGO =
   "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/5jjvd8zn_LOGO_BBr_VF_Plan_de_travail_1-removebg-preview.png";
 
-const KIND_LABEL = {
-  client: "Client (invité à payer son entrée)",
-  personnel: "Personnel BBR",
-  prestataire: "Prestataire / Partenaire",
-  invite: "Invité de l'entreprise",
-};
-
 export default function CorporateRegistration() {
   const { token } = useParams();
   const [meta, setMeta] = useState(null);
@@ -27,7 +20,6 @@ export default function CorporateRegistration() {
   const [error, setError] = useState(null);
   const [submitted, setSubmitted] = useState(null);
   const [form, setForm] = useState({
-    kind: "client",
     name: "",
     surname: "",
     email: "",
@@ -65,7 +57,7 @@ export default function CorporateRegistration() {
     setSubmitting(true);
     try {
       const payload = {
-        ...form,
+        kind: "client",
         name: form.name.trim(),
         surname: form.surname.trim(),
         email: form.email.trim().toLowerCase(),
@@ -73,10 +65,9 @@ export default function CorporateRegistration() {
         whatsapp: (form.whatsapp || form.phone).trim(),
         nationality: form.nationality.trim(),
       };
-      // Only "client" with paid mode sends a payment_method
       const paymentMode = meta.payment_mode;
-      if (form.kind !== "client" || paymentMode === "free") {
-        delete payload.payment_method;
+      if (paymentMode === "paid" || paymentMode === "configurable") {
+        payload.payment_method = form.payment_method;
       }
       const { data } = await api.post(`/corporate-form/${token}/register`, payload);
       setSubmitted(data);
@@ -125,16 +116,16 @@ export default function CorporateRegistration() {
     );
   }
 
-  const isClient = form.kind === "client";
-  const isPaid = meta.payment_mode === "paid" || (meta.payment_mode === "configurable" && isClient);
+  const isPaid = meta.payment_mode === "paid" || meta.payment_mode === "configurable";
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] py-10 px-4" data-testid="corporate-form-page">
       <div className="max-w-xl mx-auto">
+        {/* Header — event info on top */}
         <div className="bg-[#0A0A0A] text-white p-8 text-center">
           <img src={BBR_LOGO} alt="BBR" className="h-14 mx-auto mb-4 opacity-95" />
           <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#E5D9C0] mb-2">
-            Inscription corporate
+            Inscription événement
           </div>
           <h1 className="font-display-serif text-3xl tracking-tight" data-testid="corporate-form-title">
             {meta.company_name}
@@ -148,37 +139,8 @@ export default function CorporateRegistration() {
           </div>
         </div>
 
-        <div className="bg-white border border-[#0A0A0A]/8 border-t-0 p-7 space-y-5">
-          {/* Kind picker */}
-          <div>
-            <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 block mb-2">
-              Vous êtes…
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(KIND_LABEL).map(([k, label]) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setForm({ ...form, kind: k })}
-                  className={`px-3 py-3 text-[0.72rem] text-left border transition-all ${
-                    form.kind === k
-                      ? "bg-[#0A0A0A] text-white border-[#0A0A0A]"
-                      : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A]"
-                  }`}
-                  data-testid={`corp-kind-${k}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {form.kind !== "client" && (
-              <div className="mt-2 text-[0.7rem] text-[#B8922A]" data-testid="corp-no-offer-note">
-                Pas d&apos;offre commerciale ni de paiement pour ce profil — votre QR de transport sera émis automatiquement.
-              </div>
-            )}
-          </div>
-
-          {/* Identity fields */}
+        {/* Form — simple, single-purpose */}
+        <div className="bg-white border border-[#0A0A0A]/8 border-t-0 p-7 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               ["surname", "Nom *", "text"],
@@ -210,7 +172,7 @@ export default function CorporateRegistration() {
             </div>
           </div>
 
-          {isPaid && isClient && (
+          {isPaid && (
             <div>
               <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Mode de paiement *</label>
               <select
@@ -229,10 +191,10 @@ export default function CorporateRegistration() {
           <button
             onClick={submit}
             disabled={submitting}
-            className="w-full bg-[#0A0A0A] text-white py-3 text-[0.7rem] uppercase tracking-[0.28em] hover:bg-[#B8922A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-[#0A0A0A] text-white py-3 text-[0.7rem] uppercase tracking-[0.28em] hover:bg-[#B8922A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             data-testid="corp-submit"
           >
-            {submitting ? "Inscription…" : "Confirmer mon inscription"}
+            {submitting ? "Inscription…" : "Enregistrer"}
           </button>
         </div>
       </div>
