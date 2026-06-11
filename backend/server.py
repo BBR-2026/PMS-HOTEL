@@ -8975,8 +8975,10 @@ async def start_scheduler():
     # J+1 review request every day at 10:00 UTC (≈11h Abidjan)
     scheduler.add_job(_run_j_plus_1, "cron", hour=10, minute=0, id="j_plus_1", replace_existing=True)
     # Campaign dispatcher — every minute
+    async def _run_campaigns():
+        await campaign_service.run_due_campaigns(db)
     scheduler.add_job(
-        lambda: campaign_service.run_due_campaigns(db),
+        _run_campaigns,
         "interval", minutes=1, id="campaigns_runner", replace_existing=True,
     )
     # FineoPay pending sweeper — actively reconciles payments whose webhook
