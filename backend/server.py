@@ -16,6 +16,7 @@ import qrcode
 import bcrypt
 import httpx
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body, Request, Query
+from fastapi.responses import Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -391,6 +392,7 @@ class Participant(BaseModel):
     # Children are no longer collected as participants (counted via booking.children).
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    whatsapp: Optional[str] = None  # optional WhatsApp contact (defaults to phone)
     nationality: str
     kind: Literal["adult", "child"] = "adult"
 
@@ -4002,6 +4004,133 @@ async def update_traversee_status(tid: str, status: str = Body(..., embed=True),
     return {"ok": True}
 
 
+@api.get("/staff/traversees/{tid}/passengers.pdf")
+async def export_traversee_passengers_pdf(tid: str, staff=Depends(get_current_staff)):
+    """Export the list of passengers boarded on a given traversée as a PDF
+    manifest (skipper, boat, time, passengers with name/email/phone).
+    Used at quay-side to hand a printable list to the skipper before departure.
+    """
+    t = await db.traversees.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Traversée introuvable")
+    bateau = await db.bateaux.find_one({"id": t["bateau_id"]}, {"_id": 0}) or {}
+    # Fetch boarded passengers
+    pax = await db.traversee_passengers.find(
+        {"traversee_id": tid}, {"_id": 0},
+    ).to_list(length=500)
+    booking_ids = [p["booking_id"] for p in pax if p.get("booking_id")]
+    bookings = []
+    if booking_ids:
+        async for b in db.bookings.find(
+            {"id": {"$in": booking_ids}},
+            {"_id": 0, "id": 1, "offer_name": 1, "adults": 1, "children": 1,
+             "participants": 1, "email": 1, "phone": 1, "label": 1},
+        ):
+            bookings.append(b)
+    # Also include visitor_registrations attached to this traversée
+    visitors = await db.visitor_registrations.find(
+        {"traversee_id": tid}, {"_id": 0},
+    ).to_list(length=500)
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+    )
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=15 * mm, rightMargin=15 * mm,
+                            topMargin=15 * mm, bottomMargin=15 * mm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("title", parent=styles["Heading1"],
+                                 textColor=colors.HexColor("#0A0A0A"),
+                                 fontSize=18, spaceAfter=4)
+    sub = ParagraphStyle("sub", parent=styles["Normal"],
+                         textColor=colors.HexColor("#B8922A"),
+                         fontSize=8, spaceAfter=4, leading=10)
+    label = ParagraphStyle("label", parent=styles["Normal"], fontSize=9,
+                           textColor=colors.HexColor("#0A0A0A"), leading=12)
+    direction_label = "Aller (vers l'île)" if t.get("direction") == "aller" else "Retour"
+    story = [
+        Paragraph(f"Manifeste de traversée · {direction_label}", title_style),
+        Paragraph(
+            f"{t.get('date','')} · {t.get('depart_time','')}",
+            sub,
+        ),
+        Paragraph(
+            f"<b>Bateau :</b> {bateau.get('name','—')} ({bateau.get('capacity','?')} places)  "
+            f"<b>Skipper :</b> {t.get('skipper_name') or '— Non assigné —'}",
+            label,
+        ),
+        Spacer(1, 4 * mm),
+    ]
+    rows = [["N°", "Nom complet", "Type", "Email", "Téléphone", "Référence"]]
+    n = 0
+    for b in bookings:
+        parts = b.get("participants") or []
+        adults_count = b.get("adults") or 0
+        children_count = b.get("children") or 0
+        # 1 row per adult, then 1 row "+ N enfants" appended to the booker row
+        for i, p in enumerate(parts[:adults_count]):
+            n += 1
+            extra = ""
+            if i == 0 and children_count > 0:
+                extra = f" (+{children_count} enfant{'s' if children_count > 1 else ''})"
+            rows.append([
+                str(n),
+                f"{p.get('surname','')} {p.get('name','')}{extra}",
+                "Client",
+                p.get("email") or b.get("email") or "",
+                p.get("phone") or b.get("phone") or "",
+                (b.get("id") or "")[:8].upper(),
+            ])
+    for v in visitors:
+        n += 1
+        rows.append([
+            str(n),
+            f"{v.get('surname','')} {v.get('name','')}",
+            (v.get("kind") or "").capitalize(),
+            v.get("email") or "",
+            v.get("phone") or "",
+            (v.get("company") or v.get("id") or "")[:18],
+        ])
+    if len(rows) == 1:
+        rows.append(["—", "Aucun passager embarqué", "", "", "", ""])
+
+    table = Table(rows, repeatRows=1, colWidths=[12 * mm, 60 * mm, 22 * mm, 50 * mm, 30 * mm, 22 * mm])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0A0A0A")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, 0), 8),
+        ("FONTSIZE", (0, 1), (-1, -1), 7.5),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
+        ("TOPPADDING", (0, 1), (-1, -1), 4),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D5CFC4")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FAFAF7")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(table)
+    story.append(Spacer(1, 8 * mm))
+    story.append(Paragraph(
+        f"<i>Édité le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M UTC')} par {staff.get('email','')}</i>",
+        ParagraphStyle("foot", parent=styles["Normal"], fontSize=7,
+                       textColor=colors.HexColor("#0A0A0A"), alignment=2),
+    ))
+    doc.build(story)
+    filename = f"traversee-{t.get('date','')}-{t.get('depart_time','')}.pdf"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+
+
 @api.post("/staff/traversees/{tid}/board")
 async def board_passenger(tid: str, body: dict = Body(...), staff=Depends(get_current_staff)):
     """Mark a booking as boarded on a crossing."""
@@ -5102,6 +5231,7 @@ async def checkins_history(
     date_to: Optional[str] = None,
     boat_time: Optional[str] = None,
     direction: Optional[Literal["aller", "retour"]] = None,
+    offer_type: Optional[str] = None,  # filter by booking.offer_type (e.g. 'pass_day')
     q: Optional[str] = None,
     page: int = 1,
     page_size: int = 50,
@@ -5116,15 +5246,18 @@ async def checkins_history(
     await _require_role(staff, ["manager", "admin"])
     # We need to walk bookings + their qr_codes[].scans. Use a pipeline.
     match: dict = {"qr_codes.scans": {"$exists": True, "$ne": []}}
+    if offer_type:
+        match["offer_type"] = offer_type
     pipeline: List[dict] = [
         {"$match": match},
-        {"$project": {"_id": 0, "id": 1, "offer_name": 1, "qr_codes": 1, "phone": 1, "email": 1}},
+        {"$project": {"_id": 0, "id": 1, "offer_name": 1, "offer_type": 1, "qr_codes": 1, "phone": 1, "email": 1}},
         {"$unwind": "$qr_codes"},
         {"$match": {"qr_codes.scans": {"$exists": True, "$ne": []}}},
         {"$unwind": "$qr_codes.scans"},
         {"$project": {
             "booking_id": "$id",
             "offer_name": "$offer_name",
+            "offer_type": "$offer_type",
             "guest_name": "$qr_codes.guest_name",
             "guest_surname": "$qr_codes.guest_surname",
             "guest_email": {"$ifNull": ["$qr_codes.guest_email", "$email"]},
@@ -10690,6 +10823,25 @@ app.include_router(
         require_role=_require_role,
         get_current_staff=get_current_staff,
     ),
+    prefix="/api",
+)
+
+
+# Iteration 21 — Loisirs activities CRUD, Corporate request links, Visitor enregistrement
+from routers import loisirs as _loisirs_mod  # noqa: E402
+from routers import corporate_requests as _corp_req_mod  # noqa: E402
+from routers import visitor_registrations as _visitor_mod  # noqa: E402
+
+app.include_router(
+    _loisirs_mod.build_router(db=db, get_current_staff=get_current_staff, require_role=_require_role),
+    prefix="/api",
+)
+app.include_router(
+    _corp_req_mod.build_router(db=db, get_current_staff=get_current_staff, require_role=_require_role),
+    prefix="/api",
+)
+app.include_router(
+    _visitor_mod.build_router(db=db, get_current_staff=get_current_staff, require_role=_require_role),
     prefix="/api",
 )
 

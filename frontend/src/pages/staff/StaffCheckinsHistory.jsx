@@ -32,8 +32,15 @@ export default function StaffCheckinsHistory() {
   const [date, setDate] = useState("");
   const [boatTime, setBoatTime] = useState("");
   const [direction, setDirection] = useState("");
+  const [offerType, setOfferType] = useState("");
+  const [offersCatalog, setOffersCatalog] = useState([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    // Load offer catalog once to populate the ticket-type filter dropdown
+    api.get("/offers").then((r) => setOffersCatalog(r.data || [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -41,6 +48,7 @@ export default function StaffCheckinsHistory() {
     if (date) params.append("date", date);
     if (boatTime) params.append("boat_time", boatTime);
     if (direction) params.append("direction", direction);
+    if (offerType) params.append("offer_type", offerType);
     if (search) params.append("q", search);
     api.get(`/staff/checkins/history?${params}`)
       .then((r) => {
@@ -51,7 +59,7 @@ export default function StaffCheckinsHistory() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [page, date, boatTime, direction, search]);
+  }, [page, date, boatTime, direction, offerType, search]);
 
   const reset = () => {
     setDate("");
@@ -141,6 +149,21 @@ export default function StaffCheckinsHistory() {
               {label}
             </button>
           ))}
+        </div>
+        <div className="mt-3" data-testid="checkins-offer-filter-row">
+          <label className="text-[0.6rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 block mb-1">Type de ticket</label>
+          <select
+            value={offerType}
+            onChange={(e) => { setOfferType(e.target.value); setPage(1); }}
+            className="border border-[#0A0A0A]/15 px-3 py-2 text-sm focus:border-[#B8922A] outline-none min-w-[14rem]"
+            data-testid="checkins-offer-type-select"
+          >
+            <option value="">Tous les tickets</option>
+            <option value="special_event">Événements spéciaux</option>
+            {offersCatalog.map((o) => (
+              <option key={o.id} value={o.id}>{o.name_fr}</option>
+            ))}
+          </select>
         </div>
       </div>
 

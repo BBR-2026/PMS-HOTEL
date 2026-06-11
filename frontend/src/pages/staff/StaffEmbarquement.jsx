@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { toast } from "sonner";
-import { Anchor, Plus, Ship, Trash2, CheckCircle2, Circle, UserCircle2, Edit3, Fuel, X } from "lucide-react";
+import { Anchor, Plus, Ship, Trash2, CheckCircle2, Circle, UserCircle2, Edit3, Fuel, X, RefreshCw, FileText } from "lucide-react";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 
 const BOAT_TIMES = ["10H", "12H", "14H", "16H", "18H", "20H"];
@@ -386,6 +386,14 @@ export default function StaffEmbarquement() {
           <h2 className="font-display-serif text-xl text-[#0A0A0A] flex items-center gap-2">
             <Anchor size={16} className="text-[#B8922A]" /> Traversées du {date}
           </h2>
+          <button
+            onClick={refresh}
+            className="inline-flex items-center gap-1.5 text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] hover:text-[#9d7a23] border border-[#B8922A]/30 px-3 py-1.5"
+            data-testid="refresh-traversees-btn"
+            title="Rafraîchir la liste des traversées"
+          >
+            <RefreshCw size={11} className={loading ? "animate-spin" : ""} /> Rafraîchir
+          </button>
         </div>
 
         {isManager && (
@@ -533,6 +541,29 @@ export default function StaffEmbarquement() {
                           </button>
                         </div>
                       )}
+                      <button
+                        onClick={async () => {
+                          try {
+                            const url = `${api.defaults.baseURL}/staff/traversees/${t.id}/passengers.pdf`;
+                            const token = localStorage.getItem("staff_token") || "";
+                            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                            if (!res.ok) throw new Error();
+                            const blob = await res.blob();
+                            const a = document.createElement("a");
+                            a.href = URL.createObjectURL(blob);
+                            a.target = "_blank";
+                            a.click();
+                            URL.revokeObjectURL(a.href);
+                          } catch {
+                            toast.error("Échec de l'export PDF");
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/60 hover:text-[#B8922A] mt-2"
+                        data-testid={`export-passengers-${t.id.slice(0, 8)}`}
+                        title="Exporter la liste des passagers en PDF"
+                      >
+                        <FileText size={11} /> Manifeste PDF
+                      </button>
                     </div>
                   </div>
 

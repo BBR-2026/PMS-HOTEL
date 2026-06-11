@@ -48,6 +48,10 @@ import Gallery from "./pages/Gallery";
 import GalleryAlbum from "./pages/GalleryAlbum";
 import EventDetail from "./pages/EventDetail";
 import StaffGallery from "./pages/staff/StaffGallery";
+import StaffCorporateRequests from "./pages/staff/StaffCorporateRequests";
+import StaffEnregistrement from "./pages/staff/StaffEnregistrement";
+import StaffLoisirsActivities from "./pages/staff/StaffLoisirsActivities";
+import CorporateRegistration from "./pages/CorporateRegistration";
 import RoleGuard from "./components/RoleGuard";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
@@ -104,6 +108,7 @@ function App() {
             <Route path="/accueil/paiement" element={<PaiementHub />} />
             <Route path="/accueil/wifi" element={<WifiPage />} />
             <Route path="/corporate/:offerId" element={<CorporateForm />} />
+            <Route path="/corporate-form/:token" element={<CorporateRegistration />} />
             <Route path="/accueil/enregistrement" element={<Enregistrement />} />
             <Route path="/enregistrement" element={<Enregistrement />} />
             <Route path="/staff/login" element={<StaffLogin />} />
@@ -111,6 +116,9 @@ function App() {
               <Route index element={<StaffDashboard />} />
               <Route path="scanner" element={<StaffScanner />} />
               <Route path="embarquement" element={<StaffEmbarquement />} />
+              <Route path="enregistrement" element={<RoleGuard allowed={RES_ACCESS}><StaffEnregistrement /></RoleGuard>} />
+              <Route path="corporate-requests" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCorporateRequests /></RoleGuard>} />
+              <Route path="configuration/loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLoisirsActivities /></RoleGuard>} />
               <Route path="traversees/historique" element={<StaffTraverseesHistory />} />
               <Route path="activites" element={<StaffActivities />} />
               <Route path="reservations" element={<RoleGuard allowed={RES_ACCESS}><StaffReservations /></RoleGuard>} />

@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 21 (12-feature batch — Loisirs CRUD, Corporate Requests + capacity countdown + CSV/PDF exports, Visitor Registrations + route-ordering fix, WhatsApp field on Participant, Checkins offer_type filter, Traversée passengers PDF, /staff/enregistrement & /corporate-form pages, auto-language detect) — verified end-to-end. Backend pytest 19/19 PASS after fixing one server-side import bug (Response missing). Frontend smoke checks PASS on all 5 listed pages (enregistrement, corporate-requests, loisirs CRUD, embarquement refresh button, checkins offer-type select); public /corporate-form/{token} renders the 4 kind buttons + WhatsApp + Nationality + 'pas d'offre' note as required. Review spec's expected data-testids differ from the actual values in code on a few elements — the elements themselves are present and functional.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/staff/embarquement (and other staff pages)",
+        "issues": [
+          "Pre-existing React hydration warning: '<span> cannot be a child of <option>' on the bateau dropdown in StaffEmbarquement.jsx (option includes a <span data-ve-dynamic> wrapper). Cosmetic only, also reported in iter20."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration21_corporate_visitors_loisirs.py",
+    "/app/test_reports/pytest/iter21.xml"
+  ],
+  "action_items": [
+    "[Optional] Align review-spec data-testids with code OR vice-versa: enregistrement tiles use 'enr-tile-{kind}' (spec said 'enregistrement-tile-{kind}'); corporate-requests button uses 'open-create-corporate' (spec said 'new-corporate-request-btn'); corporate public form uses 'corp-kind-{k}' (spec said 'kind-btn-{k}') and 'corp-whatsapp'/'corp-nationality' (spec said 'public-whatsapp'/'public-nationality'). All elements ARE present and functional — only the testid keys differ.",
+    "[Optional] Resolve the pre-existing <span> in <option> hydration warning on StaffEmbarquement.jsx — flatten the dynamic option text wrapper."
+  ],
+  "critical_code_review_comments": [
+    "BUG FIXED: server.py line 4006 (export_traversee_passengers_pdf) was returning `Response(...)` but `Response` was not imported in module scope (only imported inside another function locally). Caused 500 NameError on the new endpoint. Added 'from fastapi.responses import Response' at the top.",
+    "routers/visitor_registrations.py — literal route '/export.csv' correctly declared ABOVE '/{vid}'. Verified GET /staff/visitor-registrations/export.csv returns CSV (not 404 from being shadowed). Good.",
+    "routers/corporate_requests.py — capacity countdown is correctly idempotent (re-fetches registered count on every register). When max=2 and 2 register, 3rd attempt returns 403 with French 'pourvues' message. Stats endpoint correctly aggregates by_kind/by_nationality/with_whatsapp/paid_count.",
+    "routers/corporate_requests.py register_public — payment_method is force-set to 'free' when kind != 'client'. Correct per spec 3a (free QR for personnel/prestataire/invite).",
+    "routers/loisirs.py — delete is admin-only (correct), patch/post are manager+, public GET only returns is_active=true items. Sort by sort_order then name_fr is sensible.",
+    "server.py checkins_history — offer_type filter applied at the $match stage on bookings BEFORE unwinding qr_codes/scans, so it filters efficiently. Direction/boat_time/date filters preserved.",
+    "server.py /staff/traversees/{tid}/passengers.pdf — landscape NOT used (portrait A4) for traversée PDF unlike corporate PDF. Includes 'Manifeste de traversée' title, direction label, boat name + capacity, skipper name, and rows per booking participant + visitor_registrations. Verified output starts with %PDF.",
+    "context/LanguageContext.jsx — auto-detect priority is correct: 1) localStorage, 2) navigator.language ('en' prefix → 'en', otherwise 'fr'), 3) fallback 'fr'. Implementation is robust (try/catch around localStorage)."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (added 'from fastapi.responses import Response' to fix NameError in /staff/traversees/{tid}/passengers.pdf)",
+    "/app/backend/tests/test_iteration21_corporate_visitors_loisirs.py (NEW — 19 pytest tests across 7 classes)"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19)",
+    "frontend": "100% (all 5 listed pages render with required elements; public form has 4 kind buttons + WhatsApp + Nationality; corporate-requests modal opens; embarquement refresh button + checkins offer-type select visible)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (staff login → POST /api/auth/staff/login returns access_token)",
+  "seed_data_creation": "Test suite creates TEST_iter21_* loisirs activities, corporate requests + participants, visitor registrations, and 2 future-dated traversées. All cleaned up in session-scoped autouse teardown via DELETE endpoints. The traversée PDF test marks one traversée as 'terminé' via PATCH /staff/traversees/{tid}/status before deletion — admins can also bulk-clean with db.corporate_requests.delete_many({'company_name':{'$regex':'^TEST_iter21_'}}) etc.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run with: pytest /app/backend/tests/test_iteration21_corporate_visitors_loisirs.py -v. Key staff endpoints validated: /staff/loisirs-activities (CRUD), /staff/corporate-requests (CRUD + /stats + /participants.csv + /participants.pdf), public /corporate-form/{token} + /register, /staff/visitor-registrations (incl. literal /export.csv before {vid} param), /staff/checkins/history?offer_type=, /staff/traversees/{tid}/passengers.pdf. Note: the only backend code change was a one-line import; review-spec data-testids on some FE elements differ from actual codebase names (functional but not the spec's keys).",
+  "rca of the issue": "PDF manifest 500: server.py top of file imports `from fastapi import ... Response was MISSING. Was previously only imported inside `from starlette.responses import Response` block at line 10202 — out of scope for the new line 4006 endpoint. Fix: added `from fastapi.responses import Response` at the top of the file. Verified by re-running the PDF endpoint which now returns application/pdf with %PDF magic bytes."
+}
