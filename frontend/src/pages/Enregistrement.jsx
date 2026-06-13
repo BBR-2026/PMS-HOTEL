@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, UserCheck, Download, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  ArrowLeft, UserCheck, Download, CheckCircle2, Loader2,
+  Briefcase, Users, UserPlus,
+} from "lucide-react";
 import { toast } from "sonner";
 import api from "../lib/api";
 
@@ -16,14 +19,46 @@ const NATIONALITIES = [
   "Libanaise", "Autre",
 ];
 
+const KIND_OPTIONS = [
+  {
+    id: "client",
+    label: "Client",
+    description: "Je viens profiter d'une expérience BBR",
+    icon: UserCheck,
+    accent: "#B8922A",
+  },
+  {
+    id: "personnel",
+    label: "Personnel",
+    description: "Je suis salarié·e du resort",
+    icon: Briefcase,
+    accent: "#0A0A0A",
+  },
+  {
+    id: "prestataire",
+    label: "Prestataire",
+    description: "Je viens pour une intervention / livraison",
+    icon: Users,
+    accent: "#6B7280",
+  },
+  {
+    id: "invite",
+    label: "Invité",
+    description: "Je suis invité·e par le resort ou un événement",
+    icon: UserPlus,
+    accent: "#16A34A",
+  },
+];
+
 export default function Enregistrement() {
   const [offers, setOffers] = useState([]);
+  const [kind, setKind] = useState(null);
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", phone: "",
-    nationality: "", offer_id: "", offer_other: "",
+    nationality: "", offer_id: "", offer_other: "", company: "",
   });
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(null); // {id, pass_token, first_name, offer_label, ref}
+  const [success, setSuccess] = useState(null);
 
   useEffect(() => {
     api.get("/registration-offers")
@@ -35,14 +70,35 @@ export default function Enregistrement() {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (form.offer_id === "autre" && !form.offer_other.trim()) {
+    if (!kind) {
+      toast.error("Veuillez sélectionner votre statut");
+      return;
+    }
+    if (kind === "client" && form.offer_id === "autre" && !form.offer_other.trim()) {
       toast.error("Précisez l'offre dans le champ 'Autre'");
+      return;
+    }
+    if (kind === "client" && !form.offer_id) {
+      toast.error("Sélectionnez une offre");
       return;
     }
     setSubmitting(true);
     try {
-      const payload = { ...form };
-      if (payload.offer_id !== "autre") delete payload.offer_other;
+      const payload = {
+        first_name: form.first_name,
+        last_name: form.last_name,
+        email: form.email,
+        phone: form.phone,
+        nationality: form.nationality,
+        kind,
+      };
+      if (kind === "client") {
+        payload.offer_id = form.offer_id;
+        if (form.offer_id === "autre") payload.offer_other = form.offer_other;
+      }
+      if (kind !== "client" && form.company.trim()) {
+        payload.company = form.company.trim();
+      }
       const { data } = await api.post("/registrations", payload);
       setSuccess(data);
       toast.success("Enregistrement validé ! Votre pass a été envoyé par email.");
@@ -120,79 +176,133 @@ export default function Enregistrement() {
           </p>
         </div>
 
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Nom" required value={form.last_name}
-              onChange={(v) => update("last_name", v)} testid="field-last-name" />
-            <Field label="Prénom" required value={form.first_name}
-              onChange={(v) => update("first_name", v)} testid="field-first-name" />
+        {/* Kind picker — 4 cards */}
+        <div className="mb-8" data-testid="kind-picker">
+          <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-3 text-center">
+            Vous êtes <span className="text-red-500">*</span>
+          </label>
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+            {KIND_OPTIONS.map((opt) => {
+              const Icon = opt.icon;
+              const isActive = kind === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setKind(opt.id)}
+                  className={`p-3 sm:p-4 border text-left transition-all ${
+                    isActive
+                      ? "border-[#B8922A] bg-[#FAF7F2] shadow-[0_0_0_1px_#B8922A_inset]"
+                      : "border-[#0A0A0A]/15 bg-white hover:border-[#0A0A0A]/35"
+                  }`}
+                  data-testid={`kind-${opt.id}`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Icon size={16} style={{ color: isActive ? opt.accent : "#0A0A0A" }} />
+                    <span className={`text-sm font-medium ${isActive ? "text-[#0A0A0A]" : "text-[#0A0A0A]/85"}`}>
+                      {opt.label}
+                    </span>
+                  </div>
+                  <p className="text-[0.68rem] sm:text-xs text-[#0A0A0A]/55 leading-snug">
+                    {opt.description}
+                  </p>
+                </button>
+              );
+            })}
           </div>
-          <Field label="Email" type="email" required value={form.email}
-            onChange={(v) => update("email", v)} testid="field-email" />
-          <Field label="Numéro" type="tel" required value={form.phone}
-            placeholder="+225 07 ..."
-            onChange={(v) => update("phone", v)} testid="field-phone" />
+        </div>
 
-          <div>
-            <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-1.5">
-              Nationalité <span className="text-red-500">*</span>
-            </label>
-            <select
-              required
-              value={form.nationality}
-              onChange={(e) => update("nationality", e.target.value)}
-              className="w-full px-3 py-2.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
-              data-testid="field-nationality"
-            >
-              <option value="">— Sélectionnez —</option>
-              {NATIONALITIES.map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </div>
+        {kind && (
+          <form onSubmit={submit} className="space-y-4" data-testid="enregistrement-form">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Nom" required value={form.last_name}
+                onChange={(v) => update("last_name", v)} testid="field-last-name" />
+              <Field label="Prénom" required value={form.first_name}
+                onChange={(v) => update("first_name", v)} testid="field-first-name" />
+            </div>
+            <Field label="Email" type="email" required value={form.email}
+              onChange={(v) => update("email", v)} testid="field-email" />
+            <Field label="Numéro" type="tel" required value={form.phone}
+              placeholder="+225 07 ..."
+              onChange={(v) => update("phone", v)} testid="field-phone" />
 
-          <div>
-            <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-1.5">
-              Offre <span className="text-red-500">*</span>
-            </label>
-            <select
-              required
-              value={form.offer_id}
-              onChange={(e) => update("offer_id", e.target.value)}
-              className="w-full px-3 py-2.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
-              data-testid="field-offer"
-            >
-              <option value="">— Sélectionnez une offre —</option>
-              {offers.map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
-              ))}
-            </select>
-          </div>
+            <div>
+              <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-1.5">
+                Nationalité <span className="text-red-500">*</span>
+              </label>
+              <select
+                required
+                value={form.nationality}
+                onChange={(e) => update("nationality", e.target.value)}
+                className="w-full px-3 py-2.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+                data-testid="field-nationality"
+              >
+                <option value="">— Sélectionnez —</option>
+                {NATIONALITIES.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
 
-          {form.offer_id === "autre" && (
-            <Field
-              label="Précisez l'offre"
-              required
-              value={form.offer_other}
-              onChange={(v) => update("offer_other", v)}
-              testid="field-offer-other"
-              placeholder="Ex : événement privé, séminaire spécifique…"
-            />
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-[#B8922A] text-white py-3 text-[0.72rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center justify-center gap-2 mt-6"
-            data-testid="submit-registration"
-          >
-            {submitting ? (
-              <><Loader2 size={14} className="animate-spin" /> Enregistrement…</>
-            ) : (
-              <>Valider</>
+            {kind === "client" && (
+              <div>
+                <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-1.5">
+                  Offre <span className="text-red-500">*</span>
+                </label>
+                <select
+                  required
+                  value={form.offer_id}
+                  onChange={(e) => update("offer_id", e.target.value)}
+                  className="w-full px-3 py-2.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+                  data-testid="field-offer"
+                >
+                  <option value="">— Sélectionnez une offre —</option>
+                  {offers.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
             )}
-          </button>
-        </form>
+
+            {kind === "client" && form.offer_id === "autre" && (
+              <Field
+                label="Précisez l'offre"
+                required
+                value={form.offer_other}
+                onChange={(v) => update("offer_other", v)}
+                testid="field-offer-other"
+                placeholder="Ex : événement privé, séminaire spécifique…"
+              />
+            )}
+
+            {kind !== "client" && (
+              <Field
+                label={kind === "personnel" ? "Service / département" : "Entreprise"}
+                value={form.company}
+                onChange={(v) => update("company", v)}
+                testid="field-company"
+                placeholder={
+                  kind === "personnel" ? "Ex : Réception, F&B, Sécurité…"
+                    : kind === "prestataire" ? "Ex : Société de livraison, ..."
+                    : "Optionnel"
+                }
+              />
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-[#B8922A] text-white py-3 text-[0.72rem] uppercase tracking-[0.22em] hover:bg-[#9d7a23] disabled:opacity-50 inline-flex items-center justify-center gap-2 mt-6"
+              data-testid="submit-registration"
+            >
+              {submitting ? (
+                <><Loader2 size={14} className="animate-spin" /> Enregistrement…</>
+              ) : (
+                <>Valider</>
+              )}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

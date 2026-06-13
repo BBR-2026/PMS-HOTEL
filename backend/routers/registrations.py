@@ -17,7 +17,7 @@ import io
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from fastapi.responses import Response
@@ -29,6 +29,13 @@ logger = logging.getLogger(__name__)
 COLOR_GOLD = "#B8922A"
 COLOR_DARK = "#0A0A0A"
 
+KIND_LABELS = {
+    "client": "Client",
+    "personnel": "Personnel",
+    "prestataire": "Prestataire",
+    "invite": "Invité",
+}
+
 
 # ============== Pydantic ==============
 class RegistrationCreate(BaseModel):
@@ -37,8 +44,10 @@ class RegistrationCreate(BaseModel):
     email: EmailStr
     phone: str = Field(min_length=4, max_length=40)
     nationality: str = Field(min_length=1, max_length=80)
-    offer_id: str = Field(min_length=1, max_length=60)
+    kind: Literal["client", "personnel", "prestataire", "invite"] = "client"
+    offer_id: Optional[str] = Field(default=None, max_length=60)
     offer_other: Optional[str] = Field(default=None, max_length=120)
+    company: Optional[str] = Field(default=None, max_length=120)
 
 
 class Registration(BaseModel):
@@ -48,9 +57,11 @@ class Registration(BaseModel):
     email: str
     phone: str
     nationality: str
-    offer_id: str
-    offer_label: str
+    kind: str = "client"
+    offer_id: Optional[str] = None
+    offer_label: Optional[str] = None
     offer_other: Optional[str] = None
+    company: Optional[str] = None
     pass_token: str
     created_at: str
 
@@ -128,15 +139,25 @@ def build_boarding_pass_pdf(reg: dict, public_base_url: str = "") -> bytes:
     elements.append(Spacer(1, 0.5 * cm))
 
     # Details table
+    KIND_LABELS_PDF = {
+        "client": "Client",
+        "personnel": "Personnel",
+        "prestataire": "Prestataire",
+        "invite": "Invité",
+    }
+    kind_label = KIND_LABELS_PDF.get(reg.get("kind") or "client", "Client")
     details = [
         ["Référence",   ref],
+        ["Statut",      kind_label],
         ["Nom complet", full_name],
         ["Nationalité", reg["nationality"]],
         ["Email",       reg["email"]],
         ["Téléphone",   reg["phone"]],
-        ["Expérience",  reg["offer_label"]],
-        ["Enregistré le", created_dt.strftime("%d/%m/%Y à %Hh%M")],
     ]
+    if reg.get("company"):
+        details.append(["Entreprise", reg["company"]])
+    details.append(["Expérience", reg.get("offer_label") or kind_label])
+    details.append(["Enregistré le", created_dt.strftime("%d/%m/%Y à %Hh%M")])
     tbl = Table(details, colWidths=[5 * cm, 11 * cm])
     tbl.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (0, -1), "Helvetica"),
@@ -279,13 +300,29 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
 
     @router.post("/registrations")
     async def create_registration(body: RegistrationCreate):
-        """Public endpoint — anyone with the form can register themselves."""
-        if body.offer_id != "autre" and body.offer_id not in offers_catalog:
-            raise HTTPException(status_code=400, detail="Offre inconnue")
-        if body.offer_id == "autre" and not (body.offer_other or "").strip():
-            raise HTTPException(status_code=400, detail="Précisez l'offre dans le champ 'Autre'.")
+        """Public endpoint — anyone with the form can register themselves.
 
-        offer_label = _resolve_offer_label(body.offer_id, body.offer_other, offers_catalog)
+        The visitor picks their kind (client/personnel/prestataire/invite).
+        Only "client" requires choosing an offer; the other 3 kinds get a free
+        transport pass to the resort without offer selection.
+        """
+        kind = body.kind or "client"
+        offer_id = body.offer_id
+
+        if kind == "client":
+            if not offer_id:
+                raise HTTPException(status_code=400, detail="Sélectionnez une offre")
+            if offer_id != "autre" and offer_id not in offers_catalog:
+                raise HTTPException(status_code=400, detail="Offre inconnue")
+            if offer_id == "autre" and not (body.offer_other or "").strip():
+                raise HTTPException(status_code=400, detail="Précisez l'offre dans le champ 'Autre'.")
+            offer_label = _resolve_offer_label(offer_id, body.offer_other, offers_catalog)
+        else:
+            # Non-client kinds don't have an offer — store the kind label as the
+            # "experience" so the staff dashboard and PDF stay consistent.
+            offer_id = None
+            offer_label = KIND_LABELS.get(kind, kind.title())
+
         now = datetime.now(timezone.utc).isoformat()
         reg = {
             "id": str(uuid.uuid4()),
@@ -294,9 +331,11 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             "email": body.email,
             "phone": body.phone.strip(),
             "nationality": body.nationality.strip(),
-            "offer_id": body.offer_id,
+            "kind": kind,
+            "offer_id": offer_id,
             "offer_label": offer_label,
             "offer_other": (body.offer_other or "").strip() or None,
+            "company": (body.company or "").strip() or None,
             "pass_token": uuid.uuid4().hex,
             "created_at": now,
         }
@@ -313,6 +352,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             "id": reg["id"],
             "pass_token": reg["pass_token"],
             "first_name": reg["first_name"],
+            "kind": reg["kind"],
             "offer_label": reg["offer_label"],
             "ref": reg["id"][:8].upper(),
         }
@@ -340,6 +380,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
         date: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
         offer_id: Optional[str] = None,
+        kind: Optional[str] = Query(None, regex="^(client|personnel|prestataire|invite)$"),
         staff=Depends(get_current_staff),
     ):
         """List registrations.
@@ -355,9 +396,12 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             filt["$or"] = [
                 {"first_name": rx}, {"last_name": rx}, {"email": rx},
                 {"phone": rx}, {"nationality": rx}, {"offer_label": rx},
+                {"company": rx},
             ]
         if offer_id:
             filt["offer_id"] = offer_id
+        if kind:
+            filt["kind"] = kind
         if date:
             # Single-day filter: created_at between YYYY-MM-DDT00:00:00 and
             # next day 00:00:00 (UTC). String comparison is safe because the
