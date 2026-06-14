@@ -41,7 +41,10 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         free text `q` (matches participant / staff / skipper name). Sorted
         by scan timestamp DESC.
         """
-        await require_role(staff, ["manager", "admin"])
+        await require_role(staff, [
+            "admin", "manager", "manager_pole", "management_general",
+            "receptionist", "hotesse", "logistique", "verification",
+        ])
         match: dict = {"qr_codes.scans": {"$exists": True, "$ne": []}}
         if offer_type:
             match["offer_type"] = offer_type

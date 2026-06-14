@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
-import { Anchor, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Anchor, Search, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 const DIRECTION_FR = { aller: "Aller", retour: "Retour" };
 
@@ -29,6 +30,7 @@ export default function StaffCheckinsHistory() {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [date, setDate] = useState("");
   const [boatTime, setBoatTime] = useState("");
   const [direction, setDirection] = useState("");
@@ -56,8 +58,21 @@ export default function StaffCheckinsHistory() {
         setSummary(r.data.summary || []);
         setTotal(r.data.total || 0);
         setPages(r.data.pages || 1);
+        setError(null);
       })
-      .catch(() => {})
+      .catch((err) => {
+        const status = err.response?.status;
+        const detail = err.response?.data?.detail || err.message || "Erreur inconnue";
+        const msg = status
+          ? `Erreur ${status} sur /staff/checkins/history — ${detail}`
+          : `Impossible de joindre le serveur (${detail})`;
+        setError(msg);
+        setItems([]);
+        setSummary([]);
+        setTotal(0);
+        setPages(1);
+        toast.error(msg, { duration: 6000 });
+      })
       .finally(() => setLoading(false));
   }, [page, date, boatTime, direction, offerType, search]);
 
@@ -80,6 +95,24 @@ export default function StaffCheckinsHistory() {
           Traçabilité de chaque scan ticket par bateau, par date et par heure.
         </p>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div
+          className="mb-4 p-3 bg-red-50 border border-red-300 text-[0.78rem] text-red-700 flex items-start gap-2"
+          data-testid="checkins-error"
+        >
+          <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+          <div>
+            <strong>L'API n'a pas pu retourner les embarquements.</strong> {error}
+            <br />
+            <span className="text-red-600/80">
+              Si vous êtes en production, vérifiez que la dernière version a été redéployée
+              (la route a été ajoutée au refactor d'iter-25). Sinon, contactez l'équipe technique.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Summary by boat (current filter) */}
       {summary.length > 0 && (
@@ -185,7 +218,20 @@ export default function StaffCheckinsHistory() {
             {loading ? (
               <tr><td colSpan={7} className="py-10 text-center text-[#0A0A0A]/50">Chargement…</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={7} className="py-10 text-center text-[#0A0A0A]/50">Aucun embarquement pour ces filtres.</td></tr>
+              <tr>
+                <td colSpan={7} className="py-10 text-center text-[#0A0A0A]/50">
+                  {date || boatTime || direction || offerType || search ? (
+                    <>Aucun embarquement pour ces filtres.</>
+                  ) : (
+                    <>
+                      <div className="mb-1">Aucun embarquement scanné pour l'instant.</div>
+                      <div className="text-[0.72rem] text-[#0A0A0A]/40">
+                        Les scans apparaissent ici dès qu'un staff valide un ticket sur le scanner QR.
+                      </div>
+                    </>
+                  )}
+                </td>
+              </tr>
             ) : (
               items.map((s, i) => (
                 <tr key={`${s.booking_id}-${s.qr_token}-${i}`} className="border-b border-[#0A0A0A]/5 hover:bg-[#FAFAF7]/50" data-testid={`checkin-row-${i}`}>
