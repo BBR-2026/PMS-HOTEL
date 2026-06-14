@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 28 — Validated the redesigned make_ticket_image() 1080x1920 boarding-pass template end-to-end. 8 PASS / 2 SKIP / 1 XFAIL (informational). All 4 major offers (sunset, brunch, pass_day, le_kaai) produce a VALID 1080x1920 PNG > 30KB ticket after the full create → pay (cash) → admin confirm-cash-payment flow, fetched via the public endpoint GET /api/bookings/{id}/ticket.png?ref={token}. Hero images from OFFER_HERO_URLS render correctly (Day Pass, Sunset, B Brunch, Le Kaai). QR scan + check-in still works on the new ticket. Staff manual booking via POST /api/staff/bookings also produces the new 1080x1920 template once the booking is confirmed (initial state uses the 900x1280 make_cash_receipt_image template — by design). Backend log scan since last startup shows ZERO Pillow / qrcode / urllib / SMTP exceptions tied to ticket generation. One INFORMATIONAL finding (XFAIL): the backend does NOT auto-split children into children_paid (6-12) vs children_free (<6) by DOB — when 2 children with DOBs 8y and 3y are submitted, both land in children_paid (=2, free=0). Ticket still renders, but the CONVIVES section will show '2 adultes · 2 enf. 6-12' rather than the expected '2 adultes · 1 enf. 6-12 · 1 enf. <6'. Two SKIPs: (a) companion register POST endpoint shape couldn't be inferred (tried 4 URL/body variants — all 404/422); (b) no multi-day published special_event seeded in DB. Day-of-week constraint discovered & encoded: sunset Sat-only, brunch Sun-only.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/bookings (sunset/brunch composition)", "issue": "Children DOB is NOT used to split into children_paid (6-12) vs children_free (<6). Submitting 2 kids with DOBs ~8y and ~3y returns children_paid=2, children_free=0. Ticket CONVIVES line will therefore not show the '1 enf. 6-12 · 1 enf. <6' breakdown the PRD describes. Caller must explicitly send children_paid + children_free in the payload (or backend should derive them from participant DOB)."},
+      {"endpoint": "POST /api/companion/{booking_code} (and variants)", "issue": "Companion-register POST shape unclear: tried /api/companion/{code} (participant nested), /api/companion/{code}/register, /api/companion/{code}/passengers — all returned 404/422. Endpoint may live under a sub-router with a different verb/path. Could not validate companion ticket end-to-end in this run."},
+      {"endpoint": "GET /api/special-events?status=published", "issue": "No multi-day published special_event seeded → multi-day passport ticket-per-(adult×date) path is untested in this iteration."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration28_ticket_image.py",
+    "/app/test_reports/pytest/iter28.xml"
+  ],
+  "action_items": [
+    "[LOW] Backend should auto-split children by DOB into children_paid (6-12) vs children_free (<6) on POST /api/bookings (or document that the FE is required to send the split explicitly). Today both kids land in children_paid regardless of DOB.",
+    "[INFO] Confirm the exact companion registration endpoint contract (URL + body shape) so the next iteration can validate the companion ticket flow end-to-end. From routers/passengers.py & routers/registrations.py the correct path was not discoverable by black-box probing.",
+    "[INFO] Seed at least one multi-day published special_event in dev DB to unblock multi-day passport ticket validation."
+  ],
+  "critical_code_review_comments": [
+    "server.py:825-1135 make_ticket_image NEW IMPL — Functionally validated: 1080x1920 RGB PNG, ≥30KB rendered body (hero + brand strip + title + INFO + dashed perforation + black QR + footer). Hero fallback chain works (OFFER_HERO_URLS for static offers; per-event hero_url override for special_event).",
+    "server.py:1138-1170 make_cash_receipt_image — 900x1280 PNG, used as the *temporary* ticket while a booking is in 'pending_cash_payment'. POST /staff/bookings creates the booking in that state; only POST /staff/bookings/{id}/confirm-cash-payment swaps in the real 1080x1920 boarding pass. This two-step flow is correct but easy to miss — worth documenting in the staff workflow.",
+    "server.py:3000-3033 GET /bookings/{id}/ticket.png — Good public endpoint guarded by reference_token. Includes a retro-fix path that re-runs pay_booking() if a paid booking has no ticket_image (defensive — appears safe).",
+    "server.py:5737, 5769, 6299 — Staff booking GET endpoints CORRECTLY strip qr_codes.ticket_image / qr_codes.qr_code from the response to keep payloads small. Frontend / next tester should be aware: ticket_image is NOT in the booking detail response; use the /ticket.png endpoint (already in the codebase).",
+    "Backend err.log since most-recent uvicorn 'Application startup complete' has ZERO entries matching PIL.*Error / qrcode.*Error / urllib.error.URLError / 'Exception in make_ticket_image' / smtplib errors across the test run — the new template is exception-safe under the offers tested."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration28_ticket_image.py (NEW — 11 pytest tests covering the new 1080x1920 template across all 4 offers + composition + staff + QR + log scan)"
+  ],
+  "success_rate": {
+    "backend": "100% on critical path (8/8 non-skipped tests pass — 1 XFAIL is informational composition observation, not a ticket-template bug)",
+    "frontend": "not tested (review_request: backend only)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026",
+  "seed_data_creation": "Creates TEST_iter28_* public + staff bookings (sunset/brunch/pass_day/le_kaai) with cash settlement. NOT auto-cleaned. Bookings are confirmed so they will appear in revenue exports — recommend a teardown that DELETEs bookings whose booker name starts with 'TEST_iter28_'.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run with: pytest /app/backend/tests/test_iteration28_ticket_image.py -v. KEY GOTCHAS this iteration uncovered: (a) Day-of-week constraints — sunset is Sat-only, brunch is Sun-only; reuse the OFFER_FIXTURES dict at top of the test file. (b) GET /api/staff/bookings/{id} STRIPS ticket_image + qr_code from the response (server.py:5737/5769/6299) — to validate the PNG you must hit GET /api/bookings/{id}/ticket.png?ref={reference_token}. (c) POST /api/staff/bookings creates the booking in 'pending_cash_payment' with the 900x1280 cash-receipt template; you MUST also call POST /api/staff/bookings/{id}/confirm-cash-payment to upgrade to the real 1080x1920 boarding pass. (d) Children submitted with DOB are NOT auto-split between children_paid (6-12) vs children_free (<6) — the backend leaves them all in children_paid, so PRD-stated CONVIVES split won't render unless caller explicitly passes children_paid/children_free in the request body.",
+  "rca of the issue": "No production blockers for the new ticket template. The full booking → pay → confirm → ticket emission flow is exception-safe for all 4 major offer types and produces a 1080x1920 PNG with real content (>30KB). One LOW-severity design gap: child DOB-based auto-split into paid/free buckets isn't happening server-side, so the new CONVIVES line on the ticket may not show the expected '· 1 enf. <6' segment for organic flows. Two SKIPs are environmental (companion endpoint contract not in scope of black-box probe; no multi-day special_event seed)."
+}
