@@ -29,6 +29,7 @@ import {
   Ship,
   UserCheck,
   Camera,
+  FileBarChart,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -61,6 +62,7 @@ const NAV = [
   { key: "paiements", to: "/staff/paiements", icon: Wallet, label: "Paiements", roles: R_MGMT },
   { key: "clients", to: "/staff/clients", icon: Users, label: "Clients", roles: R_MGMT },
   { key: "revenue", to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: R_MGMT },
+  { key: "rapports", to: "/staff/rapports", icon: FileBarChart, label: "Rapports personnalisés", roles: R_DASH },
   { key: "recus", to: "/staff/recus", icon: ReceiptText, label: "Reçus de paiement", roles: R_MGMT },
   { section: "Opérations", roles: R_OPS },
   { key: "embarquement", to: "/staff/embarquement", icon: Anchor, label: "Départs & embarquement", roles: R_OPS },

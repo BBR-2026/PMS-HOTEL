@@ -10599,6 +10599,19 @@ app.include_router(
 )
 
 
+# Iteration 28 — Configurable Reports (5 types, selectable columns, PDF/XLSX)
+from routers import custom_reports as _custom_reports_mod  # noqa: E402
+
+app.include_router(
+    _custom_reports_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    ),
+    prefix="/api",
+)
+
+
 
 
 
