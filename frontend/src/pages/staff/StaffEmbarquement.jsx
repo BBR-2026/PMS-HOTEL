@@ -541,29 +541,50 @@ export default function StaffEmbarquement() {
                           </button>
                         </div>
                       )}
-                      <button
-                        onClick={async () => {
-                          try {
-                            const url = `${api.defaults.baseURL}/staff/traversees/${t.id}/passengers.pdf`;
-                            const token = localStorage.getItem("staff_token") || "";
-                            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-                            if (!res.ok) throw new Error();
-                            const blob = await res.blob();
-                            const a = document.createElement("a");
-                            a.href = URL.createObjectURL(blob);
-                            a.target = "_blank";
-                            a.click();
-                            URL.revokeObjectURL(a.href);
-                          } catch {
-                            toast.error("Échec de l'export PDF");
-                          }
-                        }}
-                        className="inline-flex items-center gap-1 text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/60 hover:text-[#B8922A] mt-2"
-                        data-testid={`export-passengers-${t.id.slice(0, 8)}`}
-                        title="Exporter la liste des passagers en PDF"
-                      >
-                        <FileText size={11} /> Manifeste PDF
-                      </button>
+                      <div className="flex gap-2 mt-2" data-testid={`export-buttons-${t.id.slice(0, 8)}`}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await api.get(`/staff/traversees/${t.id}/passengers.pdf`, { responseType: "blob" });
+                              const blob = new Blob([res.data], { type: "application/pdf" });
+                              const a = document.createElement("a");
+                              a.href = URL.createObjectURL(blob);
+                              a.download = `traversee-${t.date}-${t.depart_time}.pdf`;
+                              document.body.appendChild(a); a.click(); a.remove();
+                              URL.revokeObjectURL(a.href);
+                              toast.success("Manifeste PDF téléchargé");
+                            } catch (err) {
+                              toast.error(err.response?.data?.detail || "Échec de l'export PDF");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/60 hover:text-[#B8922A]"
+                          data-testid={`export-passengers-pdf-${t.id.slice(0, 8)}`}
+                          title="Exporter la liste des passagers en PDF"
+                        >
+                          <FileText size={11} /> PDF
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await api.get(`/staff/traversees/${t.id}/passengers.xlsx`, { responseType: "blob" });
+                              const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+                              const a = document.createElement("a");
+                              a.href = URL.createObjectURL(blob);
+                              a.download = `traversee-${t.date}-${t.depart_time}.xlsx`;
+                              document.body.appendChild(a); a.click(); a.remove();
+                              URL.revokeObjectURL(a.href);
+                              toast.success("Manifeste Excel téléchargé");
+                            } catch (err) {
+                              toast.error(err.response?.data?.detail || "Échec de l'export Excel");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 text-[0.55rem] uppercase tracking-[0.18em] text-[#0A0A0A]/60 hover:text-[#B8922A]"
+                          data-testid={`export-passengers-xlsx-${t.id.slice(0, 8)}`}
+                          title="Exporter la liste des passagers en Excel"
+                        >
+                          <FileText size={11} /> Excel
+                        </button>
+                      </div>
                     </div>
                   </div>
 

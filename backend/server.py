@@ -4166,6 +4166,122 @@ async def export_traversee_passengers_pdf(tid: str, staff=Depends(get_current_st
     )
 
 
+@api.get("/staff/traversees/{tid}/passengers.xlsx")
+async def export_traversee_passengers_xlsx(tid: str, staff=Depends(get_current_staff)):
+    """Same manifest as the PDF endpoint but as an Excel workbook."""
+    t = await db.traversees.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Traversée introuvable")
+    bateau = await db.bateaux.find_one({"id": t["bateau_id"]}, {"_id": 0}) or {}
+    pax = await db.traversee_passengers.find(
+        {"traversee_id": tid}, {"_id": 0},
+    ).to_list(length=500)
+    booking_ids = [p["booking_id"] for p in pax if p.get("booking_id")]
+    bookings = []
+    if booking_ids:
+        async for b in db.bookings.find(
+            {"id": {"$in": booking_ids}},
+            {"_id": 0, "id": 1, "offer_name": 1, "adults": 1, "children": 1,
+             "participants": 1, "email": 1, "phone": 1, "label": 1},
+        ):
+            bookings.append(b)
+    visitors = await db.visitor_registrations.find(
+        {"traversee_id": tid}, {"_id": 0},
+    ).to_list(length=500)
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Manifeste"
+
+    direction_label = "Aller (vers l'île)" if t.get("direction") == "aller" else "Retour"
+    # ----- Header rows -----
+    ws.append([f"Manifeste de traversée · {direction_label}"])
+    ws["A1"].font = Font(bold=True, size=14, color="0A0A0A")
+    ws.append([f"{t.get('date','')} · {t.get('depart_time','')}"])
+    ws["A2"].font = Font(italic=True, color="B8922A", size=10)
+    ws.append([
+        f"Bateau : {bateau.get('name','—')} ({bateau.get('capacity','?')} places) — "
+        f"Skipper : {t.get('skipper_name') or '— Non assigné —'}"
+    ])
+    ws["A3"].font = Font(size=10)
+    ws.append([])
+
+    # ----- Table header -----
+    headers = ["N°", "Nom complet", "Type", "Email", "Téléphone", "Référence"]
+    ws.append(headers)
+    header_row = ws.max_row
+    for c in ws[header_row]:
+        c.font = Font(bold=True, color="FFFFFF", size=10)
+        c.fill = PatternFill(start_color="0A0A0A", end_color="0A0A0A", fill_type="solid")
+        c.alignment = Alignment(horizontal="left", vertical="center")
+
+    # ----- Body rows -----
+    n = 0
+    for b in bookings:
+        parts = b.get("participants") or []
+        adults_count = b.get("adults") or 0
+        children_count = b.get("children") or 0
+        for i, p in enumerate(parts[:adults_count]):
+            n += 1
+            extra = ""
+            if i == 0 and children_count > 0:
+                extra = f" (+{children_count} enfant{'s' if children_count > 1 else ''})"
+            ws.append([
+                n,
+                f"{p.get('surname','')} {p.get('name','')}{extra}".strip(),
+                "Client",
+                p.get("email") or b.get("email") or "",
+                p.get("phone") or b.get("phone") or "",
+                (b.get("id") or "")[:8].upper(),
+            ])
+    for v in visitors:
+        n += 1
+        ws.append([
+            n,
+            f"{v.get('surname','')} {v.get('name','')}".strip(),
+            (v.get("kind") or "").capitalize(),
+            v.get("email") or "",
+            v.get("phone") or "",
+            v.get("company") or "",
+        ])
+    if n == 0:
+        ws.append(["—", "Aucun passager embarqué", "", "", "", ""])
+
+    # ----- Column widths (heuristic) -----
+    widths = [6, 32, 14, 32, 18, 14]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+
+    # Auto-zebra below the header
+    thin = Side(style="thin", color="D5CFC4")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for r in range(header_row + 1, ws.max_row + 1):
+        is_alt = (r - header_row) % 2 == 0
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=r, column=col_idx)
+            cell.border = border
+            cell.font = Font(size=9)
+            if is_alt:
+                cell.fill = PatternFill(start_color="FAFAF7", end_color="FAFAF7", fill_type="solid")
+
+    # Footer
+    ws.append([])
+    ws.append([f"Édité le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M UTC')} par {staff.get('email','')}"])
+    ws.cell(row=ws.max_row, column=1).font = Font(italic=True, size=8, color="6B7280")
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    filename = f"traversee-{t.get('date','')}-{t.get('depart_time','')}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 
 
 @api.post("/staff/traversees/{tid}/board")
