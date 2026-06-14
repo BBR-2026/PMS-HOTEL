@@ -1,19 +1,31 @@
 import { useEffect, useState } from "react";
 import api, { getStaffToken } from "../../lib/api";
-import { Search, Trash2, FileSpreadsheet, FileText, FileType, UserCheck, Loader2, RefreshCw } from "lucide-react";
+import {
+  Search, Trash2, FileSpreadsheet, FileText, FileType, UserCheck, Loader2,
+  RefreshCw, Briefcase, Users, UserPlus,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
+
+const KIND_META = {
+  client:      { label: "Client",      icon: UserCheck,  color: "#B8922A" },
+  personnel:   { label: "Personnel",   icon: Briefcase,  color: "#0A0A0A" },
+  prestataire: { label: "Prestataire", icon: Users,      color: "#6B7280" },
+  invite:      { label: "Invité",      icon: UserPlus,   color: "#16A34A" },
+};
 
 export default function StaffRegistrations() {
   const { user } = useStaffAuth();
   const isAdmin = user?.role === "admin";
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
+  const [kindCounts, setKindCounts] = useState({ client: 0, personnel: 0, prestataire: 0, invite: 0 });
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("all");
   const [specificDate, setSpecificDate] = useState("");
   const [offerId, setOfferId] = useState("");
+  const [kind, setKind] = useState(null);  // null = all kinds
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const limit = 25;
@@ -36,10 +48,23 @@ export default function StaffRegistrations() {
           date: specificDate || undefined,
           period: !specificDate && period !== "all" ? period : undefined,
           offer_id: offerId || undefined,
+          kind: kind || undefined,
         },
       });
       setItems(data.items || []);
       setTotal(data.total || 0);
+      // Counts per kind for the tabs (separate call, doesn't apply kind filter)
+      try {
+        const { data: cd } = await api.get("/staff/registrations/counts-by-kind", {
+          params: {
+            q: query || undefined,
+            date: specificDate || undefined,
+            period: !specificDate && period !== "all" ? period : undefined,
+            offer_id: offerId || undefined,
+          },
+        });
+        setKindCounts(cd.counts || { client: 0, personnel: 0, prestataire: 0, invite: 0 });
+      } catch { /* tab counts are best-effort */ }
     } catch (e) {
       toast.error(e.response?.data?.detail || "Échec du chargement");
     } finally {
@@ -50,7 +75,7 @@ export default function StaffRegistrations() {
   // Reload whenever page or filters change. eslint-disable: load is intentionally
   // referenced from a closure that captures the filters — that's fine here.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [page, period, specificDate, offerId]);
+  useEffect(() => { load(); }, [page, period, specificDate, offerId, kind]);
 
   const onSearch = (e) => {
     e.preventDefault();
@@ -75,6 +100,7 @@ export default function StaffRegistrations() {
     if (specificDate) params.set("date", specificDate);
     else if (period !== "all") params.set("period", period);
     if (offerId) params.set("offer_id", offerId);
+    if (kind) params.set("kind", kind);
     const qs = params.toString();
     const url = `${api.defaults.baseURL}/staff/registrations/export.${format}${qs ? `?${qs}` : ""}`;
     fetch(url, { headers: { Authorization: `Bearer ${getStaffToken()}` } })
@@ -106,6 +132,42 @@ export default function StaffRegistrations() {
       <p className="text-sm text-[#0A0A0A]/55 mb-6">
         Personnes enregistrées via la page Bienvenue ({total} au total).
       </p>
+
+      {/* Kind tabs (filter by visiteur statut) */}
+      <div className="flex flex-wrap gap-2 mb-4" data-testid="kind-tabs">
+        <button
+          onClick={() => { setKind(null); setPage(1); }}
+          className={`px-3.5 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border transition-colors inline-flex items-center gap-1.5 ${
+            kind === null
+              ? "bg-[#0A0A0A] text-white border-[#0A0A0A]"
+              : "bg-white text-[#0A0A0A]/70 border-[#0A0A0A]/15 hover:border-[#0A0A0A]"
+          }`}
+          data-testid="kind-tab-all"
+        >
+          Tous <span className="text-[0.62rem] opacity-70">({Object.values(kindCounts).reduce((a, b) => a + b, 0)})</span>
+        </button>
+        {["client", "personnel", "prestataire", "invite"].map((k) => {
+          const meta = KIND_META[k];
+          const Icon = meta.icon;
+          const isActive = kind === k;
+          return (
+            <button
+              key={k}
+              onClick={() => { setKind(k); setPage(1); }}
+              className={`px-3.5 py-1.5 text-[0.65rem] uppercase tracking-[0.18em] border transition-colors inline-flex items-center gap-1.5 ${
+                isActive
+                  ? "text-white border-transparent"
+                  : "bg-white text-[#0A0A0A]/75 border-[#0A0A0A]/15 hover:border-[#B8922A]"
+              }`}
+              style={isActive ? { backgroundColor: meta.color, borderColor: meta.color } : {}}
+              data-testid={`kind-tab-${k}`}
+            >
+              <Icon size={11} /> {meta.label}
+              <span className="text-[0.62rem] opacity-70">({kindCounts[k] || 0})</span>
+            </button>
+          );
+        })}
+      </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-3">
         <form onSubmit={onSearch} className="flex items-center gap-2 flex-1 min-w-[260px]">
@@ -183,9 +245,9 @@ export default function StaffRegistrations() {
             <option key={o.id} value={o.id}>{o.label}</option>
           ))}
         </select>
-        {(period !== "all" || specificDate || offerId) && (
+        {(period !== "all" || specificDate || offerId || kind) && (
           <button
-            onClick={() => { setPage(1); setPeriod("all"); setSpecificDate(""); setOfferId(""); }}
+            onClick={() => { setPage(1); setPeriod("all"); setSpecificDate(""); setOfferId(""); setKind(null); }}
             className="ml-2 text-[0.65rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 hover:text-[#B8922A]"
             data-testid="clear-filters"
           >
@@ -209,42 +271,60 @@ export default function StaffRegistrations() {
               <tr className="text-left text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/65">
                 <th className="px-3 py-3">Date</th>
                 <th className="px-3 py-3">Réf.</th>
+                <th className="px-3 py-3">Statut</th>
                 <th className="px-3 py-3">Nom</th>
                 <th className="px-3 py-3">Prénom</th>
                 <th className="px-3 py-3">Email</th>
                 <th className="px-3 py-3">Téléphone</th>
                 <th className="px-3 py-3">Nationalité</th>
-                <th className="px-3 py-3">Offre</th>
+                <th className="px-3 py-3">Offre / Entreprise</th>
                 {isAdmin && <th className="px-3 py-3"></th>}
               </tr>
             </thead>
             <tbody>
-              {items.map((r) => (
-                <tr key={r.id} className="border-t border-[#0A0A0A]/8 hover:bg-[#0A0A0A]/2">
-                  <td className="px-3 py-2.5 text-[0.78rem] text-[#0A0A0A]/70 whitespace-nowrap">
-                    {(r.created_at || "").slice(0, 19).replace("T", " ")}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-[0.78rem]">{(r.id || "").slice(0, 8).toUpperCase()}</td>
-                  <td className="px-3 py-2.5">{r.last_name}</td>
-                  <td className="px-3 py-2.5">{r.first_name}</td>
-                  <td className="px-3 py-2.5 text-[0.8rem]">{r.email}</td>
-                  <td className="px-3 py-2.5 text-[0.8rem]">{r.phone}</td>
-                  <td className="px-3 py-2.5 text-[0.8rem]">{r.nationality}</td>
-                  <td className="px-3 py-2.5 text-[0.8rem]">{r.offer_label}</td>
-                  {isAdmin && (
-                    <td className="px-3 py-2.5 text-right">
-                      <button
-                        onClick={() => remove(r.id)}
-                        className="text-red-500 hover:text-red-700"
-                        title="Supprimer"
-                        data-testid={`del-reg-${r.id}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+              {items.map((r) => {
+                const k = r.kind || "client";
+                const meta = KIND_META[k] || KIND_META.client;
+                const Icon = meta.icon;
+                return (
+                  <tr key={r.id} className="border-t border-[#0A0A0A]/8 hover:bg-[#0A0A0A]/2">
+                    <td className="px-3 py-2.5 text-[0.78rem] text-[#0A0A0A]/70 whitespace-nowrap">
+                      {(r.created_at || "").slice(0, 19).replace("T", " ")}
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="px-3 py-2.5 font-mono text-[0.78rem]">{(r.id || "").slice(0, 8).toUpperCase()}</td>
+                    <td className="px-3 py-2.5">
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[0.65rem] uppercase tracking-wide border"
+                        style={{ borderColor: meta.color, color: meta.color }}
+                        data-testid={`kind-badge-${r.id}`}
+                      >
+                        <Icon size={10} /> {meta.label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">{r.last_name}</td>
+                    <td className="px-3 py-2.5">{r.first_name}</td>
+                    <td className="px-3 py-2.5 text-[0.8rem]">{r.email}</td>
+                    <td className="px-3 py-2.5 text-[0.8rem]">{r.phone}</td>
+                    <td className="px-3 py-2.5 text-[0.8rem]">{r.nationality}</td>
+                    <td className="px-3 py-2.5 text-[0.8rem]">
+                      {r.offer_label}
+                      {r.company && <div className="text-[0.7rem] text-[#0A0A0A]/50">{r.company}</div>}
+                    </td>
+                    {isAdmin && (
+                      <td className="px-3 py-2.5 text-right">
+                        <button
+                          onClick={() => remove(r.id)}
+                          className="text-red-500 hover:text-red-700"
+                          title="Supprimer"
+                          data-testid={`del-reg-${r.id}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

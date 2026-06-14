@@ -429,6 +429,51 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         items = await cursor.to_list(length=limit)
         return {"total": total, "page": page, "limit": limit, "items": items}
 
+    @router.get("/staff/registrations/counts-by-kind")
+    async def staff_registrations_counts_by_kind(
+        q: Optional[str] = None,
+        period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
+        date: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
+        offer_id: Optional[str] = None,
+        staff=Depends(get_current_staff),
+    ):
+        """Return a {kind: count} map for the UI tabs.
+
+        Same filters as /staff/registrations EXCEPT `kind` (each kind is its
+        own bucket). Used by the front-office to render the count badges.
+        """
+        await require_role(staff, ["admin", "manager", "manager_pole", "management_general", "hotesse"])
+        filt: dict = {}
+        if q:
+            rx = {"$regex": q, "$options": "i"}
+            filt["$or"] = [
+                {"first_name": rx}, {"last_name": rx}, {"email": rx},
+                {"phone": rx}, {"nationality": rx}, {"offer_label": rx},
+                {"company": rx},
+            ]
+        if offer_id:
+            filt["offer_id"] = offer_id
+        if date:
+            filt["created_at"] = {"$gte": f"{date}T00:00:00", "$lt": f"{date}T23:59:59.999999"}
+        elif period and period != "all":
+            now = datetime.now(timezone.utc)
+            if period == "day":
+                since = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif period == "week":
+                since = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            filt["created_at"] = {"$gte": since.isoformat()}
+        pipeline = [
+            {"$match": filt},
+            {"$group": {"_id": {"$ifNull": ["$kind", "client"]}, "n": {"$sum": 1}}},
+        ]
+        counts = {"client": 0, "personnel": 0, "prestataire": 0, "invite": 0}
+        async for row in db.registrations.aggregate(pipeline):
+            k = row["_id"] if row["_id"] in counts else "client"
+            counts[k] = counts.get(k, 0) + int(row["n"])
+        return {"counts": counts, "total": sum(counts.values())}
+
     @router.delete("/staff/registrations/{reg_id}")
     async def staff_delete_registration(reg_id: str, staff=Depends(get_current_staff)):
         await require_role(staff, ["admin"])

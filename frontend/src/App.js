@@ -50,7 +50,6 @@ import GalleryAlbum from "./pages/GalleryAlbum";
 import EventDetail from "./pages/EventDetail";
 import StaffGallery from "./pages/staff/StaffGallery";
 import StaffCorporateRequests from "./pages/staff/StaffCorporateRequests";
-import StaffEnregistrement from "./pages/staff/StaffEnregistrement";
 import StaffLoisirsActivities from "./pages/staff/StaffLoisirsActivities";
 import StaffRapports from "./pages/staff/StaffRapports";
 import CorporateRegistration from "./pages/CorporateRegistration";
@@ -119,7 +118,6 @@ function App() {
               <Route index element={<StaffDashboard />} />
               <Route path="scanner" element={<StaffScanner />} />
               <Route path="embarquement" element={<StaffEmbarquement />} />
-              <Route path="enregistrement" element={<RoleGuard allowed={RES_ACCESS}><StaffEnregistrement /></RoleGuard>} />
               <Route path="corporate-requests" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCorporateRequests /></RoleGuard>} />
               <Route path="configuration/loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLoisirsActivities /></RoleGuard>} />
               <Route path="traversees/historique" element={<StaffTraverseesHistory />} />
