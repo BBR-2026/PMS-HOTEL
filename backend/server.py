@@ -3900,11 +3900,30 @@ async def delete_bateau(bateau_id: str, staff=Depends(get_current_staff)):
 
 # ---------- Traversées (Module 3) ----------
 @api.get("/staff/traversees")
-async def list_traversees(date: Optional[str] = None, staff=Depends(get_current_staff)):
-    """List all crossings (default = today) with linked passengers."""
+async def list_traversees(
+    date: Optional[str] = None,
+    direction: Optional[Literal["aller", "retour"]] = None,
+    status: Optional[str] = None,
+    staff=Depends(get_current_staff),
+):
+    """List crossings (default = today) with linked passengers.
+
+    Optional filters used by the scanner workflow:
+    - ``direction`` (aller|retour) — narrows by leg
+    - ``status`` — single status or comma-separated list (programmé,en_cours,terminée,annulée)
+    """
     if date is None:
         date = datetime.now(timezone.utc).date().isoformat()
-    crossings = await db.traversees.find({"date": date}, {"_id": 0}).to_list(length=200)
+    query: dict = {"date": date}
+    if direction:
+        query["direction"] = direction
+    if status:
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if len(statuses) == 1:
+            query["status"] = statuses[0]
+        elif statuses:
+            query["status"] = {"$in": statuses}
+    crossings = await db.traversees.find(query, {"_id": 0}).to_list(length=200)
     # Hydrate with bateau info + passenger count
     bateaux = {b["id"]: b for b in await db.bateaux.find({}, {"_id": 0}).to_list(length=200)}
     for c in crossings:

@@ -354,14 +354,16 @@ export default function StaffScanner() {
   // Embarkation modal state
   const [checkinModal, setCheckinModal] = useState(null); // null | { direction, plannedBoatTime }
   const [boats, setBoats] = useState([]);
-  const [boatsForDay, setBoatsForDay] = useState([]);
+  const [scheduledTraversees, setScheduledTraversees] = useState([]);  // for the current direction
+  const [selectedTraverseeId, setSelectedTraverseeId] = useState("");
+  const [loadingTraversees, setLoadingTraversees] = useState(false);
   const [overrideBoatTime, setOverrideBoatTime] = useState("");
   const [overrideBoatId, setOverrideBoatId] = useState("");
   const [skipperName, setSkipperName] = useState("");
   const [recentSkippers, setRecentSkippers] = useState([]);
   const [checkinBusy, setCheckinBusy] = useState(false);
 
-  // Load boats catalogue once (used in the embarkation modal)
+  // Load boats catalogue once (used as fallback dropdown)
   useEffect(() => {
     api.get("/staff/bateaux").then((r) => {
       const list = Array.isArray(r.data) ? r.data : (r.data?.items || []);
@@ -374,22 +376,58 @@ export default function StaffScanner() {
     }).catch(() => {});
   }, []);
 
-  const openCheckinModal = () => {
+  const openCheckinModal = async () => {
     if (!result) return;
     const direction = result.next_direction;
     if (!direction) return;
     const planned = direction === "aller"
       ? result.boat_time
       : (result.return_boat_time || result.boat_time);
-    setOverrideBoatTime(planned || "");
+
+    // Reset selections, then fetch today's scheduled traversées matching the
+    // ticket's direction. Only status="programmé" — exclude en_cours / terminée
+    // / annulée so the operator cannot accidentally board onto a closed boat.
+    setOverrideBoatTime("");
     setOverrideBoatId("");
+    setSelectedTraverseeId("");
     setSkipperName("");
-    // Use the standard daily boat times unless we know better
-    const standardTimes = result.offer_type === "hebergement"
-      ? ["09H", "10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H"]
-      : ["8H", "10H", "12H", "14H", "16H", "18H", "20H"];
-    setBoatsForDay(standardTimes);
+    setScheduledTraversees([]);
     setCheckinModal({ direction, planned });
+    setLoadingTraversees(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data } = await api.get(
+        `/staff/traversees?date=${today}&direction=${direction}&status=programm%C3%A9`,
+      );
+      const list = Array.isArray(data) ? data : (data?.items || []);
+      // Earliest first (sort already done by backend, but keep it deterministic)
+      const sorted = [...list].sort((a, b) => (a.depart_time || "").localeCompare(b.depart_time || ""));
+      setScheduledTraversees(sorted);
+      if (sorted.length) {
+        // Prefer a traversée whose depart_time matches the planned boat; else
+        // fall back to the earliest available one.
+        const match = sorted.find((t) => (t.depart_time || "") === (planned || ""));
+        const pick = match || sorted[0];
+        setSelectedTraverseeId(pick.id);
+        setOverrideBoatTime(pick.depart_time || "");
+        setOverrideBoatId(pick.bateau_id || "");
+        setSkipperName(pick.skipper_name || "");
+      }
+    } catch {
+      // Network or permission issue — modal still opens, operator can use the
+      // manual fallback fields below.
+    } finally {
+      setLoadingTraversees(false);
+    }
+  };
+
+  // Keep the override fields in sync when the operator picks a different
+  // scheduled traversée from the list.
+  const selectTraversee = (t) => {
+    setSelectedTraverseeId(t.id);
+    setOverrideBoatTime(t.depart_time || "");
+    setOverrideBoatId(t.bateau_id || "");
+    setSkipperName(t.skipper_name || skipperName);
   };
 
   const submitCheckin = async () => {
@@ -941,50 +979,89 @@ export default function StaffScanner() {
                 <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Bateau prévu</div>
                 <div className="font-medium text-[#0A0A0A] mt-0.5">{checkinModal.planned || "—"}</div>
               </div>
+
+              {/* Scheduled traversées for this direction — only status=programmé */}
               <div>
                 <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">
-                  Heure réelle du bateau
+                  Prochaine traversée disponible
                 </label>
-                <div className="flex flex-wrap gap-1.5" data-testid="checkin-boat-time-grid">
-                  {boatsForDay.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setOverrideBoatTime(t)}
-                      className={`px-3 py-1.5 text-sm border transition-all ${
-                        overrideBoatTime === t
-                          ? "bg-[#B8922A] text-white border-[#B8922A]"
-                          : "bg-white text-[#0A0A0A] border-[#0A0A0A]/15 hover:border-[#B8922A]"
-                      }`}
-                      data-testid={`checkin-boat-time-${t}`}
-                    >
-                      {t}
-                    </button>
-                  ))}
+                {loadingTraversees ? (
+                  <div className="p-3 bg-[#FAFAF7] text-[0.78rem] text-[#0A0A0A]/55 inline-flex items-center gap-2">
+                    <Loader2 size={12} className="animate-spin" /> Chargement…
+                  </div>
+                ) : scheduledTraversees.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 text-[0.78rem] text-amber-800" data-testid="checkin-no-traversee">
+                    Aucune traversée <strong>{checkinModal.direction}</strong> programmée aujourd'hui.
+                    Demandez à la logistique d'en programmer une depuis "Départs & embarquement".
+                  </div>
+                ) : (
+                  <div className="space-y-1.5" data-testid="checkin-traversee-list">
+                    {scheduledTraversees.map((t) => {
+                      const isActive = selectedTraverseeId === t.id;
+                      const cap = t.bateau?.capacity || 0;
+                      const taken = t.passenger_count || 0;
+                      const remain = Math.max(0, cap - taken);
+                      const full = cap > 0 && remain === 0;
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => !full && selectTraversee(t)}
+                          disabled={full}
+                          className={`w-full text-left p-3 border transition-all ${
+                            isActive
+                              ? "border-[#B8922A] bg-[#FAF7F2] shadow-[0_0_0_1px_#B8922A_inset]"
+                              : full
+                                ? "border-[#0A0A0A]/10 bg-[#FAFAF7] text-[#0A0A0A]/40 cursor-not-allowed"
+                                : "border-[#0A0A0A]/12 bg-white hover:border-[#0A0A0A]/35"
+                          }`}
+                          data-testid={`checkin-traversee-${t.id.slice(0, 8)}`}
+                        >
+                          <div className="flex items-baseline justify-between gap-3">
+                            <div>
+                              <span className="font-display-serif text-base text-[#0A0A0A]">{t.depart_time}</span>
+                              <span className="text-[0.7rem] text-[#0A0A0A]/55 ml-2">
+                                {t.bateau?.name || "Bateau ?"}
+                              </span>
+                            </div>
+                            <span className={`text-[0.65rem] uppercase tracking-wide ${full ? "text-red-600" : "text-emerald-700"}`}>
+                              {full ? "Complet" : `${remain}/${cap || "?"} places`}
+                            </span>
+                          </div>
+                          {t.skipper_name && (
+                            <div className="text-[0.65rem] text-[#0A0A0A]/55 mt-0.5">Skipper · {t.skipper_name}</div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <details className="text-[0.7rem] text-[#0A0A0A]/55" data-testid="checkin-override-toggle">
+                <summary className="cursor-pointer hover:text-[#0A0A0A]">
+                  Saisir manuellement (cas exceptionnel)
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <input
+                    value={overrideBoatTime}
+                    onChange={(e) => setOverrideBoatTime(e.target.value)}
+                    placeholder="Heure (ex. 11H30)"
+                    className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white"
+                    data-testid="checkin-boat-time-input"
+                  />
+                  <select
+                    value={overrideBoatId}
+                    onChange={(e) => setOverrideBoatId(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white"
+                    data-testid="checkin-boat-select"
+                  >
+                    <option value="">— Bateau non précisé —</option>
+                    {boats.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name} {b.capacity ? `(${b.capacity} places)` : ""}</option>
+                    ))}
+                  </select>
                 </div>
-                <input
-                  value={overrideBoatTime}
-                  onChange={(e) => setOverrideBoatTime(e.target.value)}
-                  placeholder="ou saisir manuellement (ex. 11H30)"
-                  className="w-full mt-2 px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white"
-                  data-testid="checkin-boat-time-input"
-                />
-              </div>
-              <div>
-                <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">
-                  Nom du bateau (optionnel)
-                </label>
-                <select
-                  value={overrideBoatId}
-                  onChange={(e) => setOverrideBoatId(e.target.value)}
-                  className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] outline-none text-sm bg-white"
-                  data-testid="checkin-boat-select"
-                >
-                  <option value="">— Non précisé —</option>
-                  {boats.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name} {b.capacity ? `(${b.capacity} places)` : ""}</option>
-                  ))}
-                </select>
-              </div>
+              </details>
               <div>
                 <label className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 mb-1.5 block">
                   Nom du skipper
