@@ -53,6 +53,7 @@ import StaffGallery from "./pages/staff/StaffGallery";
 import StaffCorporateRequests from "./pages/staff/StaffCorporateRequests";
 import StaffLoisirsActivities from "./pages/staff/StaffLoisirsActivities";
 import StaffRapports from "./pages/staff/StaffRapports";
+import StaffPassengers from "./pages/staff/StaffPassengers";
 import CorporateRegistration from "./pages/CorporateRegistration";
 import RoleGuard from "./components/RoleGuard";
 
@@ -143,6 +144,7 @@ function App() {
               <Route path="feedback" element={<RoleGuard allowed={MANAGER_PLUS}><StaffFeedback /></RoleGuard>} />
               <Route path="enregistrements" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRegistrations /></RoleGuard>} />
               <Route path="rapports" element={<StaffRapports />} />
+              <Route path="passagers" element={<StaffPassengers />} />
               <Route path="privatisations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCharters /></RoleGuard>} />
               <Route path="corporate" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCorporateInquiries /></RoleGuard>} />
               <Route path="galerie" element={<RoleGuard allowed={MANAGER_PLUS}><StaffGallery /></RoleGuard>} />

@@ -11170,6 +11170,20 @@ app.include_router(
 )
 
 
+# Iteration 34 — Central passenger registry (cross-source aggregation)
+from routers import passengers as _passengers_mod  # noqa: E402
+
+app.include_router(
+    _passengers_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+        poles_catalog=POLES,
+    ),
+    prefix="/api",
+)
+
+
 
 
 
