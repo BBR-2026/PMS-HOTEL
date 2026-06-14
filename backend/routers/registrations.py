@@ -33,7 +33,10 @@ KIND_LABELS = {
     "client": "Client",
     "personnel": "Personnel",
     "prestataire": "Prestataire",
+    "fournisseur": "Fournisseur",
     "invite": "Invité",
+    "partenaire": "Partenaire",
+    "visiteur": "Visiteur",
 }
 
 
@@ -41,27 +44,36 @@ KIND_LABELS = {
 class RegistrationCreate(BaseModel):
     first_name: str = Field(min_length=1, max_length=80)
     last_name: str = Field(min_length=1, max_length=80)
-    email: EmailStr
+    email: Optional[EmailStr] = None  # iter-37: optional for non-clients
     phone: str = Field(min_length=4, max_length=40)
-    nationality: str = Field(min_length=1, max_length=80)
-    kind: Literal["client", "personnel", "prestataire", "invite"] = "client"
+    # iter-37: nationality removed from manual form (kept optional for legacy callers)
+    nationality: Optional[str] = Field(default=None, max_length=80)
+    kind: Literal[
+        "client", "personnel", "prestataire", "fournisseur",
+        "invite", "partenaire", "visiteur",
+    ] = "client"
     offer_id: Optional[str] = Field(default=None, max_length=60)
     offer_other: Optional[str] = Field(default=None, max_length=120)
     company: Optional[str] = Field(default=None, max_length=120)
+    # iter-37: profile-specific fields
+    position: Optional[str] = Field(default=None, max_length=120)        # personnel only
+    visit_reason: Optional[str] = Field(default=None, max_length=200)    # non-client kinds
 
 
 class Registration(BaseModel):
     id: str
     first_name: str
     last_name: str
-    email: str
+    email: Optional[str] = None
     phone: str
-    nationality: str
+    nationality: Optional[str] = None
     kind: str = "client"
     offer_id: Optional[str] = None
     offer_label: Optional[str] = None
     offer_other: Optional[str] = None
     company: Optional[str] = None
+    position: Optional[str] = None
+    visit_reason: Optional[str] = None
     pass_token: str
     created_at: str
 
@@ -143,19 +155,28 @@ def build_boarding_pass_pdf(reg: dict, public_base_url: str = "") -> bytes:
         "client": "Client",
         "personnel": "Personnel",
         "prestataire": "Prestataire",
+        "fournisseur": "Fournisseur",
         "invite": "Invité",
+        "partenaire": "Partenaire",
+        "visiteur": "Visiteur",
     }
     kind_label = KIND_LABELS_PDF.get(reg.get("kind") or "client", "Client")
     details = [
         ["Référence",   ref],
         ["Statut",      kind_label],
         ["Nom complet", full_name],
-        ["Nationalité", reg["nationality"]],
-        ["Email",       reg["email"]],
         ["Téléphone",   reg["phone"]],
     ]
+    if reg.get("email"):
+        details.append(["Email", reg["email"]])
+    if reg.get("nationality"):
+        details.append(["Nationalité", reg["nationality"]])
     if reg.get("company"):
         details.append(["Entreprise", reg["company"]])
+    if reg.get("position"):
+        details.append(["Poste / Fonction", reg["position"]])
+    if reg.get("visit_reason"):
+        details.append(["Motif de la visite", reg["visit_reason"]])
     details.append(["Expérience", reg.get("offer_label") or kind_label])
     details.append(["Enregistré le", created_dt.strftime("%d/%m/%Y à %Hh%M")])
     tbl = Table(details, colWidths=[5 * cm, 11 * cm])
@@ -328,23 +349,28 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             "id": str(uuid.uuid4()),
             "first_name": body.first_name.strip(),
             "last_name": body.last_name.strip(),
-            "email": body.email,
+            "email": (body.email or "").strip() or None,
             "phone": body.phone.strip(),
-            "nationality": body.nationality.strip(),
+            "nationality": (body.nationality or "").strip() or None,
             "kind": kind,
             "offer_id": offer_id,
             "offer_label": offer_label,
             "offer_other": (body.offer_other or "").strip() or None,
             "company": (body.company or "").strip() or None,
+            "position": (body.position or "").strip() or None,
+            "visit_reason": (body.visit_reason or "").strip() or None,
             "pass_token": uuid.uuid4().hex,
             "created_at": now,
         }
         await db.registrations.insert_one({**reg})
 
-        # Build the PDF & email it (best-effort, non-blocking failures)
+        # Build the PDF & email it (best-effort, non-blocking failures).
+        # iter-37: skip the email send if no email was provided (non-client kinds
+        # can register without one); the PDF is still built and downloadable.
         try:
             pdf_bytes = build_boarding_pass_pdf(reg, public_base_url=public_base_url)
-            await send_registration_email(email_service, reg["email"], reg, pdf_bytes)
+            if reg.get("email"):
+                await send_registration_email(email_service, reg["email"], reg, pdf_bytes)
         except Exception as ex:
             logger.warning("Boarding pass build/email failed for %s: %s", reg["id"], ex)
 
@@ -380,7 +406,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
         period: Optional[str] = Query(None, regex="^(day|week|month|all)$"),
         date: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$"),
         offer_id: Optional[str] = None,
-        kind: Optional[str] = Query(None, regex="^(client|personnel|prestataire|invite)$"),
+        kind: Optional[str] = Query(None, regex="^(client|personnel|prestataire|fournisseur|invite|partenaire|visiteur)$"),
         staff=Depends(get_current_staff),
     ):
         """List registrations.
@@ -468,7 +494,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             {"$match": filt},
             {"$group": {"_id": {"$ifNull": ["$kind", "client"]}, "n": {"$sum": 1}}},
         ]
-        counts = {"client": 0, "personnel": 0, "prestataire": 0, "invite": 0}
+        counts = {"client": 0, "personnel": 0, "prestataire": 0, "fournisseur": 0, "invite": 0, "partenaire": 0, "visiteur": 0}
         async for row in db.registrations.aggregate(pipeline):
             k = row["_id"] if row["_id"] in counts else "client"
             counts[k] = counts.get(k, 0) + int(row["n"])

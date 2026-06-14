@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft, UserCheck, Download, CheckCircle2, Loader2,
-  Briefcase, Users, UserPlus,
+  Briefcase, Users, UserPlus, Truck, Handshake, User as UserIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../lib/api";
@@ -10,44 +10,24 @@ import api from "../lib/api";
 const BBR_LOGO =
   "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/6stkzr3f_LOGO%20BBr%20VF_Plan%20de%20travail%201.png";
 
-const NATIONALITIES = [
-  "Ivoirienne", "Française", "Belge", "Suisse", "Marocaine", "Tunisienne",
-  "Algérienne", "Sénégalaise", "Béninoise", "Burkinabé", "Camerounaise",
-  "Congolaise", "Gabonaise", "Guinéenne", "Malienne", "Nigériane", "Togolaise",
-  "Américaine", "Canadienne", "Britannique", "Allemande", "Italienne",
-  "Espagnole", "Portugaise", "Néerlandaise", "Chinoise", "Indienne",
-  "Libanaise", "Autre",
+const KIND_OPTIONS = [
+  { id: "client",      label: "Client",      description: "Je viens profiter d'une expérience BBR",   icon: UserCheck, accent: "#B8922A" },
+  { id: "personnel",   label: "Personnel",   description: "Je suis salarié·e du resort",              icon: Briefcase, accent: "#0A0A0A" },
+  { id: "prestataire", label: "Prestataire", description: "Intervention, maintenance, mission",       icon: Users,     accent: "#6B7280" },
+  { id: "fournisseur", label: "Fournisseur", description: "Livraison ou approvisionnement",           icon: Truck,     accent: "#0EA5E9" },
+  { id: "invite",      label: "Invité",      description: "Invité·e par le resort ou un événement",    icon: UserPlus,  accent: "#16A34A" },
+  { id: "partenaire",  label: "Partenaire",  description: "Rendez-vous professionnel ou réunion",     icon: Handshake, accent: "#9333EA" },
+  { id: "visiteur",    label: "Visiteur",    description: "Visite ponctuelle / autre",                icon: UserIcon,  accent: "#A16207" },
 ];
 
-const KIND_OPTIONS = [
-  {
-    id: "client",
-    label: "Client",
-    description: "Je viens profiter d'une expérience BBR",
-    icon: UserCheck,
-    accent: "#B8922A",
-  },
-  {
-    id: "personnel",
-    label: "Personnel",
-    description: "Je suis salarié·e du resort",
-    icon: Briefcase,
-    accent: "#0A0A0A",
-  },
-  {
-    id: "prestataire",
-    label: "Prestataire",
-    description: "Je viens pour une intervention / livraison",
-    icon: Users,
-    accent: "#6B7280",
-  },
-  {
-    id: "invite",
-    label: "Invité",
-    description: "Je suis invité·e par le resort ou un événement",
-    icon: UserPlus,
-    accent: "#16A34A",
-  },
+const VISIT_REASONS = [
+  "Réunion", "Maintenance", "Livraison", "Visite privée",
+  "Rendez-vous professionnel", "Événement", "Contrôle", "Mission de service",
+];
+
+const POSITION_HINTS = [
+  "Réceptionniste", "Serveur", "Agent de sécurité", "Comptable",
+  "Manager", "Chauffeur",
 ];
 
 export default function Enregistrement() {
@@ -55,7 +35,8 @@ export default function Enregistrement() {
   const [kind, setKind] = useState(null);
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", phone: "",
-    nationality: "", offer_id: "", offer_other: "", company: "",
+    offer_id: "", offer_other: "", company: "",
+    position: "", visit_reason: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
@@ -87,18 +68,21 @@ export default function Enregistrement() {
       const payload = {
         first_name: form.first_name,
         last_name: form.last_name,
-        email: form.email,
         phone: form.phone,
-        nationality: form.nationality,
         kind,
       };
+      if (form.email.trim()) payload.email = form.email.trim();
       if (kind === "client") {
         payload.offer_id = form.offer_id;
         if (form.offer_id === "autre") payload.offer_other = form.offer_other;
       }
-      if (kind !== "client" && form.company.trim()) {
-        payload.company = form.company.trim();
+      if (kind === "personnel" && form.position.trim()) {
+        payload.position = form.position.trim();
       }
+      if (kind !== "client" && kind !== "personnel" && form.visit_reason.trim()) {
+        payload.visit_reason = form.visit_reason.trim();
+      }
+      if (form.company.trim()) payload.company = form.company.trim();
       const { data } = await api.post("/registrations", payload);
       setSuccess(data);
       toast.success("Enregistrement validé ! Votre pass a été envoyé par email.");
@@ -181,7 +165,7 @@ export default function Enregistrement() {
           <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-3 text-center">
             Vous êtes <span className="text-red-500">*</span>
           </label>
-          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-2.5">
             {KIND_OPTIONS.map((opt) => {
               const Icon = opt.icon;
               const isActive = kind === opt.id;
@@ -220,29 +204,12 @@ export default function Enregistrement() {
               <Field label="Prénom" required value={form.first_name}
                 onChange={(v) => update("first_name", v)} testid="field-first-name" />
             </div>
-            <Field label="Email" type="email" required value={form.email}
-              onChange={(v) => update("email", v)} testid="field-email" />
+            <Field label="Email" type="email" value={form.email}
+              onChange={(v) => update("email", v)} testid="field-email"
+              placeholder="Optionnel pour personnel, prestataires…" />
             <Field label="Numéro" type="tel" required value={form.phone}
               placeholder="+225 07 ..."
               onChange={(v) => update("phone", v)} testid="field-phone" />
-
-            <div>
-              <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-1.5">
-                Nationalité <span className="text-red-500">*</span>
-              </label>
-              <select
-                required
-                value={form.nationality}
-                onChange={(e) => update("nationality", e.target.value)}
-                className="w-full px-3 py-2.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
-                data-testid="field-nationality"
-              >
-                <option value="">— Sélectionnez —</option>
-                {NATIONALITIES.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-            </div>
 
             {kind === "client" && (
               <div>
@@ -275,7 +242,45 @@ export default function Enregistrement() {
               />
             )}
 
-            {kind !== "client" && (
+            {kind === "personnel" && (
+              <div>
+                <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-1.5">
+                  Poste / Fonction
+                </label>
+                <input
+                  list="position-hints"
+                  value={form.position}
+                  onChange={(e) => update("position", e.target.value)}
+                  placeholder="Ex : Réceptionniste, Serveur, Sécurité…"
+                  className="w-full px-3 py-2.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                  data-testid="field-position"
+                />
+                <datalist id="position-hints">
+                  {POSITION_HINTS.map((p) => <option key={p} value={p} />)}
+                </datalist>
+              </div>
+            )}
+
+            {kind && kind !== "client" && kind !== "personnel" && (
+              <div>
+                <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-1.5">
+                  Motif de la visite
+                </label>
+                <input
+                  list="reason-hints"
+                  value={form.visit_reason}
+                  onChange={(e) => update("visit_reason", e.target.value)}
+                  placeholder="Ex : Maintenance, Livraison, Réunion…"
+                  className="w-full px-3 py-2.5 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm"
+                  data-testid="field-visit-reason"
+                />
+                <datalist id="reason-hints">
+                  {VISIT_REASONS.map((r) => <option key={r} value={r} />)}
+                </datalist>
+              </div>
+            )}
+
+            {kind && kind !== "client" && (
               <Field
                 label={kind === "personnel" ? "Service / département" : "Entreprise"}
                 value={form.company}
@@ -283,7 +288,6 @@ export default function Enregistrement() {
                 testid="field-company"
                 placeholder={
                   kind === "personnel" ? "Ex : Réception, F&B, Sécurité…"
-                    : kind === "prestataire" ? "Ex : Société de livraison, ..."
                     : "Optionnel"
                 }
               />

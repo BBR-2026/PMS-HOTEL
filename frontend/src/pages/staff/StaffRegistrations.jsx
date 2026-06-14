@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import api, { getStaffToken } from "../../lib/api";
 import {
   Search, Trash2, FileSpreadsheet, FileText, FileType, UserCheck, Loader2,
-  RefreshCw, Briefcase, Users, UserPlus,
+  RefreshCw, Briefcase, Users, UserPlus, Truck, Handshake, User as UserIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useStaffAuth } from "../../context/StaffAuthContext";
@@ -11,7 +11,10 @@ const KIND_META = {
   client:      { label: "Client",      icon: UserCheck,  color: "#B8922A" },
   personnel:   { label: "Personnel",   icon: Briefcase,  color: "#0A0A0A" },
   prestataire: { label: "Prestataire", icon: Users,      color: "#6B7280" },
+  fournisseur: { label: "Fournisseur", icon: Truck,      color: "#0EA5E9" },
   invite:      { label: "Invité",      icon: UserPlus,   color: "#16A34A" },
+  partenaire:  { label: "Partenaire",  icon: Handshake,  color: "#9333EA" },
+  visiteur:    { label: "Visiteur",    icon: UserIcon,   color: "#A16207" },
 };
 
 export default function StaffRegistrations() {
@@ -19,7 +22,7 @@ export default function StaffRegistrations() {
   const isAdmin = user?.role === "admin";
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
-  const [kindCounts, setKindCounts] = useState({ client: 0, personnel: 0, prestataire: 0, invite: 0 });
+  const [kindCounts, setKindCounts] = useState({ client: 0, personnel: 0, prestataire: 0, fournisseur: 0, invite: 0, partenaire: 0, visiteur: 0 });
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("all");
@@ -146,7 +149,7 @@ export default function StaffRegistrations() {
         >
           Tous <span className="text-[0.62rem] opacity-70">({Object.values(kindCounts).reduce((a, b) => a + b, 0)})</span>
         </button>
-        {["client", "personnel", "prestataire", "invite"].map((k) => {
+        {["client", "personnel", "prestataire", "fournisseur", "invite", "partenaire", "visiteur"].map((k) => {
           const meta = KIND_META[k];
           const Icon = meta.icon;
           const isActive = kind === k;
@@ -309,6 +312,8 @@ export default function StaffRegistrations() {
                     <td className="px-3 py-2.5 text-[0.8rem]">
                       {r.offer_label}
                       {r.company && <div className="text-[0.7rem] text-[#0A0A0A]/50">{r.company}</div>}
+                      {r.position && <div className="text-[0.7rem] text-[#0A0A0A]/50">Poste · {r.position}</div>}
+                      {r.visit_reason && <div className="text-[0.7rem] text-[#0A0A0A]/50">Motif · {r.visit_reason}</div>}
                     </td>
                     {isAdmin && (
                       <td className="px-3 py-2.5 text-right">
