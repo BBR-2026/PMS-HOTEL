@@ -880,13 +880,13 @@ def make_ticket_image(
             return ImageFont.load_default()
 
     f_brand  = font(30, bold=True)
-    f_kicker = font(24, bold=True)
-    f_label  = font(22)
+    f_kicker = font(26, bold=True)
+    f_label  = font(30, bold=True)
     f_title  = font(58, bold=True)
     f_title_sm = font(46, bold=True)
-    f_value  = font(34, bold=True)
-    f_small  = font(26)
-    f_mono   = font(30, bold=True)
+    f_value  = font(50, bold=True)
+    f_small  = font(40, bold=True)
+    f_mono   = font(46, bold=True)
 
     def round_rect(xy, radius, fill, outline=None, width=1):
         draw.rounded_rectangle(xy, radius=radius, fill=fill,
@@ -906,7 +906,7 @@ def make_ticket_image(
     round_rect((CX, CY, CX + CW, CY + CH), R, CARD)
 
     # ---- Hero image (top of card) ----
-    HERO_H = 760
+    HERO_H = 660
 
     # Build hero with rounded top corners
     hero_layer = None
@@ -1029,21 +1029,21 @@ def make_ticket_image(
 
     # ---- Info block (between perforation and QR) ----
     INFO_PAD = 56
-    info_top = PERF_Y + 36
+    info_top = PERF_Y + 50
 
     # Passenger row (full width)
     draw.text((CX + INFO_PAD, info_top), "PASSAGER" if lang == "fr" else "PASSENGER",
               fill=SUB, font=f_label)
-    draw.text((CX + INFO_PAD, info_top + 32), (owner_name or "—"),
+    draw.text((CX + INFO_PAD, info_top + 46), (owner_name or "—"),
               fill=INK, font=f_value)
 
     # Thin gold accent under passenger
-    accent_y = info_top + 96
+    accent_y = info_top + 130
     draw.line([(CX + INFO_PAD, accent_y),
-               (CX + INFO_PAD + 80, accent_y)], fill=GOLD, width=3)
+               (CX + INFO_PAD + 100, accent_y)], fill=GOLD, width=4)
 
     # 2-column grid: Date / Embarquement, Convives / Lieu
-    grid_top = accent_y + 26
+    grid_top = accent_y + 36
     col_w = (CW - 2 * INFO_PAD) // 2
     col1_x = CX + INFO_PAD
     col2_x = CX + INFO_PAD + col_w
@@ -1060,15 +1060,15 @@ def make_ticket_image(
         date_label = date_iso or "—"
 
     draw.text((col1_x, grid_top), "DATE", fill=SUB, font=f_label)
-    draw.text((col1_x, grid_top + 30), date_label, fill=INK, font=f_value)
+    draw.text((col1_x, grid_top + 42), date_label, fill=INK, font=f_value)
 
     draw.text((col2_x, grid_top), "EMBARQUEMENT" if lang == "fr" else "BOARDING",
               fill=SUB, font=f_label)
-    draw.text((col2_x, grid_top + 30), (boat_time or "—"),
+    draw.text((col2_x, grid_top + 42), (boat_time or "—"),
               fill=INK, font=f_value)
 
     # Convives / Lieu row
-    grid_top2 = grid_top + 96
+    grid_top2 = grid_top + 134
     if composition:
         a = int(composition.get("adults") or 0)
         cp = int(composition.get("children_paid") or 0)
@@ -1088,16 +1088,15 @@ def make_ticket_image(
 
     draw.text((col1_x, grid_top2), "CONVIVES" if lang == "fr" else "GUESTS",
               fill=SUB, font=f_label)
-    draw.text((col1_x, grid_top2 + 30), ps_text, fill=INK, font=f_small)
+    draw.text((col1_x, grid_top2 + 42), ps_text, fill=INK, font=f_small)
 
     draw.text((col2_x, grid_top2), "LIEU" if lang == "fr" else "VENUE",
               fill=SUB, font=f_label)
-    draw.text((col2_x, grid_top2 + 30), "Boulay Beach Resort",
+    draw.text((col2_x, grid_top2 + 42), "Boulay Beach Resort",
               fill=INK, font=f_small)
-    draw.text((col2_x, grid_top2 + 62), "Abidjan, CI", fill=SUB, font=f_small)
 
     # Divider before QR
-    div_y = grid_top2 + 130
+    div_y = grid_top2 + 150
     draw.line([(CX + INFO_PAD, div_y), (CX + CW - INFO_PAD, div_y)],
               fill=DIVIDER, width=2)
 
@@ -1109,32 +1108,23 @@ def make_ticket_image(
     qr.add_data(qr_payload)
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-    QR_SIZE = 380
+    QR_SIZE = 360
     qr_img = qr_img.resize((QR_SIZE, QR_SIZE), Image.LANCZOS)
-    qr_y = div_y + 30
+    qr_y = div_y + 32
     qr_x = (W - QR_SIZE) // 2
     img.paste(qr_img, (qr_x, qr_y))
 
-    # "Scannez à l'embarquement" hint next to QR (right side)
-    hint_x = qr_x + QR_SIZE + 28
-    hint_y = qr_y + 40
-    if hint_x + 200 < CX + CW - 20:
-        draw.text((hint_x, hint_y), "SCANNEZ" if lang == "fr" else "SCAN",
-                  fill=SUB, font=f_label)
-        draw.text((hint_x, hint_y + 30), "À L'EMBARQUEMENT" if lang == "fr" else "AT BOARDING",
-                  fill=INK, font=f_kicker)
-
     # Booking ID under QR (monospace-style)
-    bid_y = qr_y + QR_SIZE + 24
+    bid_y = qr_y + QR_SIZE + 28
     label = "RÉFÉRENCE" if lang == "fr" else "REFERENCE"
     bb = draw.textbbox((0, 0), label, font=f_label)
     draw.text(((W - (bb[2] - bb[0])) / 2, bid_y), label, fill=SUB, font=f_label)
     bb2 = draw.textbbox((0, 0), ref_code or "", font=f_mono)
-    draw.text(((W - (bb2[2] - bb2[0])) / 2, bid_y + 30),
+    draw.text(((W - (bb2[2] - bb2[0])) / 2, bid_y + 44),
               ref_code or "", fill=INK, font=f_mono)
 
     # ---- Signature below card ----
-    sig_y = CY + CH + 22
+    sig_y = CY + CH + 16
     sig_text = "Life is Here  ·  boulaybeachresort.com"
     bb = draw.textbbox((0, 0), sig_text, font=f_small)
     draw.text(((W - (bb[2] - bb[0])) / 2, sig_y),
