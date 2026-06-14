@@ -7548,13 +7548,22 @@ class StaffBookingCreate(BaseModel):
     participants: List[Participant]
     special_requests: Optional[str] = ""
     # Payment: manager picks the method directly. For 'deposit', supply deposit_pct.
-    payment_method: Literal["card", "mobile_money", "cash", "deposit"] = "cash"
+    # 'online' creates a pending booking and emails a payment link to the client.
+    payment_method: Literal["card", "mobile_money", "cash", "deposit", "online"] = "cash"
     deposit_pct: Optional[Literal[10, 30, 70]] = None
 
 
 @api.post("/staff/bookings")
 async def staff_create_booking(body: StaffBookingCreate, staff=Depends(get_current_staff)):
-    """Manager creates a confirmed booking + immediate payment, generating tickets + wallet."""
+    """Manager creates a booking.
+
+    For instant methods (cash / card / mobile_money / deposit) the booking is
+    paid immediately (legacy behaviour). For ``online`` the booking is left in
+    ``pending_payment`` state with a secure payment-link token, and an email is
+    dispatched to the client with a "Payer maintenant" CTA. Once they complete
+    the payment, the existing FineoPay settle flow regenerates the QR ticket
+    and emails the confirmation.
+    """
     await _require_role(staff, ["manager", "admin"])
     # Step 1: create booking (reuses public validator)
     payload = BookingCreate(
@@ -7577,7 +7586,80 @@ async def staff_create_booking(body: StaffBookingCreate, staff=Depends(get_curre
         {"id": booking["id"]},
         {"$set": {"created_by_staff": True, "created_by_email": staff.get("email")}},
     )
-    # Step 2: pay immediately with chosen method
+
+    # ------- Online payment: create a payment link, email it, do NOT pay -------
+    if body.payment_method == "online":
+        token = uuid.uuid4().hex
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        await db.bookings.update_one(
+            {"id": booking["id"]},
+            {"$set": {
+                "status": "pending_payment",
+                "payment_method": "online",
+                "payment_link_token": token,
+                "payment_link_expires_at": expires_at,
+            }},
+        )
+        # Build public URL (FINEO_PUBLIC_BASE_URL = production app domain)
+        base = FINEO_PUBLIC_BASE_URL or os.environ.get("PUBLIC_BASE_URL", "")
+        payment_url = f"{base.rstrip('/')}/pay/{token}" if base else f"/pay/{token}"
+
+        # Resolve offer label for the email
+        if booking["offer_type"] == "special_event":
+            offer = await _resolve_special_event_offer(booking.get("special_event_id") or "", booking.get("date"))
+        else:
+            offer = OFFERS.get(booking["offer_type"], {"name_fr": booking["offer_type"]})
+        # Format the booking date as DD/MM/YYYY
+        try:
+            date_str = datetime.fromisoformat(booking["date"]).strftime("%d/%m/%Y")
+        except Exception:
+            date_str = booking["date"]
+        # Amount label
+        amount_label = f"{int(booking.get('total_amount', 0)):,}".replace(",", " ") + " FCFA"
+
+        email_sent = False
+        try:
+            from services import email_service as _es  # type: ignore
+            primary = (booking.get("participants") or [{}])[0]
+            booker_name = booking.get("name") or primary.get("name") or ""
+            booker_surname = booking.get("surname") or primary.get("surname") or ""
+            full_name = f"{booker_name} {booker_surname}".strip()
+            rendered = _es.render_payment_link(
+                name=full_name,
+                ref=booking["id"][:8].upper(),
+                offer_label=offer.get("name_fr") or booking["offer_type"],
+                date_str=date_str,
+                boat_time=booking.get("boat_time"),
+                amount_label=amount_label,
+                payment_url=payment_url,
+                expires_label="dans 7 jours",
+            )
+            res = await _es.send_email(
+                db,
+                to_email=booking["email"],
+                subject=rendered["subject"],
+                html=rendered["html"],
+                plain=rendered["plain"],
+                purpose="payment_link",
+                booking_id=booking["id"],
+                to_name=full_name or None,
+            )
+            email_sent = bool(res.get("ok"))
+        except Exception as ex:
+            logger.warning("Payment-link email failed for booking %s: %s", booking["id"], ex)
+
+        return {
+            **booking,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "payment_link": payment_url,
+            "payment_link_token": token,
+            "email_sent": email_sent,
+            "created_by_staff": True,
+            "created_by_email": staff.get("email"),
+        }
+
+    # ------- Instant methods: legacy immediate-confirmation path -------
     pay = PayBooking(
         reference_token=booking["reference_token"],
         payment_method=body.payment_method,
@@ -9227,6 +9309,85 @@ async def fineo_create_checkout(body: FineoCheckoutBody):
         "amount": amount,
         "reused": False,
     }
+
+
+# ----- Public payment-link endpoints (staff-issued bookings) -----
+@api.get("/payment-links/{token}")
+async def payment_link_summary(token: str):
+    """Public endpoint — returns a booking summary for a payment-link token.
+    Used by the /pay/:token public page before triggering checkout.
+    """
+    booking = await db.bookings.find_one(
+        {"payment_link_token": token},
+        {"_id": 0, "qr_codes": 0, "wallet_history": 0},
+    )
+    if not booking:
+        raise HTTPException(status_code=404, detail="Lien de paiement introuvable")
+
+    # Expired?
+    exp = booking.get("payment_link_expires_at")
+    if exp:
+        try:
+            if datetime.fromisoformat(exp) < datetime.now(timezone.utc):
+                raise HTTPException(status_code=410, detail="Lien de paiement expiré")
+        except (ValueError, TypeError):
+            pass
+
+    if booking.get("status") not in ("pending_payment", "pending"):
+        raise HTTPException(status_code=410, detail=f"Réservation déjà {booking.get('status')}")
+
+    # Offer label (catalog or special event)
+    if booking["offer_type"] == "special_event":
+        offer = await _resolve_special_event_offer(booking.get("special_event_id") or "", booking.get("date"))
+    else:
+        offer = OFFERS.get(booking["offer_type"], {"name_fr": booking["offer_type"]})
+
+    return {
+        "booking_id": booking["id"],
+        "ref": booking["id"][:8].upper(),
+        "status": booking.get("status"),
+        "customer_name": (
+            f"{booking.get('name','') or ''} {booking.get('surname','') or ''}".strip()
+            or (
+                f"{(booking.get('participants') or [{}])[0].get('name','')} "
+                f"{(booking.get('participants') or [{}])[0].get('surname','')}".strip()
+            )
+        ),
+        "customer_email": booking.get("email"),
+        "offer_type": booking["offer_type"],
+        "offer_label": offer.get("name_fr") or booking["offer_type"],
+        "date": booking.get("date"),
+        "checkout_date": booking.get("checkout_date"),
+        "boat_time": booking.get("boat_time"),
+        "adults": int(booking.get("adults", 0)),
+        "children": int(booking.get("children", 0)),
+        "total_amount": int(booking.get("total_amount", 0)),
+        "currency": "XOF",
+        "expires_at": booking.get("payment_link_expires_at"),
+    }
+
+
+@api.post("/payment-links/{token}/checkout")
+async def payment_link_checkout(token: str):
+    """Public endpoint — creates a FineoPay checkout for a payment-link booking.
+    Returns the same shape as /payments/fineo/checkout so the frontend can
+    redirect the customer.
+    """
+    booking = await db.bookings.find_one({"payment_link_token": token}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Lien de paiement introuvable")
+    exp = booking.get("payment_link_expires_at")
+    if exp:
+        try:
+            if datetime.fromisoformat(exp) < datetime.now(timezone.utc):
+                raise HTTPException(status_code=410, detail="Lien de paiement expiré")
+        except (ValueError, TypeError):
+            pass
+    if booking.get("status") not in ("pending_payment", "pending"):
+        raise HTTPException(status_code=410, detail=f"Réservation déjà {booking.get('status')}")
+
+    # Delegate to the existing FineoPay checkout creator
+    return await fineo_create_checkout(FineoCheckoutBody(booking_id=booking["id"], intent="booking"))
 
 
 # ----- On-site direct payment (no booking) -----

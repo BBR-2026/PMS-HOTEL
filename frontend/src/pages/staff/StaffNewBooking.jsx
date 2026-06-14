@@ -15,8 +15,9 @@ const OFFER_ICONS = {
 
 const PAYMENT_METHODS = [
   { id: "cash", label: "Espèces" },
-  { id: "card", label: "Carte bancaire" },
+  { id: "card", label: "Carte bancaire (sur place)" },
   { id: "mobile_money", label: "Mobile Money" },
+  { id: "online", label: "Paiement en ligne (lien email)" },
 ];
 
 const fmtXOF = (n) => `${new Intl.NumberFormat("fr-FR").format(Math.round(n || 0))} FCFA`;
@@ -180,7 +181,17 @@ export default function StaffNewBooking() {
       };
       if (isEvent) body.event_id = offer._event_id;
       const { data } = await api.post("/staff/bookings", body);
-      toast.success(`Réservation créée · #${data.id.slice(0, 8).toUpperCase()}`);
+      if (data.status === "pending_payment" || data.payment_method === "online") {
+        const recipient = data.email || participants[0]?.email || "le client";
+        toast.success(
+          data.email_sent
+            ? `Lien de paiement envoyé à ${recipient} · #${data.id.slice(0, 8).toUpperCase()}`
+            : `Réservation créée (lien à renvoyer manuellement) · #${data.id.slice(0, 8).toUpperCase()}`,
+          { duration: 6000 },
+        );
+      } else {
+        toast.success(`Réservation créée · #${data.id.slice(0, 8).toUpperCase()}`);
+      }
       navigate("/staff/reservations");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erreur lors de la création");
@@ -204,7 +215,9 @@ export default function StaffNewBooking() {
       <div className="mb-8">
         <div className="text-[0.65rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">Back-office</div>
         <h1 className="font-display-serif text-2xl sm:text-3xl md:text-4xl text-[#0A0A0A]">Nouvelle réservation</h1>
-        <p className="text-sm text-[#0A0A0A]/55 mt-1">Créer une réservation au nom d'un client et générer immédiatement les billets.</p>
+        <p className="text-sm text-[#0A0A0A]/55 mt-1">
+          Créer une réservation au nom d'un client. Selon le moyen de paiement choisi : confirmation immédiate (espèces/carte/mobile money) ou envoi d'un lien sécurisé par email (paiement en ligne).
+        </p>
       </div>
 
       {/* Offer selector */}
@@ -432,6 +445,13 @@ export default function StaffNewBooking() {
                 </button>
               )}
             </div>
+            {paymentMethod === "online" && (
+              <div className="mt-2 p-3 bg-[#B8922A]/8 border-l-2 border-[#B8922A] text-[0.78rem] text-[#0A0A0A]/75 leading-relaxed" data-testid="newbooking-online-notice">
+                Un email avec un lien de paiement sécurisé sera envoyé au contact principal.
+                La réservation reste en attente jusqu'à confirmation du règlement.
+                Le billet QR est envoyé automatiquement après paiement.
+              </div>
+            )}
             {paymentMethod === "deposit" && (
               <div className="flex flex-wrap gap-2 mb-4" data-testid="newbooking-deposit-pcts">
                 {[10, 30, 70].map((pct) => (
@@ -480,7 +500,7 @@ export default function StaffNewBooking() {
                 data-testid="newbooking-submit"
               >
                 {creating ? <Loader2 size={13} className="animate-spin" /> : <ChevronRight size={13} />}
-                Créer la réservation
+                {paymentMethod === "online" ? "Créer & envoyer le lien" : "Créer la réservation"}
               </button>
             </div>
           </div>

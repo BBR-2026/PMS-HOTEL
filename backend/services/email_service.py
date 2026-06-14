@@ -474,6 +474,53 @@ def render_j_plus_1(*, name: str, review_url: Optional[str],
     }
 
 
+def render_payment_link(*, name: str, ref: str, offer_label: str, date_str: str,
+                        boat_time: Optional[str], amount_label: str,
+                        payment_url: str, expires_label: Optional[str] = None) -> dict:
+    """Pending-payment email — sent when staff creates a booking with online
+    payment. Contains a secure link to a public payment page.
+    """
+    greet = _formal_greeting(name)
+    hero = OFFER_HERO_IMAGES.get("pass_day", DEFAULT_HERO)
+    intro = (
+        f"Bonjour {greet}, votre réservation au Boulay Beach Resort a bien été enregistrée "
+        f"par notre équipe. Pour la confirmer définitivement, il vous suffit de régler le solde "
+        f"en ligne en cliquant sur le bouton ci-dessous."
+    )
+    details = (
+        f"Référence : {ref}\n"
+        f"Expérience : {offer_label}\n"
+        f"Date : {date_str}\n"
+        + (f"Embarquement : {boat_time}\n" if boat_time else "")
+        + f"Montant à régler : {amount_label}"
+    )
+    closing = (
+        "Le paiement est sécurisé. Dès la confirmation du règlement, vous recevrez automatiquement "
+        "votre billet QR par email."
+        + (f"\n\nCe lien expire {expires_label}." if expires_label else "")
+    )
+
+    title = "Finaliser votre réservation BBr"
+    html = _render_template(
+        hero_image=hero,
+        title=title,
+        paragraphs=[intro, details, closing],
+        cta_label="Payer maintenant",
+        cta_url=payment_url,
+        preheader=f"Lien sécurisé pour régler votre réservation {ref}",
+    )
+    plain = (
+        f"Bonjour {greet},\n\nVotre réservation a été enregistrée par notre équipe.\n\n"
+        f"{details}\n\nPayer en ligne : {payment_url}\n\n"
+        "Une fois le paiement confirmé, votre billet vous sera envoyé par email."
+    )
+    return {
+        "subject": f"À régler · Votre réservation Boulay Beach Resort {ref}",
+        "html": html,
+        "plain": plain,
+    }
+
+
 # ---------- Sending ----------
 
 async def send_email(db, *, to_email: str, subject: str, html: str, plain: str,

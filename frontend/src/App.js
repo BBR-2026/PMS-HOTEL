@@ -8,6 +8,7 @@ import LandingPage from "./pages/LandingPage";
 import WelcomeLanding from "./pages/WelcomeLanding";
 import BookingTunnel from "./pages/BookingTunnel";
 import FineoResult from "./pages/FineoResult";
+import Pay from "./pages/Pay";
 import StaffNotifications from "./pages/staff/StaffNotifications";
 import StaffCampaigns from "./pages/staff/StaffCampaigns";
 import StaffFeedback from "./pages/staff/StaffFeedback";
@@ -105,6 +106,7 @@ function App() {
               <Route path="/galerie/:albumId" element={<GalleryAlbum />} />
             </Route>
             <Route path="/retour-experience" element={<Feedback />} />
+            <Route path="/pay/:token" element={<Pay />} />
             <Route path="/accueil" element={<Accueil />} />
             <Route path="/accueil/paiement" element={<PaiementHub />} />
             <Route path="/accueil/wifi" element={<WifiPage />} />
