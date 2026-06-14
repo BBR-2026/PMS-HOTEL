@@ -8797,11 +8797,28 @@ async def _send_booking_confirmation_email(booking: dict, temporary: bool = Fals
     except Exception:
         custom_footer_html = None
 
+    # iter-33: include the booking_code and the public companion link when
+    # there are still companion slots open. Skip for cash 'temporary' receipts
+    # since the booking_code is only valid after the payment is confirmed.
+    booking_code = (booking.get("booking_code") or "") if not temporary else ""
+    slots_remaining = max(
+        0,
+        int(booking.get("companion_slots_total") or 0)
+        - int(booking.get("companion_slots_used") or 0),
+    ) if not temporary else 0
+    companion_url = (
+        f"{(os.environ.get('FINEO_PUBLIC_BASE_URL') or '').rstrip('/')}/companion/{booking_code}"
+        if booking_code and slots_remaining > 0 else None
+    )
+
     tpl = email_service.render_booking_confirmation(
         name=name, ref=ref, offer_label=offer_label, date_str=date_str,
         boat_time=boat, amount_label=amount_label, ticket_url=ticket_url,
         offer_type=booking.get("offer_type", ""),
         hero_override=hero_override,
+        booking_code=booking_code or None,
+        companion_url=companion_url,
+        companion_slots_remaining=slots_remaining,
         custom_footer_html=custom_footer_html,
     )
     if temporary:
@@ -10373,12 +10390,26 @@ async def resend_ticket_email(booking_id: str, staff=Depends(get_current_staff))
         )
         if ov and (ov.get("image_url") or "").strip():
             hero_override = ov["image_url"]
+    # iter-33: enrich resend with booking_code + companion link
+    bcode = booking.get("booking_code") or ""
+    slots_remaining = max(
+        0,
+        int(booking.get("companion_slots_total") or 0)
+        - int(booking.get("companion_slots_used") or 0),
+    )
+    companion_url = (
+        f"{(os.environ.get('FINEO_PUBLIC_BASE_URL') or '').rstrip('/')}/companion/{bcode}"
+        if bcode and slots_remaining > 0 else None
+    )
     tpl = email_service.render_booking_confirmation(
         name=name, ref=ref, offer_label=offer_label, date_str=date_str,
         boat_time=booking.get("boat_time"), amount_label=amount_label,
         ticket_url=ticket_url,
         offer_type=booking.get("offer_type", ""),
         hero_override=hero_override,
+        booking_code=bcode or None,
+        companion_url=companion_url,
+        companion_slots_remaining=slots_remaining,
     )
     attachments = []
     try:
@@ -10603,6 +10634,9 @@ async def admin_sendgrid_test(body: dict, staff=Depends(get_current_staff)):
         amount_label=_fmt_xof(50000),
         ticket_url=f"{FINEO_PUBLIC_BASE_URL}/",
         offer_type=offer_type,
+        booking_code="12345",
+        companion_url=f"{FINEO_PUBLIC_BASE_URL}/companion/12345",
+        companion_slots_remaining=2,
     )
     res = await email_service.send_email(
         db, to_email=to_email, subject="[TEST] " + tpl["subject"],

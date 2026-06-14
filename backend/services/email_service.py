@@ -344,12 +344,20 @@ def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
                                 amount_label: str, ticket_url: Optional[str],
                                 offer_type: str = "",
                                 hero_override: str = "",
+                                booking_code: Optional[str] = None,
+                                companion_url: Optional[str] = None,
+                                companion_slots_remaining: int = 0,
                                 custom_footer_html: Optional[str] = None) -> dict:
     """Confirmation de paiement (envoyée après webhook FineoPay).
 
     ``hero_override`` lets the caller force a specific image URL — used to
     surface the actual offer/event image instead of the static default
     (special events were rendering with the Sunset photo otherwise).
+
+    iter-33: when the booking has accompanying adults to register
+    (``companion_slots_remaining > 0``), we surface the 5-digit ``booking_code``
+    and the public ``/companion/{code}`` link so the booker can share both with
+    the rest of the group.
     """
     greet = _formal_greeting(name)
     hero = (hero_override or "").strip() or OFFER_HERO_IMAGES.get(offer_type, DEFAULT_HERO)
@@ -359,36 +367,84 @@ def render_booking_confirmation(*, name: str, ref: str, offer_label: str,
         f"l'expérience {offer_label} au Boulay Beach Resort. Votre billet QR est en pièce jointe "
         f"et accessible via le bouton ci-dessous."
     )
-    details = (
-        f"Référence : {ref}\n"
-        f"Date : {date_str}\n"
-        + (f"Embarquement : {boat_time}\n" if boat_time else "")
-        + f"Total réglé : {amount_label}"
-    )
+    details_lines = [
+        f"Référence : {ref}",
+        f"Date : {date_str}",
+    ]
+    if boat_time:
+        details_lines.append(f"Embarquement : {boat_time}")
+    details_lines.append(f"Total réglé : {amount_label}")
+    if booking_code and companion_slots_remaining > 0:
+        details_lines.append("")
+        details_lines.append(f"Code de réservation : {booking_code}")
+        details_lines.append(
+            f"Adultes à enregistrer : {companion_slots_remaining}"
+        )
+    details = "\n".join(details_lines)
     closing = (
         "Présentez simplement votre QR à l'embarquement. Arrivez 30 minutes avant l'horaire de départ. "
         "Maillot, lunettes et crème solaire sont les bienvenus."
     )
 
+    # Extra paragraph + footer block for the companion link, only when needed.
+    paragraphs = [intro, details, closing]
+    extra_footer = ""
+    if booking_code and companion_url and companion_slots_remaining > 0:
+        plural = "s" if companion_slots_remaining > 1 else ""
+        companion_intro = (
+            f"Vous voyagez avec d'autres adultes ? Il vous reste "
+            f"<strong>{companion_slots_remaining} place{plural}</strong> à enregistrer. "
+            f"Partagez-leur ce lien — ils renseigneront leur nom, leur téléphone et le code "
+            f"<strong>{booking_code}</strong> pour recevoir leur propre billet QR."
+        )
+        paragraphs.append(companion_intro)
+        extra_footer = (
+            f'<p style="margin:0 0 8px 0;font:600 11px/1.6 Arial,sans-serif;'
+            f'letter-spacing:0.22em;text-transform:uppercase;color:#B8922A">'
+            f"Enregistrement des passagers</p>"
+            f'<p style="margin:0 0 4px 0;font:14px/1.6 Arial,sans-serif;color:#0A0A0A">'
+            f'Code à partager : <span style="font-family:monospace;font-size:18px;'
+            f'letter-spacing:4px;color:#B8922A;font-weight:600">{booking_code}</span></p>'
+            f'<p style="margin:0;font:13px/1.5 Arial,sans-serif;color:#0A0A0A">'
+            f'<a href="{companion_url}" '
+            f'style="color:#B8922A;text-decoration:underline">{companion_url}</a></p>'
+        )
+
     title = "Votre escapade BBr est confirmée"
     html = _render_template(
         hero_image=hero,
         title=title,
-        paragraphs=[intro, details, closing],
+        paragraphs=paragraphs,
         cta_label="Voir mon billet",
         cta_url=ticket_url or BBR_WEBSITE_URL,
         preheader=f"Confirmation de votre réservation {ref}",
-        custom_footer_html=custom_footer_html,
+        custom_footer_html=(custom_footer_html or "") + extra_footer,
     )
 
-    plain = (
-        f"Bonjour {greet},\n\nVotre réservation est confirmée.\n\n"
-        f"Expérience : {offer_label}\nRéférence : {ref}\nDate : {date_str}\n"
-        + (f"Embarquement : {boat_time}\n" if boat_time else "")
-        + f"Total réglé : {amount_label}\n\n"
-        + (f"Voir mon billet : {ticket_url}\n\n" if ticket_url else "")
-        + "Présentez votre QR à l'embarquement. À très bientôt sur l'île — BBr"
-    )
+    plain_lines = [
+        f"Bonjour {greet},",
+        "",
+        "Votre réservation est confirmée.",
+        "",
+        f"Expérience : {offer_label}",
+        f"Référence : {ref}",
+        f"Date : {date_str}",
+    ]
+    if boat_time:
+        plain_lines.append(f"Embarquement : {boat_time}")
+    plain_lines.append(f"Total réglé : {amount_label}")
+    if ticket_url:
+        plain_lines += ["", f"Voir mon billet : {ticket_url}"]
+    if booking_code and companion_url and companion_slots_remaining > 0:
+        plain_lines += [
+            "",
+            "── Autres passagers ──",
+            f"Code de réservation : {booking_code}",
+            f"Lien à partager ({companion_slots_remaining} place(s) restantes) :",
+            companion_url,
+        ]
+    plain_lines += ["", "Présentez votre QR à l'embarquement. À très bientôt sur l'île — BBr"]
+    plain = "\n".join(plain_lines)
 
     return {
         "subject": f"Votre billet Boulay Beach Resort — {offer_label} · {date_str}",
