@@ -3711,7 +3711,7 @@ async def staff_list_charters(
             "name": 1, "email": 1, "phone": 1, "offer_type": 1, "participants": 1,
             "created_at": 1,
         },
-    ).sort("date", -1).to_list(length=500)
+    ).sort([("created_at", -1), ("date", -1)]).to_list(length=500)
 
     # Resolve a clean customer name (some legacy bookings have no top-level "name")
     for b in items:
@@ -3817,7 +3817,7 @@ async def staff_dashboard(staff=Depends(get_current_staff)):
             except Exception:
                 pass
 
-    unpaid = await db.bookings.find({"status": "pending"}, {"_id": 0, "id": 1, "offer_name": 1, "total_amount": 1, "phone": 1, "date": 1}).limit(20).to_list(length=20)
+    unpaid = await db.bookings.find({"status": "pending"}, {"_id": 0, "id": 1, "offer_name": 1, "total_amount": 1, "phone": 1, "date": 1, "created_at": 1}).sort("created_at", -1).limit(20).to_list(length=20)
 
     # Pôle breakdown — counts + revenue today + last 30 days
     pole_counts_today: dict = {pid: {"count": 0, "guests": 0, "revenue": 0} for pid in POLES}
@@ -5607,10 +5607,12 @@ async def list_bookings(
             {"participants.name": {"$regex": s, "$options": "i"}},
             {"participants.surname": {"$regex": s, "$options": "i"}},
         ])
+    # iter-32: Sort strictly by creation time DESC so the freshest booking is
+    # always on top (user request: see latest reservations without scrolling).
     cursor = db.bookings.find(
         q,
         {"_id": 0, "reference_token": 0, "qr_codes.qr_code": 0, "qr_codes.qr_payload": 0, "qr_codes.ticket_image": 0},
-    ).sort([("date", -1), ("created_at", -1)]).limit(limit)
+    ).sort([("created_at", -1), ("date", -1)]).limit(limit)
     items = await cursor.to_list(length=limit)
     return items
 

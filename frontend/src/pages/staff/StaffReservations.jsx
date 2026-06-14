@@ -110,7 +110,11 @@ function BookingsList({ bookings, onOpen }) {
     return <p className="text-sm text-[#0A0A0A]/45 py-12 text-center">Aucune réservation pour ces filtres.</p>;
   }
   return (
-    <table className="w-full text-sm" data-testid="bookings-table">
+    <div data-testid="bookings-list-wrap">
+      <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/45 px-3 pb-2 flex items-center gap-1.5">
+        ↓ Tri : du plus récent au plus ancien
+      </div>
+      <table className="w-full text-sm" data-testid="bookings-table">
       <thead>
         <tr className="text-left text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/10">
           <th className="py-3 px-3">Date</th>
@@ -164,6 +168,7 @@ function BookingsList({ bookings, onOpen }) {
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 
