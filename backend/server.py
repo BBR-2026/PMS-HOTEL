@@ -9,6 +9,7 @@ import logging
 import urllib.request
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+import secrets
 from typing import List, Optional, Literal
 
 import jwt
@@ -413,6 +414,11 @@ class BookingCreate(BaseModel):
     rooms: int = Field(default=1, ge=1, le=20)
     adults: int = Field(ge=0, le=20)
     children: int = Field(ge=0, le=20)
+    # NEW (iter-30) — distinguishes children 6–12 (billed at child rate) vs <6 (free).
+    # Backward compat: if a client still sends only `children`, the create
+    # endpoint maps it to `children_paid` (legacy behaviour preserved).
+    children_paid: Optional[int] = Field(default=None, ge=0, le=20)
+    children_free: Optional[int] = Field(default=None, ge=0, le=20)
     boat_time: str
     return_boat_time: Optional[str] = None  # required for overnight stays (departure from resort on checkout day)
     participants: List[Participant]
@@ -2166,6 +2172,16 @@ async def create_booking(body: BookingCreate):
                 detail=f"Selected date is not available for {body.offer_type}. Allowed days: {', '.join(allowed_names)}",
             )
 
+    # ---- iter-30: normalize children_paid / children_free up-front.
+    # Backward compat: when the caller only sends `children`, treat it as paid.
+    if body.children_paid is not None or body.children_free is not None:
+        children_paid_n = int(body.children_paid or 0)
+        children_free_n = int(body.children_free or 0)
+        body.children = children_paid_n + children_free_n
+    else:
+        children_paid_n = int(body.children)
+        children_free_n = 0
+
     total_guests = body.adults + body.children
     if total_guests <= 0:
         raise HTTPException(status_code=400, detail="At least one guest required")
@@ -2220,6 +2236,18 @@ async def create_booking(body: BookingCreate):
 
     bid = str(uuid.uuid4())
     reference_token = uuid.uuid4().hex
+
+    # ---- iter-30: 5-digit numeric booking_code, unique across active bookings.
+    # Used by accompanying adults to register themselves via /companion/{code}.
+    booking_code = None
+    for _ in range(20):  # bounded retries; collision probability ~0
+        candidate = "".join(secrets.choice("0123456789") for _ in range(5))
+        if not await db.bookings.find_one({"booking_code": candidate}, {"_id": 1}):
+            booking_code = candidate
+            break
+    if not booking_code:
+        booking_code = "".join(secrets.choice("0123456789") for _ in range(6))
+
     is_overnight = bool(offer.get("is_overnight"))
     room_tiers = offer.get("room_tiers") or []
     selected_tier = None
@@ -2289,7 +2317,7 @@ async def create_booking(body: BookingCreate):
                     night += timedelta(days=1)
             total = nights * body.rooms * selected_tier["price"]
         else:
-            total = nights * (body.adults * offer["price_adult"] + body.children * offer["price_child"])
+            total = nights * (body.adults * offer["price_adult"] + children_paid_n * offer["price_child"])
     else:
         # When a special event uses packages, the per-day base price is
         # IGNORED — each package is billed as a flat forfait, and the base
@@ -2298,7 +2326,7 @@ async def create_booking(body: BookingCreate):
         if uses_packages:
             total = 0
         else:
-            total = body.adults * offer["price_adult"] + body.children * offer["price_child"]
+            total = body.adults * offer["price_adult"] + children_paid_n * offer["price_child"]
         # Multi-day special event with cumulative pricing: sum each selected
         # date's per-day prices (resolved from the event programme). The
         # primary `body.date` price is already in `total` above (offer was
@@ -2317,7 +2345,7 @@ async def create_booking(body: BookingCreate):
                     item = prog.get(d) or {}
                     pa = int(item.get("price_adult", (ev_doc or {}).get("price_adult", offer["price_adult"])))
                     pc = int(item.get("price_child", (ev_doc or {}).get("price_child", offer["price_child"])))
-                    total += body.adults * pa + body.children * pc
+                    total += body.adults * pa + children_paid_n * pc
                     # Capacity guard for the extra date
                     extra_booked = 0
                     async for b in db.bookings.find(
@@ -2523,6 +2551,13 @@ async def create_booking(body: BookingCreate):
         "rooms": body.rooms,
         "adults": body.adults,
         "children": body.children,
+        # iter-30: explicit split — children_paid (6–12, billed) vs children_free (<6, gratuit).
+        "children_paid": children_paid_n,
+        "children_free": children_free_n,
+        # iter-30: 5-digit code shared with accompanying adults.
+        "booking_code": booking_code,
+        "companion_slots_total": max(0, int(body.adults) - 1),
+        "companion_slots_used": 0,
         "total_amount": total,
         "status": "pending",
         "qr_codes": [],
@@ -2628,10 +2663,18 @@ async def pay_booking(booking_id: str, body: PayBooking):
     ticket_dates: list = list(booking.get("multi_day_dates") or []) or [booking["date"]]
     is_passport = len(ticket_dates) > 1
     primary_date = ticket_dates[0]
-    for adult_i, p in enumerate(adult_participants, start=1):
+
+    # iter-30: only the BOOKER gets a QR ticket at payment time. Other adults
+    # register themselves via /companion/{booking_code} and receive their own
+    # QR + ticket email at that moment. Children remain attached to the
+    # booker's pass and never get a dedicated QR.
+    children_paid_n = int(booking.get("children_paid") or 0)
+    children_free_n = int(booking.get("children_free") or 0)
+    booker_adults_only = adult_participants[:1]
+    for adult_i, p in enumerate(booker_adults_only, start=1):
         token = uuid.uuid4().hex
         is_booker = adult_i == 1
-        # Booker gets a richer label that mentions the children he/she is carrying.
+        # Booker gets a rich label that mentions the children he/she is carrying.
         passport_suffix = " · Passeport multi-dates" if is_passport else ""
         if is_booker and children_count > 0:
             label_fr = f"Réservant · +{children_count} enfant{'s' if children_count > 1 else ''}{passport_suffix}"
@@ -2680,6 +2723,12 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "qr_payload": payload_str,
             "qr_code": make_qr(compact_qr, styled=styled_qr),
             "children_attached": children_count if is_booker else 0,
+            # iter-30: explicit composition shown on scan & manifest.
+            "composition": {
+                "adults": 1,
+                "children_paid": children_paid_n if is_booker else 0,
+                "children_free": children_free_n if is_booker else 0,
+            } if is_booker else None,
         }
         if styled_qr:
             entry["ticket_image"] = make_ticket_image(
@@ -5201,6 +5250,9 @@ async def scan_qr(qr_token: str, staff=Depends(get_current_staff)):
         "guest_phone": guest.get("guest_phone") if guest else "",
         "guest_email": guest.get("guest_email") if guest else "",
         "guest_label_fr": guest.get("label_fr") if guest else "",
+        # iter-30: full party composition attached to this pass (adults + children breakdown)
+        "composition": (guest or {}).get("composition"),
+        "booking_code": booking.get("booking_code"),
         "qr_token": real_token,
         "scans": scans,
         "scan_count": len(scans),
@@ -9523,6 +9575,180 @@ async def payment_link_checkout(token: str):
 
     # Delegate to the existing FineoPay checkout creator
     return await fineo_create_checkout(FineoCheckoutBody(booking_id=booking["id"], intent="booking"))
+
+
+# ===== Companion-link endpoints (iter-30) =====
+# Allow the other adult passengers of a confirmed booking to register
+# themselves with just their name + phone (+ optional email) and the 5-digit
+# booking_code shared by the booker. Each registration creates one extra QR
+# ticket on the booking and emails it to the new adult.
+
+class CompanionRegisterBody(BaseModel):
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    phone: str = Field(min_length=4, max_length=40)
+    email: Optional[str] = Field(default=None, max_length=120)
+    nationality: Optional[str] = Field(default=None, max_length=80)
+
+
+def _companion_summary(booking: dict) -> dict:
+    """Public shape returned by the lookup endpoint — no PII besides what the
+    user already knows from sharing the booking code."""
+    used = int(booking.get("companion_slots_used") or 0)
+    total = int(booking.get("companion_slots_total") or 0)
+    return {
+        "booking_id": booking["id"],
+        "ref": booking["id"][:8].upper(),
+        "booking_code": booking.get("booking_code"),
+        "offer_type": booking.get("offer_type"),
+        "offer_label": booking.get("offer_name"),
+        "date": booking.get("date"),
+        "boat_time": booking.get("boat_time"),
+        "booker_name": f"{((booking.get('participants') or [{}])[0].get('name','') or '').strip()} "
+                       f"{((booking.get('participants') or [{}])[0].get('surname','') or '').strip()}".strip(),
+        "slots_total": total,
+        "slots_used": used,
+        "slots_remaining": max(0, total - used),
+        "status": booking.get("status"),
+        "closed": used >= total or booking.get("status") in ("cancelled", "completed"),
+    }
+
+
+@api.get("/companion/{code}")
+async def companion_lookup(code: str):
+    """Public — resolve a 5-digit code to a booking summary + remaining slots."""
+    code = (code or "").strip()
+    if not code.isdigit() or len(code) < 4:
+        raise HTTPException(status_code=400, detail="Code de réservation invalide")
+    booking = await db.bookings.find_one(
+        {"booking_code": code, "status": {"$in": ["confirmed", "completed", "arrived"]}},
+        {"_id": 0, "qr_codes": 0, "wallet_history": 0},
+    )
+    if not booking:
+        raise HTTPException(status_code=404, detail="Code introuvable ou réservation non confirmée")
+    return _companion_summary(booking)
+
+
+@api.post("/companion/{code}/register")
+async def companion_register(code: str, body: CompanionRegisterBody):
+    """Public — register an additional adult on a confirmed booking, generating
+    a styled QR ticket and emailing it (best-effort).
+    """
+    code = (code or "").strip()
+    booking = await db.bookings.find_one(
+        {"booking_code": code, "status": {"$in": ["confirmed", "completed", "arrived"]}},
+        {"_id": 0},
+    )
+    if not booking:
+        raise HTTPException(status_code=404, detail="Code introuvable")
+    used = int(booking.get("companion_slots_used") or 0)
+    total = int(booking.get("companion_slots_total") or 0)
+    if used >= total:
+        raise HTTPException(status_code=410, detail="Tous les passagers prévus sont déjà enregistrés")
+
+    # Build the new participant doc
+    participants = list(booking.get("participants") or [])
+    new_index = sum(1 for p in participants if p.get("kind", "adult") == "adult") + 1
+    new_part = {
+        "name": body.first_name.strip(),
+        "surname": body.last_name.strip(),
+        "email": (body.email or "").strip(),
+        "phone": body.phone.strip(),
+        "nationality": (body.nationality or (participants[0] or {}).get("nationality") or "—"),
+        "kind": "adult",
+    }
+
+    # Resolve offer to build the ticket image
+    if booking["offer_type"] == "special_event":
+        offer = await _resolve_special_event_offer(booking.get("special_event_id") or "", booking.get("date"))
+    else:
+        offer = OFFERS.get(booking["offer_type"], {"name_fr": booking["offer_type"]})
+
+    ticket_dates = list(booking.get("multi_day_dates") or []) or [booking.get("date")]
+    is_passport = len(ticket_dates) > 1
+    primary_date = ticket_dates[0]
+    token = uuid.uuid4().hex
+    label_fr = f"Adulte #{new_index}"
+    compact_qr = json.dumps(
+        {"type": "ticket", "token": token, "ref": booking["id"][:8].upper()},
+        ensure_ascii=False, separators=(",", ":"),
+    )
+    token_short = token[:10].upper()
+    entry = {
+        "label_fr": label_fr, "label_en": f"Adult #{new_index}",
+        "kind": "adult", "event_date": primary_date,
+        "valid_dates": ticket_dates, "is_passport": is_passport,
+        "guest_name": new_part["name"], "guest_surname": new_part["surname"],
+        "guest_email": new_part["email"] or booking.get("email", ""),
+        "guest_phone": new_part["phone"], "guest_nationality": new_part["nationality"],
+        "qr_token": token, "qr_payload": compact_qr,
+        "qr_code": make_qr(compact_qr, styled=True),
+        "children_attached": 0, "companion_added_at": now_iso(),
+    }
+    try:
+        entry["ticket_image"] = make_ticket_image(
+            offer_id=booking["offer_type"], offer_name=offer.get("name_fr", booking["offer_type"]),
+            date_iso=primary_date, boat_time=booking.get("boat_time", ""),
+            owner_name=f"{new_part['name']} {new_part['surname']}",
+            qr_payload=compact_qr, ref_code=token_short, lang="fr",
+            hero_url=offer.get("image_url") or None,
+            dates_list=ticket_dates if is_passport else None,
+        )
+    except Exception as _e:
+        logger.warning("Companion ticket image build failed for %s: %s", booking["id"], _e)
+
+    # Persist the new participant + QR + bump slot counter atomically
+    await db.bookings.update_one(
+        {"id": booking["id"], "companion_slots_used": used},
+        {
+            "$push": {"participants": new_part, "qr_codes": entry},
+            "$inc": {"companion_slots_used": 1, "adults_registered": 1},
+        },
+    )
+    # Reload for latest counts
+    booking = await db.bookings.find_one({"id": booking["id"]}, {"_id": 0})
+
+    # Best-effort email with the ticket attached
+    email_sent = False
+    if (body.email or "").strip():
+        try:
+            from services import email_service as _es  # type: ignore
+            html_body = (
+                f"<p>Bonjour {new_part['name']},</p>"
+                f"<p>Vous êtes maintenant enregistré·e sur la réservation "
+                f"<strong>{booking['id'][:8].upper()}</strong> de {booking.get('name','')} "
+                f"au Boulay Beach Resort.</p>"
+                f"<p>Conservez ce QR : il vous sera demandé au moment de l'embarquement.</p>"
+            )
+            res = await _es.send_email(
+                db,
+                to_email=body.email.strip(),
+                subject=f"Votre billet BBR · {booking['id'][:8].upper()}",
+                html=html_body,
+                plain=f"Votre billet BBR · réf {booking['id'][:8].upper()} · {new_part['name']} {new_part['surname']}.",
+                purpose="companion_ticket",
+                booking_id=booking["id"],
+                to_name=f"{new_part['name']} {new_part['surname']}",
+                attachments=[{
+                    "filename": f"BBR-ticket-{token_short}.png",
+                    "content_b64": entry.get("ticket_image", "").split(",", 1)[-1] if entry.get("ticket_image") else "",
+                    "mime": "image/png",
+                }] if entry.get("ticket_image") else None,
+            )
+            email_sent = bool(res.get("ok"))
+        except Exception as ex:
+            logger.warning("Companion ticket email failed: %s", ex)
+
+    return {
+        **_companion_summary(booking),
+        "registered": {
+            "guest_name": new_part["name"],
+            "guest_surname": new_part["surname"],
+            "qr_token": token,
+            "ticket_image": entry.get("ticket_image"),
+            "email_sent": email_sent,
+        },
+    }
 
 
 # ----- On-site direct payment (no booking) -----
