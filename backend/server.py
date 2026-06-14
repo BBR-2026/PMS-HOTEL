@@ -823,195 +823,322 @@ def _format_dates_list(dates_iso: List[str], lang: str = "fr") -> str:
 
 
 def make_ticket_image(
-    offer_id: str,
-    offer_name: str,
-    date_iso: str,
-    boat_time: str,
-    owner_name: str,
-    qr_payload: str,
-    ref_code: str,
-    lang: str = "fr",
-    hero_url: Optional[str] = None,
+    offer_id: str, offer_name: str, date_iso: str, boat_time: str,
+    owner_name: str, qr_payload: str, ref_code: str,
+    lang: str = "fr", hero_url: Optional[str] = None,
     dates_list: Optional[List[str]] = None,
-    *,
-    party_size: Optional[int] = None,
-    composition: Optional[dict] = None,
+    *, party_size: Optional[int] = None, composition: Optional[dict] = None,
 ) -> str:
-    """Render a luxury 9:16 portrait ticket (1080×1920) as base64 PNG.
+    """Iter-40 — Premium image-forward boarding pass (1080×1920, 9:16).
 
-    Iter-38 — premium redesign:
-      • Solid dark background with subtle gold accents (no busy hero photo).
-      • Large BBR logo at top (centered, ~280px tall).
-      • Big high-resolution QR at the visual center (~700px square, gold modules)
-        so it scans instantly even after WhatsApp compression.
-      • Aerated details block: name · reference · date · composition.
-      • Brand signature "Life is Here" at the bottom.
+    Layout:
+      • Top hero image (full-width, ~46% of card height) showcasing the offer.
+      • White card body with offer title, passenger, date/time, party, venue.
+      • Side notches + dashed perforation (true ticket feel).
+      • Classic BLACK QR code on white at the bottom for max scan reliability.
+      • Subtle gold accent line + booking reference footer.
     """
-    W, H = 1080, 1920
-    GOLD = (184, 146, 42)         # #B8922A — brand gold
-    GOLD_SOFT = (212, 178, 90)
-    DARK = (10, 10, 10)
-    CREAM = (250, 247, 242)
-    MUTED = (160, 160, 160)
-    WHITE = (255, 255, 255)
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter
+    import io
+    import base64
+    import qrcode
 
-    img = Image.new("RGB", (W, H), DARK)
+    W, H = 1080, 1920
+    BG = (12, 14, 18)              # near-black device backdrop
+    CARD = (255, 255, 255)
+    INK = (15, 18, 22)
+    SUB = (95, 102, 112)
+    GOLD = (184, 146, 42)
+    GOLD_SOFT = (212, 178, 86)
+    DIVIDER = (220, 222, 226)
+
+    img = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
 
-    # Subtle gold inner border + outer breathing room
-    PAD = 60
-    draw.rectangle([PAD, PAD, W - PAD, H - PAD], outline=GOLD, width=2)
-    draw.rectangle([PAD + 14, PAD + 14, W - PAD - 14, H - PAD - 14], outline=(40, 40, 40), width=1)
-
-    # ---- Fonts ----
-    def font(size, bold=False):
-        candidates = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
-        for p in candidates:
-            try:
-                return ImageFont.truetype(p, size)
-            except Exception:
-                continue
-        return ImageFont.load_default()
-
-    f_brand = font(34, bold=True)
-    f_title = font(54, bold=True)
-    f_kicker = font(22, bold=True)
-    f_label = font(22)
-    f_value = font(34, bold=True)
-    f_ref = font(40, bold=True)
-    f_msg = font(26)
-    f_signature_main = font(42, bold=True)
-    f_signature_small = font(20)
-
-    def center_text(y, text, fnt, fill):
-        bb = draw.textbbox((0, 0), text, font=fnt)
-        tw = bb[2] - bb[0]
-        draw.text(((W - tw) / 2 - bb[0], y), text, fill=fill, font=fnt)
-        return bb[3] - bb[1]
-
-    # ---- Header logo ----
-    logo = _fetch_logo()
-    y = 100
-    if logo is not None:
-        target_h = 200
-        ratio = target_h / logo.height
-        target_w = int(logo.width * ratio)
-        if target_w > W - 200:
-            target_w = W - 200
-            target_h = int(logo.height * (target_w / logo.width))
-        resized = logo.resize((target_w, target_h))
-        # Place logo on a soft cream rounded patch for contrast on dark bg
-        img.paste(resized, ((W - target_w) // 2, y), resized)
-        y += target_h + 25
-    else:
-        center_text(y, "BOULAY BEACH RESORT", f_brand, GOLD)
-        y += 60
-
-    center_text(y, "PASS D\'EMBARQUEMENT", f_kicker, GOLD_SOFT)
-    y += 50
-
-    # Thin gold divider
-    draw.line([(W * 0.32, y), (W * 0.68, y)], fill=GOLD, width=2)
-    y += 70
-
-    # ---- QR Code (BIG, premium) ----
-    qr = qrcode.QRCode(
-        version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
-        box_size=20,
-        border=2,
-    )
-    qr.add_data(qr_payload)
-    qr.make(fit=True)
+    # ---- Background glow (subtle radial via blurred ellipse) ----
     try:
-        from qrcode.image.styledpil import StyledPilImage
-        from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
-        from qrcode.image.styles.colormasks import SolidFillColorMask
-        qr_img = qr.make_image(
-            image_factory=StyledPilImage,
-            module_drawer=RoundedModuleDrawer(),
-            color_mask=SolidFillColorMask(back_color=WHITE, front_color=GOLD),
-        ).convert("RGB")
+        glow = Image.new("RGB", (W, H), BG)
+        gd = ImageDraw.Draw(glow)
+        gd.ellipse((-300, -400, W + 300, 700), fill=(60, 48, 22))
+        glow = glow.filter(ImageFilter.GaussianBlur(180))
+        img = Image.blend(img, glow, 0.55)
+        draw = ImageDraw.Draw(img)
     except Exception:
-        qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        pass
 
-    QR_SIZE = 700
-    qr_img = qr_img.resize((QR_SIZE, QR_SIZE), Image.LANCZOS)
-    qr_x = (W - QR_SIZE) // 2
-    # Cream padding around the QR so the gold reads well on the dark canvas
-    pad = 30
-    draw.rectangle(
-        [qr_x - pad, y - pad, qr_x + QR_SIZE + pad, y + QR_SIZE + pad],
-        fill=CREAM, outline=GOLD, width=3,
-    )
-    img.paste(qr_img, (qr_x, y))
-    y += QR_SIZE + pad + 40
+    # Card geometry
+    CX, CY = 60, 150
+    CW, CH = W - 120, H - 240
+    R = 36
 
-    # ---- Reference (large monospace-style code) ----
-    ref_text = f"RÉF · {ref_code}"
-    center_text(y, ref_text, f_ref, GOLD)
-    y += 60
+    def font(sz, bold=False):
+        path = ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold
+                else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+        try:
+            return ImageFont.truetype(path, sz)
+        except Exception:
+            return ImageFont.load_default()
 
-    # ---- Owner name ----
-    name_text = (owner_name or "").strip().upper()
-    if name_text:
-        center_text(y, name_text, f_title, CREAM)
-        y += 75
+    f_brand  = font(30, bold=True)
+    f_kicker = font(24, bold=True)
+    f_label  = font(22)
+    f_title  = font(58, bold=True)
+    f_title_sm = font(46, bold=True)
+    f_value  = font(34, bold=True)
+    f_small  = font(26)
+    f_mono   = font(30, bold=True)
 
-    # ---- Details (date + composition) ----
-    # Date (first valid date if multi-day passport)
+    def round_rect(xy, radius, fill, outline=None, width=1):
+        draw.rounded_rectangle(xy, radius=radius, fill=fill,
+                               outline=outline, width=width)
+
+    # ---- Top brand strip (above card) ----
+    brand_y = 70
+    draw.text((CX + 10, brand_y), "BOULAY BEACH RESORT",
+              fill=(245, 235, 210), font=f_brand)
+    # Right side: "BOARDING PASS" kicker
+    bp_text = "BOARDING PASS" if lang != "fr" else "PASS D'EMBARQUEMENT"
+    bb = draw.textbbox((0, 0), bp_text, font=f_kicker)
+    draw.text((CX + CW - (bb[2] - bb[0]) - 10, brand_y + 3),
+              bp_text, fill=GOLD_SOFT, font=f_kicker)
+
+    # ---- Card base (white rounded) ----
+    round_rect((CX, CY, CX + CW, CY + CH), R, CARD)
+
+    # ---- Hero image (top of card) ----
+    HERO_H = 760
+
+    # Build hero with rounded top corners
+    hero_layer = None
+    # Use the dedicated cached fetcher which also handles OFFER_HERO_URLS
+    # fallback per offer_id (so a static offer like sunset/brunch always shows
+    # its branded image even when no per-event image_url is provided).
+    src_img = _fetch_hero(offer_id, hero_url=hero_url)
+    if src_img is not None:
+        try:
+            hero = src_img.convert("RGB")
+            target_w, target_h = CW, HERO_H
+            src_ratio = hero.width / hero.height
+            tgt_ratio = target_w / target_h
+            if src_ratio > tgt_ratio:
+                # too wide → crop sides
+                new_w = int(hero.height * tgt_ratio)
+                lx = (hero.width - new_w) // 2
+                hero = hero.crop((lx, 0, lx + new_w, hero.height))
+            else:
+                # too tall → crop top/bottom
+                new_h = int(hero.width / tgt_ratio)
+                t = (hero.height - new_h) // 2
+                hero = hero.crop((0, t, hero.width, t + new_h))
+            hero = hero.resize((target_w, target_h), Image.LANCZOS)
+            hero_layer = hero
+        except Exception:
+            hero_layer = None
+
+    if hero_layer is None:
+        # gradient fallback (gold to dark)
+        hero_layer = Image.new("RGB", (CW, HERO_H), (40, 36, 28))
+        gd = ImageDraw.Draw(hero_layer)
+        for i in range(HERO_H):
+            t = i / HERO_H
+            c = (int(64 + (184 - 64) * (1 - t)),
+                 int(48 + (146 - 48) * (1 - t)),
+                 int(20 + (42 - 20) * (1 - t)))
+            gd.line([(0, i), (CW, i)], fill=c)
+        gd.text((CW // 2 - 80, HERO_H // 2 - 30), "BBR", fill=(245, 235, 210),
+                font=font(120, bold=True))
+
+    # Paste hero with rounded top corners (bottom stays straight for the
+    # divider to feel like a real ticket cut)
+    mask = Image.new("L", (CW, HERO_H), 0)
+    md = ImageDraw.Draw(mask)
+    md.rounded_rectangle((0, 0, CW, HERO_H), R, fill=255)
+    # square off bottom corners so the perforation looks crisp
+    md.rectangle((0, HERO_H - R, CW, HERO_H), fill=255)
+    img.paste(hero_layer, (CX, CY), mask)
+
+    # Dark overlay at bottom of hero for text legibility (gradient)
     try:
-        primary = (dates_list or [date_iso])[0]
-        d_obj = datetime.fromisoformat(primary)
-        date_label = d_obj.strftime("%d/%m/%Y")
-        weekday_fr = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"][d_obj.weekday()]
-        date_full = f"{weekday_fr.capitalize()} {date_label}"
+        overlay = Image.new("RGBA", (CW, HERO_H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        for i in range(HERO_H):
+            # transparent at top, ~80% black at bottom
+            a = max(0, int(220 * (i / HERO_H) ** 3))
+            od.line([(0, i), (CW, i)], fill=(0, 0, 0, a))
+        img.paste(overlay, (CX, CY), overlay)
     except Exception:
-        date_full = date_iso or ""
+        pass
 
-    if date_full:
-        center_text(y, date_full, f_value, GOLD_SOFT)
-        y += 50
+    # Offer title over the hero (bottom-left)
+    title_lines = []
+    words = (offer_name or "Réservation BBR").split()
+    line = ""
+    available_w = CW - 80
+    use_font = f_title
+    for w in words:
+        test = (line + " " + w).strip()
+        bb = draw.textbbox((0, 0), test, font=use_font)
+        if bb[2] - bb[0] > available_w:
+            title_lines.append(line)
+            line = w
+        else:
+            line = test
+    if line:
+        title_lines.append(line)
+    if len(title_lines) > 2:
+        # reflow with smaller font
+        title_lines = []
+        line = ""
+        use_font = f_title_sm
+        for w in words:
+            test = (line + " " + w).strip()
+            bb = draw.textbbox((0, 0), test, font=use_font)
+            if bb[2] - bb[0] > available_w:
+                title_lines.append(line)
+                line = w
+            else:
+                line = test
+        if line:
+            title_lines.append(line)
+        title_lines = title_lines[:3]
 
-    # Composition pill (adults + children breakdown)
-    comp_parts = []
+    # Gold kicker above the title
+    kicker = "OFFRE RÉSERVÉE" if lang == "fr" else "BOOKED EXPERIENCE"
+    line_h = 70 if use_font is f_title else 56
+    tt_h = line_h * len(title_lines)
+    tt_start_y = CY + HERO_H - 60 - tt_h
+    draw.text((CX + 40, tt_start_y - 36), kicker, fill=GOLD_SOFT, font=f_kicker)
+    ty = tt_start_y
+    for ln in title_lines:
+        draw.text((CX + 40, ty), ln, fill=(255, 255, 255), font=use_font)
+        ty += line_h
+
+    # ---- Perforation row (between hero and info) ----
+    PERF_Y = CY + HERO_H
+    notch_r = 36
+    # Erase ellipses into BG to simulate cutouts
+    draw.ellipse((CX - notch_r, PERF_Y - notch_r,
+                  CX + notch_r, PERF_Y + notch_r), fill=BG)
+    draw.ellipse((CX + CW - notch_r, PERF_Y - notch_r,
+                  CX + CW + notch_r, PERF_Y + notch_r), fill=BG)
+    # Dashed perforation line
+    x = CX + notch_r + 18
+    while x < CX + CW - notch_r - 18:
+        draw.line([(x, PERF_Y), (x + 18, PERF_Y)], fill=DIVIDER, width=3)
+        x += 32
+
+    # ---- Info block (between perforation and QR) ----
+    INFO_PAD = 56
+    info_top = PERF_Y + 36
+
+    # Passenger row (full width)
+    draw.text((CX + INFO_PAD, info_top), "PASSAGER" if lang == "fr" else "PASSENGER",
+              fill=SUB, font=f_label)
+    draw.text((CX + INFO_PAD, info_top + 32), (owner_name or "—"),
+              fill=INK, font=f_value)
+
+    # Thin gold accent under passenger
+    accent_y = info_top + 96
+    draw.line([(CX + INFO_PAD, accent_y),
+               (CX + INFO_PAD + 80, accent_y)], fill=GOLD, width=3)
+
+    # 2-column grid: Date / Embarquement, Convives / Lieu
+    grid_top = accent_y + 26
+    col_w = (CW - 2 * INFO_PAD) // 2
+    col1_x = CX + INFO_PAD
+    col2_x = CX + INFO_PAD + col_w
+
+    # Date
+    try:
+        d_obj = datetime.fromisoformat((dates_list or [date_iso])[0])
+        months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin",
+                  "Juil", "Août", "Sep", "Oct", "Nov", "Déc"] if lang == "fr" else \
+                 ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        date_label = f"{d_obj.day:02d} {months[d_obj.month - 1]} {d_obj.year}"
+    except Exception:
+        date_label = date_iso or "—"
+
+    draw.text((col1_x, grid_top), "DATE", fill=SUB, font=f_label)
+    draw.text((col1_x, grid_top + 30), date_label, fill=INK, font=f_value)
+
+    draw.text((col2_x, grid_top), "EMBARQUEMENT" if lang == "fr" else "BOARDING",
+              fill=SUB, font=f_label)
+    draw.text((col2_x, grid_top + 30), (boat_time or "—"),
+              fill=INK, font=f_value)
+
+    # Convives / Lieu row
+    grid_top2 = grid_top + 96
     if composition:
         a = int(composition.get("adults") or 0)
         cp = int(composition.get("children_paid") or 0)
         cf = int(composition.get("children_free") or 0)
+        parts = []
         if a:
-            comp_parts.append(f"{a} adulte{'s' if a > 1 else ''}")
+            parts.append(f"{a} adulte{'s' if a > 1 else ''}")
         if cp:
-            comp_parts.append(f"{cp} enfant{'s' if cp > 1 else ''} 6-12")
+            parts.append(f"{cp} enf. 6-12")
         if cf:
-            comp_parts.append(f"{cf} enfant{'s' if cf > 1 else ''} <6")
-    elif party_size and party_size > 0:
-        comp_parts.append(f"{party_size} personne{'s' if party_size > 1 else ''}")
-    if comp_parts:
-        center_text(y, " · ".join(comp_parts), f_label, MUTED)
-        y += 45
+            parts.append(f"{cf} enf. <6")
+        ps_text = "  ·  ".join(parts) or "1 personne"
+    elif party_size:
+        ps_text = f"{party_size} personne{'s' if party_size > 1 else ''}"
+    else:
+        ps_text = "1 personne"
 
-    # Offer label (subtle, under details)
-    if offer_name:
-        center_text(y, offer_name, f_label, MUTED)
-        y += 40
+    draw.text((col1_x, grid_top2), "CONVIVES" if lang == "fr" else "GUESTS",
+              fill=SUB, font=f_label)
+    draw.text((col1_x, grid_top2 + 30), ps_text, fill=INK, font=f_small)
 
-    # ---- Welcome message ----
-    y = H - 320
-    draw.line([(W * 0.30, y), (W * 0.70, y)], fill=GOLD, width=1)
-    y += 30
-    msg = "Présentez ce QR Code lors de votre arrivée."
-    center_text(y, msg, f_msg, CREAM)
-    y += 35
-    center_text(y, "Nous sommes impatients de vous accueillir.", f_msg, MUTED)
+    draw.text((col2_x, grid_top2), "LIEU" if lang == "fr" else "VENUE",
+              fill=SUB, font=f_label)
+    draw.text((col2_x, grid_top2 + 30), "Boulay Beach Resort",
+              fill=INK, font=f_small)
+    draw.text((col2_x, grid_top2 + 62), "Abidjan, CI", fill=SUB, font=f_small)
 
-    # ---- Brand signature ----
-    sig_y = H - 145
-    center_text(sig_y, "Life is Here", f_signature_main, GOLD)
-    center_text(sig_y + 60, "BOULAY BEACH RESORT · ABIDJAN", f_signature_small, MUTED)
+    # Divider before QR
+    div_y = grid_top2 + 130
+    draw.line([(CX + INFO_PAD, div_y), (CX + CW - INFO_PAD, div_y)],
+              fill=DIVIDER, width=2)
+
+    # ---- QR section (bottom) ----
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=20, border=2,
+    )
+    qr.add_data(qr_payload)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    QR_SIZE = 380
+    qr_img = qr_img.resize((QR_SIZE, QR_SIZE), Image.LANCZOS)
+    qr_y = div_y + 30
+    qr_x = (W - QR_SIZE) // 2
+    img.paste(qr_img, (qr_x, qr_y))
+
+    # "Scannez à l'embarquement" hint next to QR (right side)
+    hint_x = qr_x + QR_SIZE + 28
+    hint_y = qr_y + 40
+    if hint_x + 200 < CX + CW - 20:
+        draw.text((hint_x, hint_y), "SCANNEZ" if lang == "fr" else "SCAN",
+                  fill=SUB, font=f_label)
+        draw.text((hint_x, hint_y + 30), "À L'EMBARQUEMENT" if lang == "fr" else "AT BOARDING",
+                  fill=INK, font=f_kicker)
+
+    # Booking ID under QR (monospace-style)
+    bid_y = qr_y + QR_SIZE + 24
+    label = "RÉFÉRENCE" if lang == "fr" else "REFERENCE"
+    bb = draw.textbbox((0, 0), label, font=f_label)
+    draw.text(((W - (bb[2] - bb[0])) / 2, bid_y), label, fill=SUB, font=f_label)
+    bb2 = draw.textbbox((0, 0), ref_code or "", font=f_mono)
+    draw.text(((W - (bb2[2] - bb2[0])) / 2, bid_y + 30),
+              ref_code or "", fill=INK, font=f_mono)
+
+    # ---- Signature below card ----
+    sig_y = CY + CH + 22
+    sig_text = "Life is Here  ·  boulaybeachresort.com"
+    bb = draw.textbbox((0, 0), sig_text, font=f_small)
+    draw.text(((W - (bb[2] - bb[0])) / 2, sig_y),
+              sig_text, fill=GOLD_SOFT, font=f_small)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
