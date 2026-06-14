@@ -906,7 +906,7 @@ def make_ticket_image(
     round_rect((CX, CY, CX + CW, CY + CH), R, CARD)
 
     # ---- Hero image (top of card) ----
-    HERO_H = 660
+    HERO_H = 600
 
     # Build hero with rounded top corners
     hero_layer = None
@@ -1101,15 +1101,19 @@ def make_ticket_image(
               fill=DIVIDER, width=2)
 
     # ---- QR section (bottom) ----
+    # ECC=M (15% redundancy) keeps module density LOW for fast phone-camera
+    # decode, and QR_SIZE=440 ensures the QR is large enough even when the
+    # ticket is viewed on a phone screen (the scanner camera-viewfinder
+    # qrbox is 240×240 — we want the QR to fill more than that).
     qr = qrcode.QRCode(
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=20, border=2,
     )
     qr.add_data(qr_payload)
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-    QR_SIZE = 360
-    qr_img = qr_img.resize((QR_SIZE, QR_SIZE), Image.LANCZOS)
+    QR_SIZE = 440
+    qr_img = qr_img.resize((QR_SIZE, QR_SIZE), Image.NEAREST)
     qr_y = div_y + 32
     qr_x = (W - QR_SIZE) // 2
     img.paste(qr_img, (qr_x, qr_y))
@@ -5277,14 +5281,30 @@ async def _resolve_qr_token(raw: str):
     scanner. Without normalisation the lookup would 404 because of case + length mismatch.
 
     Strategy:
+      0. If the input is the raw JSON payload that the QR encodes
+         (``{"type":"ticket","token":"…","ref":"…"}``), extract ``token`` first.
       1. Try exact match (current behaviour, fastest).
       2. Else lowercase and try again.
       3. Else treat the input as a prefix (>=8 chars) and search via regex.
+      4. NEW (iter-41): Else treat the input as a `ref` (booking_id[:8].upper())
+         and search by booking id prefix — defends against scanner clients that
+         only forward the "ref" portion.
     Returns the booking dict + the matching qr_token, or (None, None).
     """
     if not raw:
         return None, None
     raw = raw.strip()
+    # 0. Defensive JSON extraction — supports clients that forward the full QR
+    #    payload without parsing it first.
+    if raw.startswith("{"):
+        try:
+            obj = json.loads(raw)
+            token_from_json = (obj.get("token") or obj.get("qr_token")
+                               or obj.get("guest_token") or "").strip()
+            if token_from_json:
+                raw = token_from_json
+        except Exception:
+            pass  # not valid JSON — fall through to the legacy paths
     # 1. Exact
     booking = await db.bookings.find_one({"qr_codes.qr_token": raw}, {"_id": 0})
     if booking:
@@ -5307,6 +5327,18 @@ async def _resolve_qr_token(raw: str):
             )
             if real:
                 return booking, real
+    # 4. iter-41: fall back to booking-id prefix (the "ref" portion printed on the
+    #    ticket: ``booking_id[:8].upper()``). Useful if a 3rd-party scanner app
+    #    only forwards the ref code.
+    if _re.fullmatch(r"[0-9a-f]{6,}", low):
+        booking = await db.bookings.find_one(
+            {"id": {"$regex": f"^{_re.escape(low)}", "$options": "i"},
+             "qr_codes.0": {"$exists": True}},
+            {"_id": 0},
+        )
+        if booking and booking.get("qr_codes"):
+            # Return the booker's qr_token (the first entry is conventionally the booker)
+            return booking, booking["qr_codes"][0].get("qr_token")
     return None, None
 
 

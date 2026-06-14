@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 29 — Validated the iter-41 scanner fix end-to-end. 9 PASS / 0 FAIL on /app/backend/tests/test_iteration29_scanner_fix.py. The new make_ticket_image() now renders a QR that pyzbar decodes as the expected JSON payload {type:'ticket', token:<hex32>, ref:<8upper>} with an on-image bbox of 395x395 px (>=380px threshold, up from the previous ~334px the user reported). The _resolve_qr_token() helper accepts all four formats requested: (1) full hex32 token, (2) URL-encoded raw JSON payload (NEW step-0 fallback), (3) the legacy 10-char printed ref (qr_token[:10].upper()), (4) the 8-char booking_id[:8] ref both lowercase and uppercase (NEW iter-41 step-4 fallback). Full check-in walk on a freshly created pass_day booking confirmed: 1st POST /staff/scan/{token}/checkin (direction=aller, boat_time=10H) → scan_count=1, next_direction='retour', fully_used=false; 2nd POST (direction=retour, boat_time=18H) → scan_count=2, fully_used=true. No new exceptions found in /var/log/supervisor/backend.err.log tied to scan/ticket/qr during the run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration29_scanner_fix.py",
+    "/app/test_reports/pytest/iter29.xml"
+  ],
+  "action_items": [
+    "[INFO → user] Backend scanner now passes all 4 input shapes (hex32, raw JSON, 10-char ref, 8-char booking_id ref). The QR on the rendered ticket is now 395x395 px on the 1080x1920 canvas and decodes cleanly via pyzbar. If the production user still sees 'QR invalide / non reconnu' on https://workflow-boulaybeachresort.com AFTER the fix is deployed, the residual issue is almost certainly browser/service-worker cache on the staff device (StaffScanner.jsx) — recommend hard reload (Ctrl+Shift+R) or clearing the PWA cache. No code change required on this iteration."
+  ],
+  "critical_code_review_comments": [
+    "server.py:5275-5342 _resolve_qr_token — Clean defensive 4-step ladder. Iter-41 step-0 (JSON) and step-4 (booking_id prefix) are correctly gated on `raw.startswith('{')` and a `[0-9a-f]{6,}` regex respectively, so they cannot accidentally widen lookup for short numeric inputs. Step-4 uses `$options:'i'` on the regex which correctly accepts the printed uppercase 'ref' (booking_id[:8].upper()) and the lowercase 'ref' that the JSON payload now encodes. Verified both shapes return the same booking.",
+    "server.py:1109-1118 make_ticket_image QR — ERROR_CORRECT_M + QR_SIZE=440 + Image.NEAREST resize produces a 395x395 px decodable bbox after the perforation/border padding (measured via pyzbar). Comfortably above the 'reliable mobile camera scan' floor.",
+    "server.py:9847 + 10492 + 2831 — JSON QR payload is consistently {type:'ticket', token, ref=booking_id[:8].upper()} in all emission paths I could find (booking create, ticket regenerate, companion register). Frontend StaffScanner.jsx parses obj.token first; backend now accepts the WHOLE blob as a fallback so any 3rd-party scanner that forwards the raw payload also works.",
+    "server.py:5346 GET /staff/scan/{qr_token} — Returns 404 'QR code non reconnu' only after all 4 fallbacks fail. Good. No information leak (doesn't echo back the unknown input).",
+    "Backend err.log scan — No new Traceback / PIL.UnidentifiedImageError / qrcode exceptions / 'AttributeError NoneType' / JSONDecodeError tied to scan/ticket/qr/make_ticket since uvicorn last startup. Exception-safe across the 9 tested flows."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration29_scanner_fix.py (NEW — 9 pytest tests covering hex32 token / raw JSON payload / 10-char ref / 8-char booking_id ref / QR bbox >=380px / full aller+retour check-in)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 pass)",
+    "frontend": "not tested (review_request: backend only)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026",
+  "seed_data_creation": "Creates TEST_iter29_* pass_day bookings (Monday + Tuesday next-week) confirmed via the cash flow. NOT auto-cleaned. Recommend a teardown that deletes bookings whose booker name starts with 'TEST_iter29_'.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run with: pytest /app/backend/tests/test_iteration29_scanner_fix.py -v -s. Key takeaways: (a) booking_id[:8] is hex-only because Mongo UUIDs always start with 8 hex chars — the iter-41 step-4 fallback regex [0-9a-f]{6,} matches both 'ref' (uppercase) and the lowercase prefix; both verified. (b) QR bbox measured at 395x395 px via pyzbar on the 1080x1920 canvas (QR_SIZE=440 in src, slight shrinkage after rounded-corner mask). (c) pyzbar is already installed in /root/.venv (verified). (d) The 4 input shapes tested cover the realistic UX matrix — production user complaint of 'QR invalide / non reconnu' should be RESOLVED on the backend; any residual issue is browser cache on the staff PWA.",
+  "rca of the issue": "Original prod issue (user-reported): scanner returned 'QR invalide / non reconnu' for new tickets generated by iter-40 make_ticket_image. Two contributing factors confirmed: (1) the iter-40 QR was rendered at ~334px effective size with ECC=H — too dense for some Android camera apps to decode at arm's length. (2) Some scanner apps forward the FULL JSON payload {type:ticket,token,ref} as the path segment, but the backend only knew how to look up by hex32 token or the legacy 10-char printed ref. Iter-41 fix: enlarged the QR to 440px PIL canvas / 395px decoded bbox + dropped ECC to M (still robust, less dense). Added two defensive fallbacks to _resolve_qr_token: step-0 parses a raw JSON payload and extracts obj.token; step-4 prefix-matches booking_id when the input looks like an 8-char hex ref. All 4 input formats now return HTTP 200 on existing bookings. Full check-in walk (aller→retour) persists scans, increments scan_count, flips next_direction, and sets fully_used=true correctly. No code changes required this iteration — the fix is verified and ready for prod. If the user still sees the error after deploy, root cause is browser/service-worker cache on the staff device."
+}
