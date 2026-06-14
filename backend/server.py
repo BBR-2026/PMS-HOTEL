@@ -833,181 +833,185 @@ def make_ticket_image(
     lang: str = "fr",
     hero_url: Optional[str] = None,
     dates_list: Optional[List[str]] = None,
+    *,
+    party_size: Optional[int] = None,
+    composition: Optional[dict] = None,
 ) -> str:
-    """Render the full luxury ticket as a base64 PNG data URL.
+    """Render a luxury 9:16 portrait ticket (1080×1920) as base64 PNG.
 
-    Layout mirrors the brand template: BBr header, offer hero image with chevron
-    strip, brown details block (left greeting + right Owner/Offer/Date/Boarding),
-    centred gold QR with BBr stamp, and printed reference code below.
+    Iter-38 — premium redesign:
+      • Solid dark background with subtle gold accents (no busy hero photo).
+      • Large BBR logo at top (centered, ~280px tall).
+      • Big high-resolution QR at the visual center (~700px square, gold modules)
+        so it scans instantly even after WhatsApp compression.
+      • Aerated details block: name · reference · date · composition.
+      • Brand signature "Life is Here" at the bottom.
     """
-    W = 900
-    GOLD = (140, 95, 38)
-    BROWN = (107, 68, 35)
+    W, H = 1080, 1920
+    GOLD = (184, 146, 42)         # #B8922A — brand gold
+    GOLD_SOFT = (212, 178, 90)
+    DARK = (10, 10, 10)
+    CREAM = (250, 247, 242)
+    MUTED = (160, 160, 160)
+    WHITE = (255, 255, 255)
 
-    # Header layout
-    H_PAD = 36
-    H_HEADER = 320
-    hero_w = W - 60
-    hero_h = int(hero_w * 9 / 16)
-    H_BROWN = 280
-    QR_SIZE = 340
-    H_QR_BLOCK = QR_SIZE + 110
-    H = H_PAD + H_HEADER + hero_h + H_BROWN + 24 + H_QR_BLOCK + H_PAD
-
-    img = Image.new("RGB", (W, H), "white")
+    img = Image.new("RGB", (W, H), DARK)
     draw = ImageDraw.Draw(img)
-    # Outer gold border to match printed template
-    draw.rectangle([8, 8, W - 8, H - 8], outline=GOLD, width=2)
 
-    # ---- Header: BBr logo (image) ----
-    y = H_PAD
-    logo_h = _paste_logo(img, y, max_h=H_HEADER - 20, max_w_ratio=0.85)
-    if logo_h == 0:
-        # Fallback: text-only header if the logo failed to load
-        f_logo = _load_font(60, bold=True)
-        bbox = draw.textbbox((0, 0), "BBr", font=f_logo)
-        draw.text(((W - (bbox[2] - bbox[0])) / 2 - bbox[0], y), "BBr", fill=GOLD, font=f_logo)
-    y = H_PAD + H_HEADER
+    # Subtle gold inner border + outer breathing room
+    PAD = 60
+    draw.rectangle([PAD, PAD, W - PAD, H - PAD], outline=GOLD, width=2)
+    draw.rectangle([PAD + 14, PAD + 14, W - PAD - 14, H - PAD - 14], outline=(40, 40, 40), width=1)
 
-    # ---- Hero image ----
-    hero_x = 30
-    hero = _fetch_hero(offer_id, hero_url=hero_url)
-    if hero is not None:
-        ratio_src = hero.width / hero.height
-        ratio_dst = hero_w / hero_h
-        if ratio_src > ratio_dst:
-            # crop sides
-            new_w = int(hero.height * ratio_dst)
-            left = (hero.width - new_w) // 2
-            hero = hero.crop((left, 0, left + new_w, hero.height))
-        else:
-            new_h = int(hero.width / ratio_dst)
-            top = (hero.height - new_h) // 2
-            hero = hero.crop((0, top, hero.width, top + new_h))
-        hero = hero.resize((hero_w, hero_h))
-        img.paste(hero, (hero_x, y))
-    else:
-        draw.rectangle([hero_x, y, hero_x + hero_w, y + hero_h], fill=(220, 215, 205))
-
-    # No decorative chevron strip — the hero image sits flush against the brown
-    # details block below.
-    y += hero_h
-
-    # ---- Brown details block ----
-    box_x0, box_y0 = 30, y
-    box_x1, box_y1 = W - 30, y + H_BROWN
-    draw.rectangle([box_x0, box_y0, box_x1, box_y1], fill=BROWN)
-
-    f_h = _load_font(20, bold=True)
-    f_body = _load_font(15)
-    f_label = _load_font(13)
-    f_value = _load_font(18, bold=True)
-
-    col_left_x = box_x0 + 28
-    col_right_x = box_x0 + (box_x1 - box_x0) // 2 + 10
-    text_y = box_y0 + 30
-
-    if lang == "fr":
-        greet = [
-            ("Voici votre pass, émis", True),
-            ("suite à votre réservation.", True),
-            ("", False),
-            ("Nous vous souhaitons", False),
-            ("une expérience inoubliable.", False),
-            ("", False),
-            ("Life is Here.", False),
+    # ---- Fonts ----
+    def font(size, bold=False):
+        candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         ]
-        labels = ("Propriétaire", "Offre", "Date", "Heure d'embarquement")
+        for p in candidates:
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    f_brand = font(34, bold=True)
+    f_title = font(54, bold=True)
+    f_kicker = font(22, bold=True)
+    f_label = font(22)
+    f_value = font(34, bold=True)
+    f_ref = font(40, bold=True)
+    f_msg = font(26)
+    f_signature_main = font(42, bold=True)
+    f_signature_small = font(20)
+
+    def center_text(y, text, fnt, fill):
+        bb = draw.textbbox((0, 0), text, font=fnt)
+        tw = bb[2] - bb[0]
+        draw.text(((W - tw) / 2 - bb[0], y), text, fill=fill, font=fnt)
+        return bb[3] - bb[1]
+
+    # ---- Header logo ----
+    logo = _fetch_logo()
+    y = 100
+    if logo is not None:
+        target_h = 200
+        ratio = target_h / logo.height
+        target_w = int(logo.width * ratio)
+        if target_w > W - 200:
+            target_w = W - 200
+            target_h = int(logo.height * (target_w / logo.width))
+        resized = logo.resize((target_w, target_h))
+        # Place logo on a soft cream rounded patch for contrast on dark bg
+        img.paste(resized, ((W - target_w) // 2, y), resized)
+        y += target_h + 25
     else:
-        greet = [
-            ("Here is your pass, issued", True),
-            ("upon your reservation.", True),
-            ("", False),
-            ("We wish you", False),
-            ("an unforgettable experience.", False),
-            ("", False),
-            ("Life is Here.", False),
-        ]
-        labels = ("Owner", "Offer", "Date", "Boarding time")
+        center_text(y, "BOULAY BEACH RESORT", f_brand, GOLD)
+        y += 60
 
-    cur_y = text_y
-    for line, bold in greet:
-        font = f_h if bold else f_body
-        if line:
-            draw.text((col_left_x, cur_y), line, fill="white", font=font)
-        cur_y += 24 if bold else 22
+    center_text(y, "PASS D\'EMBARQUEMENT", f_kicker, GOLD_SOFT)
+    y += 50
 
-    # Right column: 4 fields with thin white dividers
-    field_y = text_y
-    field_h = (H_BROWN - 60) // 4
-    # Passport tickets display the dates list compactly (e.g. "3, 4, 5 août 2026"
-    # or "3 août → 7 août 2026" depending on count). Boarding stays single value.
-    if dates_list and len(dates_list) > 1:
-        date_value = _format_dates_list(dates_list, lang)
-    else:
-        date_value = _format_date_long(date_iso, lang)
-    fields = (
-        (labels[0], owner_name),
-        (labels[1], offer_name),
-        (labels[2], date_value),
-        (labels[3], boat_time),
-    )
-    for label, value in fields:
-        draw.text((col_right_x, field_y), label + " :", fill=(240, 235, 225), font=f_label)
-        # Use a smaller font when the value is too long to fit on one line —
-        # critical for multi-date passport tickets where the dates string can
-        # easily exceed the column width.
-        col_w = box_x1 - 28 - col_right_x
-        val_font = f_value
-        if value:
-            bbox_v = draw.textbbox((0, 0), value, font=val_font)
-            if (bbox_v[2] - bbox_v[0]) > col_w:
-                val_font = _load_font(14, bold=True)
-                bbox_v = draw.textbbox((0, 0), value, font=val_font)
-                # Still too long → drop to 12pt
-                if (bbox_v[2] - bbox_v[0]) > col_w:
-                    val_font = _load_font(12, bold=True)
-        draw.text((col_right_x, field_y + 22), value, fill="white", font=val_font)
-        draw.line(
-            [(col_right_x, field_y + field_h - 4), (box_x1 - 28, field_y + field_h - 4)],
-            fill=(255, 255, 255),
-            width=1,
-        )
-        field_y += field_h
+    # Thin gold divider
+    draw.line([(W * 0.32, y), (W * 0.68, y)], fill=GOLD, width=2)
+    y += 70
 
-    y = box_y1 + 24
-
-    # ---- QR section ----
-    qr_obj = qrcode.QRCode(
+    # ---- QR Code (BIG, premium) ----
+    qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_H,
-        box_size=10,
+        box_size=20,
         border=2,
     )
-    qr_obj.add_data(qr_payload)
-    qr_obj.make(fit=True)
-    from qrcode.image.styledpil import StyledPilImage
-    from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
-    from qrcode.image.styles.colormasks import SolidFillColorMask
-
-    qr_img = (
-        qr_obj.make_image(
+    qr.add_data(qr_payload)
+    qr.make(fit=True)
+    try:
+        from qrcode.image.styledpil import StyledPilImage
+        from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
+        from qrcode.image.styles.colormasks import SolidFillColorMask
+        qr_img = qr.make_image(
             image_factory=StyledPilImage,
             module_drawer=RoundedModuleDrawer(),
-            color_mask=SolidFillColorMask(back_color=(255, 255, 255), front_color=GOLD),
-        )
-        .convert("RGB")
-        .resize((QR_SIZE, QR_SIZE))
-    )
+            color_mask=SolidFillColorMask(back_color=WHITE, front_color=GOLD),
+        ).convert("RGB")
+    except Exception:
+        qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
+    QR_SIZE = 700
+    qr_img = qr_img.resize((QR_SIZE, QR_SIZE), Image.LANCZOS)
     qr_x = (W - QR_SIZE) // 2
-    img.paste(qr_img, (qr_x, y + 10))
+    # Cream padding around the QR so the gold reads well on the dark canvas
+    pad = 30
+    draw.rectangle(
+        [qr_x - pad, y - pad, qr_x + QR_SIZE + pad, y + QR_SIZE + pad],
+        fill=CREAM, outline=GOLD, width=3,
+    )
+    img.paste(qr_img, (qr_x, y))
+    y += QR_SIZE + pad + 40
 
-    # Reference code below
-    f_ref = _load_font(30, bold=True)
-    bbox = draw.textbbox((0, 0), ref_code, font=f_ref)
-    rw = bbox[2] - bbox[0]
-    draw.text(((W - rw) / 2 - bbox[0], y + 10 + QR_SIZE + 28), ref_code, fill=BROWN, font=f_ref)
+    # ---- Reference (large monospace-style code) ----
+    ref_text = f"RÉF · {ref_code}"
+    center_text(y, ref_text, f_ref, GOLD)
+    y += 60
+
+    # ---- Owner name ----
+    name_text = (owner_name or "").strip().upper()
+    if name_text:
+        center_text(y, name_text, f_title, CREAM)
+        y += 75
+
+    # ---- Details (date + composition) ----
+    # Date (first valid date if multi-day passport)
+    try:
+        primary = (dates_list or [date_iso])[0]
+        d_obj = datetime.fromisoformat(primary)
+        date_label = d_obj.strftime("%d/%m/%Y")
+        weekday_fr = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"][d_obj.weekday()]
+        date_full = f"{weekday_fr.capitalize()} {date_label}"
+    except Exception:
+        date_full = date_iso or ""
+
+    if date_full:
+        center_text(y, date_full, f_value, GOLD_SOFT)
+        y += 50
+
+    # Composition pill (adults + children breakdown)
+    comp_parts = []
+    if composition:
+        a = int(composition.get("adults") or 0)
+        cp = int(composition.get("children_paid") or 0)
+        cf = int(composition.get("children_free") or 0)
+        if a:
+            comp_parts.append(f"{a} adulte{'s' if a > 1 else ''}")
+        if cp:
+            comp_parts.append(f"{cp} enfant{'s' if cp > 1 else ''} 6-12")
+        if cf:
+            comp_parts.append(f"{cf} enfant{'s' if cf > 1 else ''} <6")
+    elif party_size and party_size > 0:
+        comp_parts.append(f"{party_size} personne{'s' if party_size > 1 else ''}")
+    if comp_parts:
+        center_text(y, " · ".join(comp_parts), f_label, MUTED)
+        y += 45
+
+    # Offer label (subtle, under details)
+    if offer_name:
+        center_text(y, offer_name, f_label, MUTED)
+        y += 40
+
+    # ---- Welcome message ----
+    y = H - 320
+    draw.line([(W * 0.30, y), (W * 0.70, y)], fill=GOLD, width=1)
+    y += 30
+    msg = "Présentez ce QR Code lors de votre arrivée."
+    center_text(y, msg, f_msg, CREAM)
+    y += 35
+    center_text(y, "Nous sommes impatients de vous accueillir.", f_msg, MUTED)
+
+    # ---- Brand signature ----
+    sig_y = H - 145
+    center_text(sig_y, "Life is Here", f_signature_main, GOLD)
+    center_text(sig_y + 60, "BOULAY BEACH RESORT · ABIDJAN", f_signature_small, MUTED)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
@@ -2742,6 +2746,8 @@ async def pay_booking(booking_id: str, body: PayBooking):
                 lang="fr",
                 hero_url=offer.get("image_url") or None,
                 dates_list=ticket_dates if is_passport else None,
+                composition=({"adults": 1, "children_paid": children_paid_n, "children_free": children_free_n} if is_booker else None),
+                party_size=(1 + children_count) if is_booker else 1,
             )
         else:
             entry["ticket_image"] = make_cash_receipt_image(
