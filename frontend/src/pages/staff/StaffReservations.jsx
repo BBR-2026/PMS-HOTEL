@@ -149,8 +149,11 @@ function BookingsList({ bookings, onOpen }) {
                 </span>
                 <div className="mt-1"><PoleBadge pole={b.pole} /></div>
               </td>
-              <td className="py-3 px-3 tabular-nums">
-                {b.adults}A{b.children > 0 ? ` · ${b.children}E` : ""}
+              <td className="py-3 px-3 tabular-nums" title="Adultes · Enfants 6-12 · Enfants <6">
+                {b.adults}A
+                {(b.children_paid ?? 0) > 0 ? ` · ${b.children_paid}E12` : ""}
+                {(b.children_free ?? 0) > 0 ? ` · ${b.children_free}E6` : ""}
+                {(b.children_paid ?? 0) === 0 && (b.children_free ?? 0) === 0 && b.children > 0 ? ` · ${b.children}E` : ""}
               </td>
               <td className="py-3 px-3 text-right tabular-nums">{b.total_amount > 0 ? formatXOF(b.total_amount) : "—"}</td>
               <td className="py-3 px-3"><StatusBadge status={b.status} /></td>
@@ -276,7 +279,12 @@ function BookingDrawer({ id, onClose }) {
               </div>
               <div>
                 <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Convives</dt>
-                <dd className="text-[#0A0A0A] font-medium mt-0.5">{b.adults} adulte{b.adults > 1 ? "s" : ""}{b.children ? ` · ${b.children} enfant${b.children > 1 ? "s" : ""}` : ""}</dd>
+                <dd className="text-[#0A0A0A] font-medium mt-0.5" data-testid={`booking-composition-${b.id}`}>
+                  {b.adults} adulte{b.adults > 1 ? "s" : ""}
+                  {(b.children_paid ?? 0) > 0 && ` · ${b.children_paid} enfant${b.children_paid > 1 ? "s" : ""} 6–12`}
+                  {(b.children_free ?? 0) > 0 && ` · ${b.children_free} enfant${b.children_free > 1 ? "s" : ""} <6 (gratuit)`}
+                  {(b.children_paid ?? 0) === 0 && (b.children_free ?? 0) === 0 && b.children > 0 && ` · ${b.children} enfant${b.children > 1 ? "s" : ""}`}
+                </dd>
               </div>
               <div>
                 <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Total</dt>

@@ -33,7 +33,9 @@ export default function BookingTunnel() {
   const [roomTier, setRoomTier] = useState(null);
   const [rooms, setRooms] = useState(1);
   const [adults, setAdults] = useState(2);
-  const [children, setChildren] = useState(0);
+  const [childrenPaid, setChildrenPaid] = useState(0);   // 6–12 ans, facturés
+  const [childrenFree, setChildrenFree] = useState(0);   // <6 ans, gratuits
+  const children = childrenPaid + childrenFree;          // legacy compat for downstream code
   const [participants, setParticipants] = useState([]);
   // Multi-day cumulative booking (special events): all selected dates that
   // will be billed in a single transaction. Empty means single-day flow.
@@ -288,7 +290,8 @@ export default function BookingTunnel() {
   useEffect(() => {
     if (!usesPackages) return;
     setAdults(packagesAggregate.adults);
-    setChildren(packagesAggregate.children);
+    setChildrenPaid(packagesAggregate.children);
+    setChildrenFree(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usesPackages, packagesAggregate.adults, packagesAggregate.children]);
 
@@ -308,14 +311,14 @@ export default function BookingTunnel() {
         const item = programmeByDate[d] || {};
         const pa = Number(item.price_adult ?? offer.price_adult ?? 0);
         const pc = Number(item.price_child ?? offer.price_child ?? 0);
-        return sum + adults * pa + children * pc;
+        return sum + adults * pa + childrenPaid * pc;
       }, 0);
     } else {
-      const guestsBase = adults * offer.price_adult + children * offer.price_child;
+      const guestsBase = adults * offer.price_adult + childrenPaid * offer.price_child;
       base = isOvernight ? guestsBase * nights : guestsBase;
     }
     return base + charterAmount + packagesAmount + vipSpacesAmount + roomAddonAmount;
-  }, [offer, adults, children, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount, vipSpacesAmount, usesPackages, roomAddonAmount]);
+  }, [offer, adults, childrenPaid, isOvernight, hasTiers, selectedTier, nights, rooms, charterAmount, isSpecialEvent, multiDayDates, programmeByDate, packagesAmount, vipSpacesAmount, usesPackages, roomAddonAmount]);
 
   const offerName = offer ? (lang === "fr" ? offer.name_fr : offer.name_en) : "";
 
@@ -447,6 +450,8 @@ export default function BookingTunnel() {
         rooms: hasTiers ? rooms : 1,
         adults,
         children,
+        children_paid: childrenPaid,
+        children_free: childrenFree,
         participants: participants.map((p, i) => ({
           name: p.name.trim(),
           surname: p.surname.trim(),
@@ -764,12 +769,20 @@ export default function BookingTunnel() {
                         testId="counter-adults"
                       />
                       <CounterRow
-                        label={t.booking.children}
-                        sublabel={`${formatXOF(offer.price_child)} / ${t.offers.child}${isOvernight ? ` ${t.offers.perNight}` : ""} · ${t.booking.childrenHint}`}
-                        value={children}
-                        onDec={() => setChildren(Math.max(0, children - 1))}
-                        onInc={() => setChildren(children + 1)}
-                        testId="counter-children"
+                        label="Enfants (6–12 ans)"
+                        sublabel={`${formatXOF(offer.price_child)} / enfant${isOvernight ? ` ${t.offers.perNight}` : ""} · facturé`}
+                        value={childrenPaid}
+                        onDec={() => setChildrenPaid(Math.max(0, childrenPaid - 1))}
+                        onInc={() => setChildrenPaid(childrenPaid + 1)}
+                        testId="counter-children-paid"
+                      />
+                      <CounterRow
+                        label="Enfants (- de 6 ans)"
+                        sublabel="Gratuit — comptabilisé pour l'embarquement"
+                        value={childrenFree}
+                        onDec={() => setChildrenFree(Math.max(0, childrenFree - 1))}
+                        onInc={() => setChildrenFree(childrenFree + 1)}
+                        testId="counter-children-free"
                       />
                     </>
                   )}
@@ -785,19 +798,27 @@ export default function BookingTunnel() {
                       />
                       <CounterRow
                         label={t.booking.adults}
-                        sublabel={t.booking.adultsHint}
+                        sublabel={`${formatXOF(selectedTier?.price || offer.price_adult)} / ${t.booking.rooms} · ${t.offers.perNight}`}
                         value={adults}
                         onDec={() => setAdults(Math.max(0, adults - 1))}
                         onInc={() => setAdults(adults + 1)}
                         testId="counter-adults"
                       />
                       <CounterRow
-                        label={t.booking.children}
-                        sublabel={t.booking.childrenHint}
-                        value={children}
-                        onDec={() => setChildren(Math.max(0, children - 1))}
-                        onInc={() => setChildren(children + 1)}
-                        testId="counter-children"
+                        label="Enfants (6–12 ans)"
+                        sublabel="Facturé selon le tarif enfant"
+                        value={childrenPaid}
+                        onDec={() => setChildrenPaid(Math.max(0, childrenPaid - 1))}
+                        onInc={() => setChildrenPaid(childrenPaid + 1)}
+                        testId="counter-children-paid"
+                      />
+                      <CounterRow
+                        label="Enfants (- de 6 ans)"
+                        sublabel="Gratuit"
+                        value={childrenFree}
+                        onDec={() => setChildrenFree(Math.max(0, childrenFree - 1))}
+                        onInc={() => setChildrenFree(childrenFree + 1)}
+                        testId="counter-children-free"
                       />
                     </>
                   )}

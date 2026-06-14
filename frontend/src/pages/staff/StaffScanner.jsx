@@ -750,10 +750,31 @@ export default function StaffScanner() {
                 <dd className="text-[#0A0A0A] font-medium mt-0.5">{result.return_boat_time}</dd>
               </div>
             )}
-            <div>
-              <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Convives</dt>
-              <dd className="text-[#0A0A0A] font-medium mt-0.5">
-                {result.adults}A {result.children > 0 ? `· ${result.children}E` : ""}
+            <div className="sm:col-span-2">
+              <dt className="text-[0.62rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Composition du groupe</dt>
+              <dd className="text-[#0A0A0A] font-medium mt-0.5" data-testid="scanner-composition">
+                {/* Prefer the explicit composition stored on this QR ticket */}
+                {result.composition ? (
+                  <>
+                    <span>{result.composition.adults || result.adults} adulte{(result.composition.adults || result.adults) > 1 ? "s" : ""}</span>
+                    {(result.composition.children_paid ?? 0) > 0 && (
+                      <span> · {result.composition.children_paid} enfant{result.composition.children_paid > 1 ? "s" : ""} 6–12</span>
+                    )}
+                    {(result.composition.children_free ?? 0) > 0 && (
+                      <span> · {result.composition.children_free} enfant{result.composition.children_free > 1 ? "s" : ""} &lt;6 (gratuit)</span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span>{result.adults} adulte{result.adults > 1 ? "s" : ""}</span>
+                    {result.children > 0 && <span> · {result.children} enfant{result.children > 1 ? "s" : ""}</span>}
+                  </>
+                )}
+                {result.booking_code && (
+                  <span className="ml-2 text-[0.7rem] text-[#0A0A0A]/55 font-mono">
+                    · Code {result.booking_code}
+                  </span>
+                )}
               </dd>
             </div>
             <div>
