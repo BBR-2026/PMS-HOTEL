@@ -84,6 +84,18 @@ class CanteenServiceUpsert(BaseModel):
     active: bool = True
 
 
+class CanteenUserUpdate(BaseModel):
+    """Partial admin-only update for a canteen user. All fields optional."""
+    first_name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    last_name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    service: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    position: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    type: Optional[Literal["personnel", "prestataire"]] = None
+    phone: Optional[str] = Field(default=None, max_length=30)
+    active: Optional[bool] = None
+    credits_attributed: Optional[int] = Field(default=None, ge=0, le=62)
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ────────────────────────────────────────────────────────────────────────────
@@ -477,11 +489,13 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             "message": f"Bon appétit {user['first_name']} {user['last_name']} !",
         }
 
-    # ── Staff: user list with credit tracking ─────────────────────────────
+    # ── Staff: user list with credit tracking + search filters ───────────
     @r.get("/staff/cantine/users")
     async def staff_users(
         type: Optional[Literal["personnel", "prestataire"]] = None,
         service: Optional[str] = None,
+        q: Optional[str] = Query(default=None, description="search by name/code"),
+        active: Optional[bool] = None,
         staff=Depends(get_current_staff),
     ):
         await require_role(staff, CANTINE_STAFF_ROLES)
@@ -490,6 +504,14 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             flt["type"] = type
         if service:
             flt["service"] = service
+        if active is not None:
+            flt["active"] = active
+        if q:
+            qre = {"$regex": q.strip(), "$options": "i"}
+            flt["$or"] = [
+                {"first_name": qre}, {"last_name": qre},
+                {"code": qre}, {"position": qre}, {"phone": qre},
+            ]
         items = await db.canteen_users.find(flt, {"_id": 0}).sort(
             [("active", -1), ("created_at", -1)],
         ).to_list(length=5000)
@@ -498,6 +520,106 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
                 0, it.get("credits_attributed", 0) - it.get("credits_consumed", 0),
             )
         return {"items": items, "total": len(items)}
+
+    # ── Staff: get single user ────────────────────────────────────────────
+    @r.get("/staff/cantine/users/{user_id}")
+    async def staff_user_get(user_id: str, staff=Depends(get_current_staff)):
+        await require_role(staff, CANTINE_STAFF_ROLES)
+        u = await db.canteen_users.find_one({"id": user_id}, {"_id": 0})
+        if not u:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+        u["credits_remaining"] = max(0, u.get("credits_attributed", 0)
+                                     - u.get("credits_consumed", 0))
+        return u
+
+    # ── Staff: update user (admin) ────────────────────────────────────────
+    @r.patch("/staff/cantine/users/{user_id}")
+    async def staff_user_update(user_id: str, payload: CanteenUserUpdate,
+                                staff=Depends(get_current_staff)):
+        await require_role(staff, CANTINE_ADMIN_ROLES)
+        existing = await db.canteen_users.find_one({"id": user_id}, {"_id": 0})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+        upd = {k: v for k, v in payload.dict().items() if v is not None}
+        # If service is changed, normalise to canonical name & validate
+        if "service" in upd:
+            svc = await db.canteen_services.find_one(
+                {"name": {"$regex": f"^{upd['service'].strip()}$", "$options": "i"},
+                 "active": True},
+                {"_id": 0, "name": 1},
+            )
+            if not svc:
+                raise HTTPException(status_code=400, detail="Service inconnu.")
+            upd["service"] = svc["name"]
+        upd["updated_at"] = _now_iso()
+        await db.canteen_users.update_one({"id": user_id}, {"$set": upd})
+        updated = await db.canteen_users.find_one({"id": user_id}, {"_id": 0})
+        updated["credits_remaining"] = max(
+            0, updated.get("credits_attributed", 0)
+            - updated.get("credits_consumed", 0),
+        )
+        return updated
+
+    # ── Staff: regenerate a user's Code Cantine ──────────────────────────
+    @r.post("/staff/cantine/users/{user_id}/regenerate-code")
+    async def staff_user_regen_code(user_id: str,
+                                    staff=Depends(get_current_staff)):
+        await require_role(staff, CANTINE_ADMIN_ROLES)
+        existing = await db.canteen_users.find_one({"id": user_id},
+                                                   {"_id": 0, "code": 1})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+        new_code = await _ensure_unique_code(db)
+        await db.canteen_users.update_one(
+            {"id": user_id},
+            {"$set": {"code": new_code,
+                      "previous_code": existing.get("code"),
+                      "code_rotated_at": _now_iso(),
+                      "updated_at": _now_iso()}},
+        )
+        return {"ok": True, "code": new_code,
+                "previous_code": existing.get("code")}
+
+    # ── Staff: deactivate (soft) ─────────────────────────────────────────
+    @r.post("/staff/cantine/users/{user_id}/deactivate")
+    async def staff_user_deactivate(user_id: str,
+                                    staff=Depends(get_current_staff)):
+        await require_role(staff, CANTINE_ADMIN_ROLES)
+        res = await db.canteen_users.update_one(
+            {"id": user_id},
+            {"$set": {"active": False, "deactivated_at": _now_iso(),
+                      "updated_at": _now_iso()}},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+        return {"ok": True}
+
+    # ── Staff: reactivate ────────────────────────────────────────────────
+    @r.post("/staff/cantine/users/{user_id}/activate")
+    async def staff_user_activate(user_id: str,
+                                  staff=Depends(get_current_staff)):
+        await require_role(staff, CANTINE_ADMIN_ROLES)
+        res = await db.canteen_users.update_one(
+            {"id": user_id},
+            {"$set": {"active": True, "deactivated_at": None,
+                      "updated_at": _now_iso()}},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+        return {"ok": True}
+
+    # ── Staff: hard delete (with cascading reservation cleanup) ──────────
+    @r.delete("/staff/cantine/users/{user_id}")
+    async def staff_user_delete(user_id: str,
+                                staff=Depends(get_current_staff)):
+        await require_role(staff, CANTINE_ADMIN_ROLES)
+        u = await db.canteen_users.find_one({"id": user_id}, {"_id": 0, "code": 1})
+        if not u:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+        # Keep historical reservations (do NOT delete) — they reference user_code
+        # which is enough for audit. Only nuke the user record.
+        await db.canteen_users.delete_one({"id": user_id})
+        return {"ok": True, "deleted_code": u["code"]}
 
     # ── Staff: services CRUD ──────────────────────────────────────────────
     @r.get("/staff/cantine/services")

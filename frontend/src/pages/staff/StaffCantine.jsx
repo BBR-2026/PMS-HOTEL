@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   UtensilsCrossed, Users, Calendar, CheckCircle2, AlertTriangle,
   Loader2, FileSpreadsheet, FileText, Briefcase, Building2,
-  TrendingUp, ChevronRight,
+  TrendingUp, ChevronRight, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../../lib/api";
@@ -23,9 +23,11 @@ export default function StaffCantine() {
   const [scope, setScope] = useState("tomorrow");
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async ({ silent = false } = {}) => {
+    if (silent) setRefreshing(true); else setLoading(true);
     try {
       const [{ data: d }, { data: r }] = await Promise.all([
         api.get("/staff/cantine/dashboard"),
@@ -33,10 +35,13 @@ export default function StaffCantine() {
       ]);
       setDash(d);
       setReservations(r.items || []);
+      setLastRefresh(new Date());
+      if (silent) toast.success("Données mises à jour");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Échec du chargement");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -62,44 +67,62 @@ export default function StaffCantine() {
 
   if (loading || !dash) {
     return (
-      <div className="flex items-center justify-center py-20" data-testid="cantine-dashboard-loading">
+      <div className="p-4 sm:p-6 flex items-center justify-center py-20" data-testid="cantine-dashboard-loading">
         <Loader2 className="animate-spin text-[#B8922A]" size={32} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6" data-testid="staff-cantine-dashboard">
+    <div className="space-y-5 p-4 sm:p-6 max-w-7xl" data-testid="staff-cantine-dashboard">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <div className="text-[0.62rem] uppercase tracking-[0.3em] text-[#B8922A] mb-1 inline-flex items-center gap-1.5">
+          <div className="text-[0.62rem] uppercase tracking-[0.32em] text-[#B8922A] mb-1 inline-flex items-center gap-1.5">
             <UtensilsCrossed size={11} /> Cantine du personnel
           </div>
-          <h1 className="font-display-serif text-3xl text-[#0A0A0A]">
+          <h1 className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A]">
             Tableau de bord cantine
           </h1>
-          <p className="text-sm text-[#0A0A0A]/55 mt-1">
+          <p className="text-sm text-[#0A0A0A]/60 mt-1 max-w-2xl">
             Anticiper la cuisine, suivre la présence, contrôler les crédits.
           </p>
         </div>
-        <div className="inline-flex items-center bg-white border border-[#0A0A0A]/10">
-          {SCOPES.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setScope(s.id)}
-              data-testid={`cantine-scope-${s.id}`}
-              className={`px-4 py-2 text-[0.7rem] uppercase tracking-[0.18em] transition-colors ${
-                scope === s.id
-                  ? "bg-[#B8922A] text-white"
-                  : "text-[#0A0A0A]/65 hover:bg-[#FAF7F2]"
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center bg-white border border-[#0A0A0A]/10">
+            {SCOPES.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setScope(s.id)}
+                data-testid={`cantine-scope-${s.id}`}
+                className={`px-4 py-2 text-[0.7rem] uppercase tracking-[0.18em] transition-colors ${
+                  scope === s.id
+                    ? "bg-[#B8922A] text-white"
+                    : "text-[#0A0A0A]/65 hover:bg-[#FAF7F2]"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => load({ silent: true })}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#0A0A0A]/10 hover:border-[#B8922A] text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/70 hover:text-[#B8922A] disabled:opacity-50"
+            data-testid="cantine-refresh-dashboard"
+            title={lastRefresh ? `Dernière mise à jour : ${lastRefresh.toLocaleTimeString("fr-FR")}` : ""}
+          >
+            <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
+            Rafraîchir
+          </button>
         </div>
       </div>
+
+      {lastRefresh && (
+        <div className="text-[0.7rem] text-[#0A0A0A]/45 -mt-3" data-testid="cantine-last-refresh">
+          Dernière mise à jour : {lastRefresh.toLocaleTimeString("fr-FR")}
+        </div>
+      )}
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -113,8 +136,8 @@ export default function StaffCantine() {
                  icon={TrendingUp} tone="neutral" testid="kpi-attendance-rate" />
       </div>
 
-      {/* Repartition by category & service */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="bg-white border border-[#0A0A0A]/10 p-5">
           <h3 className="font-display-serif text-lg text-[#0A0A0A] mb-3">
             Demain — par catégorie
@@ -144,7 +167,7 @@ export default function StaffCantine() {
               {dash.by_service_tomorrow.map((s) => (
                 <div key={s.service} className="flex items-baseline gap-3" data-testid={`svc-row-${s.service}`}>
                   <Building2 size={12} className="text-[#B8922A] flex-shrink-0" />
-                  <span className="text-sm text-[#0A0A0A]/80 flex-1 truncate">{s.service}</span>
+                  <span className="text-sm text-[#0A0A0A]/80 flex-1 truncate min-w-[80px]">{s.service}</span>
                   <div className="flex-1 h-2 bg-[#0A0A0A]/5 rounded">
                     <div
                       className="h-full bg-[#B8922A] rounded transition-all"
@@ -161,7 +184,7 @@ export default function StaffCantine() {
 
       {/* Reservations list + exports */}
       <div className="bg-white border border-[#0A0A0A]/10 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#0A0A0A]/8">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-[#0A0A0A]/8 gap-3 flex-wrap">
           <h3 className="font-display-serif text-lg text-[#0A0A0A]">
             Liste — {scope === "tomorrow" ? "Demain" : "Aujourd'hui"} ({reservations.length})
           </h3>
@@ -189,10 +212,10 @@ export default function StaffCantine() {
                 <th className="px-4 py-2.5">Code</th>
                 <th className="px-4 py-2.5">Nom & prénom</th>
                 <th className="px-4 py-2.5">Service</th>
-                <th className="px-4 py-2.5">Fonction</th>
-                <th className="px-4 py-2.5">Type</th>
-                <th className="px-4 py-2.5">Inscrit</th>
-                <th className="px-4 py-2.5">Consommé</th>
+                <th className="px-4 py-2.5 hidden md:table-cell">Fonction</th>
+                <th className="px-4 py-2.5 hidden sm:table-cell">Type</th>
+                <th className="px-4 py-2.5 hidden lg:table-cell">Inscrit</th>
+                <th className="px-4 py-2.5 hidden lg:table-cell">Consommé</th>
                 <th className="px-4 py-2.5">Statut</th>
               </tr>
             </thead>
@@ -212,14 +235,14 @@ export default function StaffCantine() {
                       {r.last_name} {r.first_name}
                     </td>
                     <td className="px-4 py-2.5 text-[#0A0A0A]/70">{r.service}</td>
-                    <td className="px-4 py-2.5 text-[#0A0A0A]/70 text-[0.78rem]">{r.position}</td>
-                    <td className="px-4 py-2.5 text-[#0A0A0A]/70 text-[0.78rem]">
+                    <td className="px-4 py-2.5 text-[#0A0A0A]/70 text-[0.78rem] hidden md:table-cell">{r.position}</td>
+                    <td className="px-4 py-2.5 text-[#0A0A0A]/70 text-[0.78rem] hidden sm:table-cell">
                       {r.type === "personnel" ? "Personnel" : "Prestataire"}
                     </td>
-                    <td className="px-4 py-2.5 text-[0.78rem] text-[#0A0A0A]/55">
+                    <td className="px-4 py-2.5 text-[0.78rem] text-[#0A0A0A]/55 hidden lg:table-cell">
                       {(r.reserved_at || "").slice(11, 16)}
                     </td>
-                    <td className="px-4 py-2.5 text-[0.78rem] text-[#0A0A0A]/55">
+                    <td className="px-4 py-2.5 text-[0.78rem] text-[#0A0A0A]/55 hidden lg:table-cell">
                       {(r.consumed_at || "—").slice(11, 16)}
                     </td>
                     <td className="px-4 py-2.5">
@@ -239,8 +262,8 @@ export default function StaffCantine() {
       </div>
 
       <div className="text-[0.7rem] text-[#0A0A0A]/45 flex items-center gap-2">
-        <ChevronRight size={11} /> Le pointage tablette est disponible dans le menu
-        « Cantine — Pointage » (l'accès est aussi ouvert aux hôtesses).
+        <ChevronRight size={11} /> Pointage tablette : menu « Cantine — Pointage ».
+        Personnel enregistré : menu « Cantine — Personnel ».
       </div>
     </div>
   );
@@ -265,7 +288,7 @@ function KpiCard({ label, value, icon: Icon, tone, testid }) {
           <Icon size={13} />
         </div>
       </div>
-      <div className="font-display-serif text-3xl text-[#0A0A0A]">{value}</div>
+      <div className="font-display-serif text-2xl sm:text-3xl text-[#0A0A0A]">{value}</div>
     </div>
   );
 }

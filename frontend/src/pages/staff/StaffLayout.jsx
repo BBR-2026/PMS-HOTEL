@@ -87,6 +87,7 @@ const NAV = [
   { key: "galerie", to: "/staff/galerie", icon: Camera, label: "Galerie photo", roles: R_MGMT },
   { section: "Cantine du personnel", roles: R_CANTINE_POINTAGE },
   { key: "cantine_dashboard", to: "/staff/cantine", icon: UtensilsCrossed, label: "Cantine — Dashboard", roles: R_CANTINE },
+  { key: "cantine_personnel", to: "/staff/cantine/personnel", icon: Users, label: "Cantine — Personnel", roles: R_CANTINE },
   { key: "cantine_pointage", to: "/staff/cantine/pointage", icon: QrCode, label: "Cantine — Pointage", roles: R_CANTINE_POINTAGE },
   { key: "config", to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },
 ];

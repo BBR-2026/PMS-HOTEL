@@ -289,3 +289,18 @@ See `/app/memory/test_credentials.md`.
   * Détail des exceptions de consommation (filtre + export).
   * Onglets de stats avancées (par mois, par service, par type, taux d'absentéisme).
   * Évolutions futures: petit-déj/dîner, choix de menus, QR personnel par employé, notifications J-1 push/SMS, multi-établissements.
+
+
+- 2026-02-16: **Iteration 43 — Cantine Phase A.5 (réorganisation + Personnel CRUD)** suite au feedback du user (3 demandes) :
+  1. **Page publique unifiée** `/cantine` avec 2 onglets internes (Créer mon compte + Réserver mon repas). Les ex-routes `/cantine/inscription` et `/cantine/reserver` redirigent via `<Navigate to="/cantine" replace />`. Fichiers `CantineInscription.jsx` et `CantineReserver.jsx` supprimés au profit d'une seule `CantineLanding.jsx` avec sous-composants `RegisterPanel` et `ReservePanel`. Bouton "Inscrire une autre personne" pour pointer plusieurs collègues à la suite.
+  2. **Responsive dashboard staff** harmonisé avec les autres modules : `space-y-5 p-4 sm:p-6 max-w-7xl`. Colonnes secondaires de la table progressivement masquées (`hidden sm/md/lg/xl:table-cell`). Bouton **🔄 Rafraîchir** sur dashboard ET personnel avec affichage "Dernière mise à jour : HH:MM:SS" + toast de confirmation.
+  3. **Nouvelle page** `/staff/cantine/personnel` = CRUD complet utilisateurs :
+     * **Filtres composables** : recherche `q` (nom/prénom/code/fonction/téléphone, insensible à la casse), filtre type (all/personnel/prestataire), filtre service (dynamique depuis `/staff/cantine/services`), filtre active (actifs+désactivés / actifs / désactivés).
+     * **Actions par utilisateur** (4 endpoints REST exclusifs aux CANTINE_ADMIN_ROLES = admin, management_general, directeur, rh) :
+       - PATCH `/staff/cantine/users/{id}` (modifier nom/prénom/téléphone/service/fonction/type)
+       - POST `/staff/cantine/users/{id}/regenerate-code` (nouveau AAA999, ancien stamped en `previous_code` pour audit, ancien code reçoit 404 publiquement)
+       - POST `/staff/cantine/users/{id}/{activate,deactivate}` (soft, désactivation bloque réservation publique avec 404)
+       - DELETE `/staff/cantine/users/{id}` (hard delete user, **préserve l'historique** `canteen_reservations`)
+     * UX polish : après régénération de code, si la barre de recherche contenait l'ancien code, elle est auto-cleared pour que le user voie la nouvelle ligne.
+  * **Validation** : `iteration_43.json` — 32/32 tests backend (9 nouveaux + 23 régression iter-42) + frontend end-to-end OK (`/app/backend/tests/test_iteration43_personnel_crud.py`). 0 bug bloquant, 0 régression.
+

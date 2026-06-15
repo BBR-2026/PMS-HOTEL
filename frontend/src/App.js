@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { LanguageProvider } from "./context/LanguageContext";
 import { StaffAuthProvider } from "./context/StaffAuthContext";
@@ -57,9 +57,8 @@ import StaffPassengers from "./pages/staff/StaffPassengers";
 import CorporateRegistration from "./pages/CorporateRegistration";
 import RoleGuard from "./components/RoleGuard";
 import CantineLanding from "./pages/cantine/CantineLanding";
-import CantineInscription from "./pages/cantine/CantineInscription";
-import CantineReserver from "./pages/cantine/CantineReserver";
 import StaffCantine from "./pages/staff/StaffCantine";
+import StaffCantinePersonnel from "./pages/staff/StaffCantinePersonnel";
 import StaffCantinePointage from "./pages/staff/StaffCantinePointage";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
@@ -118,8 +117,8 @@ function App() {
             <Route path="/pay/:token" element={<Pay />} />
             <Route path="/companion/:code" element={<Companion />} />
             <Route path="/cantine" element={<CantineLanding />} />
-            <Route path="/cantine/inscription" element={<CantineInscription />} />
-            <Route path="/cantine/reserver" element={<CantineReserver />} />
+            <Route path="/cantine/inscription" element={<Navigate to="/cantine" replace />} />
+            <Route path="/cantine/reserver" element={<Navigate to="/cantine" replace />} />
             <Route path="/accueil" element={<Accueil />} />
             <Route path="/accueil/paiement" element={<PaiementHub />} />
             <Route path="/accueil/wifi" element={<WifiPage />} />
@@ -160,6 +159,7 @@ function App() {
               <Route path="corporate" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCorporateInquiries /></RoleGuard>} />
               <Route path="galerie" element={<RoleGuard allowed={MANAGER_PLUS}><StaffGallery /></RoleGuard>} />
               <Route path="cantine" element={<RoleGuard allowed={CANTINE_DASH_ACCESS}><StaffCantine /></RoleGuard>} />
+              <Route path="cantine/personnel" element={<RoleGuard allowed={CANTINE_DASH_ACCESS}><StaffCantinePersonnel /></RoleGuard>} />
               <Route path="cantine/pointage" element={<RoleGuard allowed={CANTINE_POINTAGE_ACCESS}><StaffCantinePointage /></RoleGuard>} />
             </Route>
           </Routes>
