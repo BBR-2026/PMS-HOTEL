@@ -270,3 +270,22 @@ See `/app/memory/test_credentials.md`.
   **Tests** : 8 PASS / 2 SKIP / 1 XFAIL (`/app/backend/tests/test_iteration28_ticket_image.py`). Tous les 4 offres principales (sunset, brunch, pass_day, le_kaai) produisent un PNG 1080×1920 ≥30KB après création→cash-pay→confirm. Staff manual booking + confirm-cash-payment swap le 900×1280 cash-receipt vers le nouveau template. QR scan + check-in OK. Zéro exception Pillow/qrcode/urllib/SMTP dans les logs. Observation low-prio : le backend ne split pas auto les children par DOB côté serveur (le frontend pré-catégorise déjà).
 
 
+
+
+- 2026-02-16: **Iteration 41 — Fix Scanner QR (production blocker)** — Le user signalait que le scanner ne reconnaissait pas les nouveaux QR. Root cause: (1) QR rendu à 334px effectif avec ECC=H trop dense pour caméras Android, (2) certains scanners 3rd party forwardent le JSON brut `{"type":"ticket","token":"…","ref":"…"}` au path. Fix: `make_ticket_image` QR_SIZE 360→440px + ECC H→M (modules moins denses, 395px décodé). Ajout de 2 fallbacks défensifs dans `_resolve_qr_token`: step-0 JSON.parse + step-4 booking_id prefix-match. Tests: `/app/backend/tests/test_iteration29_scanner_fix.py` (9/9 PASS). Documenté dans `iteration_29.json`.
+
+- 2026-02-16: **Iteration 42 — Module Cantine du Personnel (Phase A)** — Nouveau module complet de gestion intelligente de la cantine pour anticiper les repas, réduire le gaspillage, contrôler la consommation et éviter les fraudes. Architecture:
+  * **Backend**: nouveau router `routers/cantine.py` (733 lignes) — public endpoints `/api/cantine/public/{services,users,users/{code},reservations}` + staff endpoints `/api/staff/cantine/{dashboard,reservations,pointage,users,services,settings,exports/{xlsx,pdf}}`. 4 collections Mongo: `canteen_users`, `canteen_services`, `canteen_reservations`, `canteen_settings`. Codes uniques au format AAA999 (3 lettres maj + 3 chiffres) avec retry 20× sur collision.
+  * **Cron APScheduler**: `_job_monthly_renew` le 1er du mois à 00h05 UTC (réinitialise credits_consumed=0 + applique default_credits_personnel/prestataire, idempotent via stamping `current_period`); `_job_close_yesterday` à 00h01 UTC (flag les réservations 'reserved' d'hier en 'absent').
+  * **Frontend public**: `/cantine` (landing 2 cartes), `/cantine/inscription` (formulaire + génération code + écran de succès avec copie), `/cantine/reserver` (lookup code → carte profil + compteur crédits + checkbox + valider).
+  * **Frontend staff**: `/staff/cantine` (dashboard KPIs + breakdown service + tableau + exports XLSX/PDF), `/staff/cantine/pointage` (UI tablette ultra simple avec mode superviseur pour repas exceptionnels).
+  * **Nouveaux rôles staff acceptés**: `directeur`, `rh`, `cuisine` (ajoutés à la Literal de StaffUserCreate/Update). Accès dashboard pour ces 3 rôles + admin + management_general. Accès pointage élargi à hotesse + verification.
+  * **Validation**: 23/23 tests pytest backend + smoke-tests frontend des 5 pages (`iteration_30.json`). Tests régression dans `/app/backend/tests/test_iteration42_cantine.py` (autouse teardown TEST_iter42_*). Bug `useEffect destroy is not a function` corrigé par testing agent dans `StaffCantinePointage.jsx`.
+
+### Backlog Phase B Cantine (P1)
+  * Admin avancé: CRUD users (modif/désactivation/reset code), gestion fine des crédits par user, autorisation de repas exceptionnels permanents.
+  * Dashboard Cuisine dédié (`/staff/cantine/cuisine`): vue simplifiée prévisions J+1 + liste nominative par service.
+  * Historique des opérations (audit log): qui a fait quoi, quand, sur quel user.
+  * Détail des exceptions de consommation (filtre + export).
+  * Onglets de stats avancées (par mois, par service, par type, taux d'absentéisme).
+  * Évolutions futures: petit-déj/dîner, choix de menus, QR personnel par employé, notifications J-1 push/SMS, multi-établissements.
