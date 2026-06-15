@@ -5984,7 +5984,8 @@ async def bookings_calendar(month: str, staff=Depends(get_current_staff)):
     next_month = datetime.strptime(date_from, "%Y-%m-%d").date() + timedelta(days=32)
     date_to = next_month.replace(day=1).isoformat()
     cursor = db.bookings.find(
-        {"date": {"$gte": date_from, "$lt": date_to}},
+        # iter-44: exclude abandoned-cart pending from the calendar view
+        {"date": {"$gte": date_from, "$lt": date_to}, "status": {"$ne": "pending"}},
         {"_id": 0, "id": 1, "date": 1, "offer_type": 1, "offer_name": 1, "status": 1, "adults": 1, "children": 1, "boat_time": 1, "total_amount": 1, "paid_at": 1},
     )
     items = await cursor.to_list(length=2000)
@@ -7740,7 +7741,9 @@ async def hebergement_stats(period: str = "month", staff=Depends(get_current_sta
     cursor = db.bookings.find(
         {
             "offer_type": "hebergement",
-            "status": {"$ne": "cancelled"},
+            # iter-44: exclude abandoned-cart pending so occupancy & revenue
+            # match real (paid + cash-on-arrival) bookings only.
+            "status": {"$nin": ["cancelled", "pending"]},
             "date": {"$gte": date_from, "$lte": date_to},
         },
         {"_id": 0, "id": 1, "date": 1, "checkout_date": 1, "nights": 1, "rooms": 1,

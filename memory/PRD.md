@@ -304,3 +304,15 @@ See `/app/memory/test_credentials.md`.
      * UX polish : après régénération de code, si la barre de recherche contenait l'ancien code, elle est auto-cleared pour que le user voie la nouvelle ligne.
   * **Validation** : `iteration_43.json` — 32/32 tests backend (9 nouveaux + 23 régression iter-42) + frontend end-to-end OK (`/app/backend/tests/test_iteration43_personnel_crud.py`). 0 bug bloquant, 0 régression.
 
+
+
+- 2026-02-16: **Iteration 44 — Réservations en attente & exclusion 'pending' du CA** suite à 2 demandes user :
+  1. **Scanner QR regression** : 4/4 formats (hex32, JSON URL-encoded, ref 10-char, booking_id 8-char) toujours en HTTP 200 + checkin aller/retour OK. Aucune régression depuis iter-41.
+  2. **Statut 'pending' masqué partout** (paniers abandonnés via tunnel public) :
+     * `/staff/dashboard` : `bookings_today` query level filter `status:{$ne:pending}`. `pipeline_counts` ne contient plus 'pending' mais expose 'pending_cash_payment'. `revenue_today` inclut les bookings 'pending_cash_payment' (cash à recouvrer = CA attendu). Nouveau `kpis.pending_relance_count`.
+     * `/staff/bookings` : nouveau param `include_pending=False` par défaut. Quand pas de `status` filter explicite ET include_pending=false, applique `status:{$ne:pending}`.
+     * `/staff/bookings/calendar` & `/staff/hebergement/stats` : exclut pending.
+  3. **Nouvelle page** `/staff/reservations/en-attente` avec 4 KPI cards, filtres (période 7/30/90/365j + recherche), table complète, bouton **🔔 Relancer** par ligne (régénère token FineoPay 7j + envoie email "Relance — Lien de paiement" via SendGrid + push event dans `relance_log` cumulatif). Bouton désactivé si pas d'email client.
+  * **Validation** : `iteration_31.json` → **48/49 tests pytest** + frontend 100%. Scanner regression OK. iter-42/43 régression OK. Le 49e était une fausse attente (hotesse 403 alors qu'elle inherit manager via ROLE_INCLUDES — comportement intentionnel pour permettre aux hôtesses de faire les relances). Aucun bug bloquant.
+  * Tests régression : `/app/backend/tests/test_iteration44_pending_relance.py` (17 tests, 5 classes : Scanner, Dashboard, BookingsListFiltering, PendingEndpoint, ResendPaymentLink).
+
