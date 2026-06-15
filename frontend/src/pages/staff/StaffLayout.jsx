@@ -46,6 +46,9 @@ const R_SCAN = [...R_MGMT, "verification", "logistique", "hotesse", "receptionis
 const R_ACT = [...R_MGMT, "serveur_caisse", "receptionist"]; // Consommation
 const R_DASH = [...R_RES, ...R_OPS, ...R_ACT, "serveur_caisse", "verification"]; // Dashboard — everyone
 const R_ADMIN_ONLY = ["admin"]; // strict admin-only config
+// iter-42: Cantine roles
+const R_CANTINE = [...R_ADMIN, "directeur", "rh", "cuisine"];
+const R_CANTINE_POINTAGE = [...R_CANTINE, "hotesse", "verification"];
 
 const NAV = [
   { key: "dashboard", to: "/staff", end: true, icon: LayoutDashboard, label: "Tableau de bord", roles: R_DASH },
@@ -82,6 +85,9 @@ const NAV = [
   { key: "loisirs_activities", to: "/staff/configuration/loisirs", icon: Waves, label: "Offres & Loisirs", roles: R_MGMT },
   { key: "evenements_speciaux", to: "/staff/evenements-speciaux", icon: Sparkles, label: "Événements spéciaux", roles: R_MGMT },
   { key: "galerie", to: "/staff/galerie", icon: Camera, label: "Galerie photo", roles: R_MGMT },
+  { section: "Cantine du personnel", roles: R_CANTINE_POINTAGE },
+  { key: "cantine_dashboard", to: "/staff/cantine", icon: UtensilsCrossed, label: "Cantine — Dashboard", roles: R_CANTINE },
+  { key: "cantine_pointage", to: "/staff/cantine/pointage", icon: QrCode, label: "Cantine — Pointage", roles: R_CANTINE_POINTAGE },
   { key: "config", to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },
 ];
 
@@ -102,6 +108,9 @@ const ROLE_LABEL_FR = {
   logistique: "Logistique",
   verification: "Vérification",
   receptionist: "Réception",
+  directeur: "Directeur",
+  rh: "RH",
+  cuisine: "Cuisine",
 };
 
 function SidebarContent({ user, onNavigate, onLogout }) {

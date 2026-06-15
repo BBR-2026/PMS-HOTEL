@@ -56,6 +56,11 @@ import StaffRapports from "./pages/staff/StaffRapports";
 import StaffPassengers from "./pages/staff/StaffPassengers";
 import CorporateRegistration from "./pages/CorporateRegistration";
 import RoleGuard from "./components/RoleGuard";
+import CantineLanding from "./pages/cantine/CantineLanding";
+import CantineInscription from "./pages/cantine/CantineInscription";
+import CantineReserver from "./pages/cantine/CantineReserver";
+import StaffCantine from "./pages/staff/StaffCantine";
+import StaffCantinePointage from "./pages/staff/StaffCantinePointage";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
 // the same routing access as legacy manager (read access; writes are gated by
@@ -64,6 +69,9 @@ const MANAGER_PLUS = ["manager", "manager_pole", "management_general", "admin"];
 const ADMIN_ONLY = ["admin"];
 // Roles allowed to access reservation pages
 const RES_ACCESS = [...MANAGER_PLUS, "hotesse", "receptionist"];
+// iter-42: Cantine
+const CANTINE_DASH_ACCESS = [...MANAGER_PLUS, "directeur", "rh", "cuisine"];
+const CANTINE_POINTAGE_ACCESS = [...CANTINE_DASH_ACCESS, "hotesse", "verification"];
 
 function PublicLayout() {
   return (
@@ -109,6 +117,9 @@ function App() {
             <Route path="/retour-experience" element={<Feedback />} />
             <Route path="/pay/:token" element={<Pay />} />
             <Route path="/companion/:code" element={<Companion />} />
+            <Route path="/cantine" element={<CantineLanding />} />
+            <Route path="/cantine/inscription" element={<CantineInscription />} />
+            <Route path="/cantine/reserver" element={<CantineReserver />} />
             <Route path="/accueil" element={<Accueil />} />
             <Route path="/accueil/paiement" element={<PaiementHub />} />
             <Route path="/accueil/wifi" element={<WifiPage />} />
@@ -148,6 +159,8 @@ function App() {
               <Route path="privatisations" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCharters /></RoleGuard>} />
               <Route path="corporate" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCorporateInquiries /></RoleGuard>} />
               <Route path="galerie" element={<RoleGuard allowed={MANAGER_PLUS}><StaffGallery /></RoleGuard>} />
+              <Route path="cantine" element={<RoleGuard allowed={CANTINE_DASH_ACCESS}><StaffCantine /></RoleGuard>} />
+              <Route path="cantine/pointage" element={<RoleGuard allowed={CANTINE_POINTAGE_ACCESS}><StaffCantinePointage /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>

@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 42 — Cantine Module Phase A: comprehensive backend testing (23/23 pytest passing) + frontend smoke tests of public + staff cantine pages. Fixed a React useEffect bug in StaffCantinePointage.jsx (`destroy is not a function`) that was rendering the runtime error overlay and blocking the tablet pointage UI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "StaffCantinePointage.jsx (line 17)",
+        "issue": "useEffect(focus, []) where focus() returned setTimeout's numeric ID, causing React 'destroy is not a function' runtime error overlay. The overlay blocked all interactions with /staff/cantine/pointage. FIXED by wrapping: useEffect(() => { focus(); }, []).",
+        "selector": "[data-testid=\"cantine-pointage-page\"]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration42_cantine.py",
+    "/app/test_reports/pytest/iter42_results.xml"
+  ],
+  "action_items": [
+    "Verify the StaffCantinePointage fix (already applied) is acceptable — alternative is to convert focus to use a proper cleanup pattern (already used at line 83-87 of same file). No other code-level changes required for Phase A.",
+    "Optional: consider seeding settings.current_period proactively at app startup so the auto-renew job behaves deterministically across deployments (it is currently lazy-created)."
+  ],
+  "critical_code_review_comments": [
+    "routers/cantine.py is 733 lines — still single-file but acceptable for Phase A. Consider splitting into public/staff/scheduler modules in Phase B.",
+    "Reservations cap is 2000 rows in /staff/cantine/reservations and 5000 rows in exports — fine for current scale; add pagination if user-base grows.",
+    "GOOD: _job_monthly_renew is idempotent (period stamp prevents double-renew); _ensure_unique_code retries up to 20 times.",
+    "GOOD: All Mongo lookups use {_id: 0} projection to avoid ObjectId leakage.",
+    "GOOD: All public POST endpoints validate input via Pydantic (Field min/max length, Literal types).",
+    "MINOR: export_pdf signature does not include 'all' in Literal scope (xlsx does); minor inconsistency, no functional impact."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration42_cantine.py (new)",
+    "/app/frontend/src/pages/staff/StaffCantinePointage.jsx (1-line useEffect fix)"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23)",
+    "frontend": "100% after fix (3 public pages + staff dashboard + pointage all load with no JS errors)"
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (admin), hotesse.test@boulay.ci / Hotesse@2026 (hotesse role used to assert 403 on dashboard + 200 on pointage)",
+  "seed_data_creation": "Test users created during pytest are prefixed TEST_iter42_* and removed by session-scope autouse teardown. UI smoke-test user (UISmoke*) also cleaned up manually.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase A is fully validated. Backend pytest suite at /app/backend/tests/test_iteration42_cantine.py is regression-safe (uses TEST_iter42_ prefix + autouse teardown). Scheduler test forces settings.current_period to '1970-01' to allow re-execution, then asserts the 2nd run is skipped — so re-running the suite is safe (the test restores state implicitly via the same renew). Phase B (admin CRUD, kitchen dashboard, exception history) is the next scope.",
+  "rca of the issue": {
+    "bug": "React runtime overlay 'destroy is not a function' on /staff/cantine/pointage",
+    "root_cause": "useEffect(focus, []) — focus() returned setTimeout's integer ID. React interprets a non-function return value as an invalid cleanup function and throws on unmount.",
+    "reproduction": "Login as admin → navigate to /staff/cantine then /staff/cantine/pointage → red error overlay covers page; data-testid selectors inaccessible.",
+    "mitigation": "Wrapped the focus() call in an arrow function so the effect returns undefined: `useEffect(() => { focus(); }, []);`. Verified: page now loads cleanly, no JS errors, all data-testid selectors present."
+  }
+}

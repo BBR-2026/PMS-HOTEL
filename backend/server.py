@@ -8490,6 +8490,8 @@ class StaffUserCreate(BaseModel):
         # New 7-role catalog
         "hotesse", "serveur_caisse", "logistique", "verification",
         "manager_pole", "management_general", "admin",
+        # iter-42: canteen roles
+        "directeur", "rh", "cuisine",
         # Legacy roles still accepted for backward compatibility
         "receptionist", "manager",
     ]
@@ -8507,6 +8509,7 @@ class StaffUserUpdate(BaseModel):
     role: Optional[Literal[
         "hotesse", "serveur_caisse", "logistique", "verification",
         "manager_pole", "management_general", "admin",
+        "directeur", "rh", "cuisine",
         "receptionist", "manager",
     ]] = None
     pole_id: Optional[Literal["beach_club", "hebergement", "corporate", "activites_events", "le_kaai"]] = None
@@ -9467,6 +9470,25 @@ async def start_scheduler():
         _sweep_pending_fineo_payments,
         "interval", seconds=30, id="fineo_pending_sweeper", replace_existing=True,
     )
+    # iter-42: Cantine — monthly auto-renewal of meal credits on the 1st of
+    # every month at 00:05 UTC (≈00:05 Abidjan, after midnight close).
+    from routers.cantine import _job_monthly_renew as _cantine_renew  # noqa: WPS433
+    from routers.cantine import _job_close_yesterday as _cantine_close  # noqa: WPS433
+    async def _cantine_renew_job():
+        try:
+            await _cantine_renew(db)
+        except Exception as ex:  # noqa: BLE001
+            logging.exception("Cantine monthly renew failed: %s", ex)
+    async def _cantine_close_job():
+        try:
+            await _cantine_close(db)
+        except Exception as ex:  # noqa: BLE001
+            logging.exception("Cantine close-yesterday failed: %s", ex)
+    scheduler.add_job(_cantine_renew_job, "cron", day=1, hour=0, minute=5,
+                      id="cantine_renew", replace_existing=True)
+    # Close at 00:01 UTC every day → flag yesterday's still-reserved as absent
+    scheduler.add_job(_cantine_close_job, "cron", hour=0, minute=1,
+                      id="cantine_close", replace_existing=True)
     scheduler.start()
     logging.info("APScheduler started: J-1 @17:00 UTC, J+1 @10:00 UTC, campaigns_runner @1min, fineo_sweeper @30s")
 
@@ -11337,6 +11359,20 @@ app.include_router(
     ),
     prefix="/api",
 )
+
+
+# Iteration 42 — Cantine du personnel (Phase A)
+from routers import cantine as _cantine_mod  # noqa: E402
+
+app.include_router(
+    _cantine_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    ),
+    prefix="/api",
+)
+
 
 
 
