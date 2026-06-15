@@ -30,6 +30,7 @@ import {
   UserCheck,
   Camera,
   FileBarChart,
+  AlertTriangle,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -61,6 +62,7 @@ const NAV = [
   { key: "pole_le_kaai", to: "/staff/pole/le_kaai", icon: UtensilsCrossed, label: "Le Kaai", roles: R_MGMT, poleId: "le_kaai" },
   { section: "Réservations", roles: R_RES },
   { key: "reservations", to: "/staff/reservations", icon: Ticket, label: "Toutes les réservations", roles: R_RES },
+  { key: "reservations_en_attente", to: "/staff/reservations/en-attente", icon: AlertTriangle, label: "Réservations en attente", roles: R_RES },
   { key: "paiements", to: "/staff/paiements", icon: Wallet, label: "Paiements", roles: R_MGMT },
   { key: "clients", to: "/staff/clients", icon: Users, label: "Clients", roles: R_MGMT },
   { key: "revenue", to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: R_MGMT },

@@ -60,6 +60,7 @@ import CantineLanding from "./pages/cantine/CantineLanding";
 import StaffCantine from "./pages/staff/StaffCantine";
 import StaffCantinePersonnel from "./pages/staff/StaffCantinePersonnel";
 import StaffCantinePointage from "./pages/staff/StaffCantinePointage";
+import StaffPendingBookings from "./pages/staff/StaffPendingBookings";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
 // the same routing access as legacy manager (read access; writes are gated by
@@ -136,6 +137,7 @@ function App() {
               <Route path="traversees/historique" element={<StaffTraverseesHistory />} />
               <Route path="activites" element={<StaffActivities />} />
               <Route path="reservations" element={<RoleGuard allowed={RES_ACCESS}><StaffReservations /></RoleGuard>} />
+              <Route path="reservations/en-attente" element={<RoleGuard allowed={RES_ACCESS}><StaffPendingBookings /></RoleGuard>} />
               <Route path="reservations/nouvelle" element={<RoleGuard allowed={RES_ACCESS}><StaffNewBooking /></RoleGuard>} />
               <Route path="recus" element={<RoleGuard allowed={MANAGER_PLUS}><StaffReceipts /></RoleGuard>} />
               <Route path="embarquements-historique" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCheckinsHistory /></RoleGuard>} />

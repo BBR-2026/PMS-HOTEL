@@ -3914,19 +3914,35 @@ def _staff_pole_scope(staff: dict) -> Optional[str]:
 # ---------- Dashboard KPIs (Module 1) ----------
 @api.get("/staff/dashboard")
 async def staff_dashboard(staff=Depends(get_current_staff)):
-    """KPIs + planning du jour + alertes pour la page d'accueil staff."""
+    """KPIs + planning du jour + alertes pour la page d'accueil staff.
+
+    iter-44: bookings with status='pending' (abandoned carts — no payment, no
+    cash-on-arrival commitment) are EXCLUDED from all dashboard counts so the
+    chiffre d'affaires and the head-count match what the kitchen / boats will
+    really see. They remain visible on the dedicated "Réservations en attente"
+    page for follow-up (email relance).
+    """
     today = datetime.now(timezone.utc).date().isoformat()
-    cursor = db.bookings.find({"date": today}, {"_id": 0, "reference_token": 0, "qr_codes": 0})
+    # iter-44: filter pending out at query level
+    cursor = db.bookings.find(
+        {"date": today, "status": {"$ne": "pending"}},
+        {"_id": 0, "reference_token": 0, "qr_codes": 0},
+    )
     bookings_today = await cursor.to_list(length=500)
 
-    revenue_today = sum(b.get("total_amount", 0) for b in bookings_today if b.get("status") in ("confirmed", "arrived", "completed"))
+    revenue_today = sum(b.get("total_amount", 0) for b in bookings_today if b.get("status") in ("confirmed", "arrived", "completed", "pending_cash_payment"))
     guests_today = sum(b.get("adults", 0) + b.get("children", 0) for b in bookings_today)
     crossings = await db.traversees.count_documents({"date": today})
 
-    # Status pipeline counts
-    pipeline_counts = {"pending": 0, "confirmed": 0, "arrived": 0, "completed": 0, "cancelled": 0}
+    # Status pipeline counts (iter-44: pending dropped, pending_cash_payment kept)
+    pipeline_counts = {
+        "confirmed": 0, "arrived": 0, "completed": 0,
+        "cancelled": 0, "pending_cash_payment": 0,
+    }
     for b in bookings_today:
-        s = b.get("status", "pending")
+        s = b.get("status", "confirmed")
+        if s == "pending":
+            continue
         pipeline_counts[s] = pipeline_counts.get(s, 0) + 1
 
     # Alerts
@@ -3939,12 +3955,20 @@ async def staff_dashboard(staff=Depends(get_current_staff)):
                 hour = int(bt[:-1])
                 btime = datetime.combine(now.date(), datetime.min.time()).replace(tzinfo=timezone.utc, hour=hour)
                 diff = (btime - now).total_seconds() / 3600
-                if 0 <= diff <= 2 and b.get("status") in ("pending", "confirmed"):
+                if 0 <= diff <= 2 and b.get("status") in ("confirmed", "pending_cash_payment"):
                     imminent.append({"booking_id": b["id"], "client": b.get("phone", ""), "offer": b.get("offer_name", ""), "boat_time": bt, "guests": b.get("adults", 0) + b.get("children", 0)})
             except Exception:
                 pass
 
-    unpaid = await db.bookings.find({"status": "pending"}, {"_id": 0, "id": 1, "offer_name": 1, "total_amount": 1, "phone": 1, "date": 1, "created_at": 1}).sort("created_at", -1).limit(20).to_list(length=20)
+    # iter-44: "unpaid" widget is now the relance funnel — count of pending
+    # bookings (any date) still awaiting payment, with the call-to-action.
+    unpaid_count = await db.bookings.count_documents({"status": "pending"})
+    unpaid = await db.bookings.find(
+        {"status": "pending"},
+        {"_id": 0, "id": 1, "offer_name": 1, "total_amount": 1, "phone": 1,
+         "email": 1, "date": 1, "created_at": 1,
+         "payment_link_token": 1},
+    ).sort("created_at", -1).limit(20).to_list(length=20)
 
     # Pôle breakdown — counts + revenue today + last 30 days
     pole_counts_today: dict = {pid: {"count": 0, "guests": 0, "revenue": 0} for pid in POLES}
@@ -4017,6 +4041,14 @@ async def staff_dashboard(staff=Depends(get_current_staff)):
     total_resp = promoters + passives + detractors
     fb_nps_avg = round(((promoters - detractors) / total_resp) * 100) if total_resp else None
 
+    # Also tag pole_counts_today with pending_cash_payment in revenue
+    # (cash-to-collect is real future revenue, not a no-show).
+    for b in bookings_today:
+        if b.get("status") == "pending_cash_payment":
+            pole = b.get("pole") or _pole_for_offer(b.get("offer_type", ""))
+            if pole and pole in pole_counts_today:
+                pole_counts_today[pole]["revenue"] += int(b.get("total_amount", 0))
+
     return {
         "kpis": {
             "bookings_today": len(bookings_today),
@@ -4026,6 +4058,7 @@ async def staff_dashboard(staff=Depends(get_current_staff)):
             "feedback_average": fb_average,
             "feedback_count": fb_total,
             "feedback_nps_avg": fb_nps_avg,
+            "pending_relance_count": unpaid_count,
         },
         "pipeline": pipeline_counts,
         "bookings_today": bookings_today,
@@ -5719,10 +5752,18 @@ async def list_bookings(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     search: Optional[str] = None,
+    include_pending: bool = False,
     limit: int = 200,
     staff=Depends(get_current_staff),
 ):
-    """List bookings with filters. payment_status = paid | unpaid."""
+    """List bookings with filters. payment_status = paid | unpaid.
+
+    iter-44: by default the result EXCLUDES status='pending' (abandoned carts)
+    so the operational lists and the chiffre d'affaires only show real
+    bookings (paid online + cash-on-arrival). Pass `include_pending=true`
+    or filter explicitly via `status=pending` to surface them — this is what
+    the dedicated "Réservations en attente" page does.
+    """
     await _require_role(staff, ["manager", "admin"])
     q: dict = {}
     if offer_type:
@@ -5743,6 +5784,9 @@ async def list_bookings(
             q["pole"] = pole
     if status:
         q["status"] = status
+    elif not include_pending:
+        # iter-44: hide abandoned-cart "pending" by default
+        q["status"] = {"$ne": "pending"}
     if date_from or date_to:
         d: dict = {}
         if date_from:
@@ -5770,6 +5814,164 @@ async def list_bookings(
     ).sort([("created_at", -1), ("date", -1)]).limit(limit)
     items = await cursor.to_list(length=limit)
     return items
+
+
+# iter-44: Réservations en attente (abandoned-cart) — dedicated relance funnel
+@api.get("/staff/bookings/pending")
+async def list_pending_bookings(
+    days: int = 90,
+    search: Optional[str] = None,
+    limit: int = 500,
+    staff=Depends(get_current_staff),
+):
+    """List bookings still in ``pending`` (created via the public tunnel but
+    payment never completed). Used by the new staff page
+    ``/staff/reservations/en-attente`` for relance / follow-up.
+
+    Filters:
+      - ``days``: only show pendings created within the last N days (default 90)
+      - ``search``: phone / email / name (case-insensitive substring)
+    """
+    await _require_role(staff, ["manager", "admin"])
+    from datetime import timedelta as _td
+    cutoff = (datetime.now(timezone.utc) - _td(days=max(1, days))).isoformat()
+    q: dict = {"status": "pending", "created_at": {"$gte": cutoff}}
+    if search:
+        s = search.strip()
+        q["$or"] = [
+            {"phone": {"$regex": s, "$options": "i"}},
+            {"email": {"$regex": s, "$options": "i"}},
+            {"participants.name": {"$regex": s, "$options": "i"}},
+            {"participants.surname": {"$regex": s, "$options": "i"}},
+            {"name": {"$regex": s, "$options": "i"}},
+            {"surname": {"$regex": s, "$options": "i"}},
+        ]
+    cursor = db.bookings.find(
+        q,
+        {"_id": 0, "reference_token": 0,
+         "qr_codes": 0, "ticket_image": 0},
+    ).sort("created_at", -1).limit(limit)
+    items = await cursor.to_list(length=limit)
+    # Compute a synthetic "relance" status for the UI:
+    #   never_relaunched | relaunched (N times) | stale (>14 days)
+    now = datetime.now(timezone.utc)
+    out = []
+    for b in items:
+        relance = b.get("relance_log") or []
+        last = relance[-1] if relance else None
+        age_days = None
+        try:
+            created = datetime.fromisoformat(b["created_at"].replace("Z", "+00:00"))
+            age_days = int((now - created).total_seconds() // 86400)
+        except Exception:
+            pass
+        out.append({
+            **b,
+            "relance_count": len(relance),
+            "last_relance_at": (last or {}).get("at"),
+            "age_days": age_days,
+            "is_stale": (age_days or 0) > 14,
+        })
+    # Aggregate total amount stuck in limbo so the UI can show the "CA à
+    # récupérer" hint above the table.
+    total_pending_amount = sum(int(b.get("total_amount") or 0) for b in out)
+    return {"items": out, "total": len(out),
+            "total_pending_amount": total_pending_amount}
+
+
+@api.post("/staff/bookings/{booking_id}/resend-payment-link")
+async def resend_payment_link(booking_id: str, staff=Depends(get_current_staff)):
+    """Regenerate (if expired) and email a fresh FineoPay payment link to the
+    client of a pending booking. Stamps the action in ``relance_log`` so the
+    staff can see how many times each client has been contacted.
+    """
+    await _require_role(staff, ["manager", "admin"])
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Réservation introuvable.")
+    if booking.get("status") != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cette réservation n'est pas en attente (statut: {booking.get('status')}).",
+        )
+
+    # Re-issue / extend the payment-link token (7-day window)
+    from secrets import token_urlsafe
+    token = booking.get("payment_link_token") or token_urlsafe(24)
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+
+    base = os.environ.get("PUBLIC_FRONTEND_URL") or os.environ.get("FRONTEND_URL", "")
+    payment_url = f"{base.rstrip('/')}/pay/{token}" if base else f"/pay/{token}"
+
+    await db.bookings.update_one(
+        {"id": booking_id},
+        {"$set": {
+            "payment_link_token": token,
+            "payment_link_expires_at": expires_at,
+        }},
+    )
+
+    # Send email
+    offer = OFFERS.get(booking.get("offer_type", "")) or {}
+    if booking.get("dates") and len(booking["dates"]) > 1:
+        date_str = " · ".join(booking["dates"])
+    else:
+        date_str = booking.get("date", "")
+    amount_label = f"{int(booking.get('total_amount', 0)):,}".replace(",", " ") + " FCFA"
+
+    email_sent = False
+    email_error = None
+    try:
+        from services import email_service as _es
+        primary = (booking.get("participants") or [{}])[0]
+        booker_name = booking.get("name") or primary.get("name") or ""
+        booker_surname = booking.get("surname") or primary.get("surname") or ""
+        full_name = f"{booker_name} {booker_surname}".strip()
+        rendered = _es.render_payment_link(
+            name=full_name,
+            ref=booking["id"][:8].upper(),
+            offer_label=offer.get("name_fr") or booking.get("offer_type", ""),
+            date_str=date_str,
+            boat_time=booking.get("boat_time"),
+            amount_label=amount_label,
+            payment_url=payment_url,
+            expires_label="dans 7 jours",
+        )
+        res = await _es.send_email(
+            db,
+            to_email=booking["email"],
+            subject="Relance — " + rendered["subject"],
+            html=rendered["html"],
+            plain=rendered["plain"],
+            purpose="payment_link_relance",
+            booking_id=booking["id"],
+            to_name=full_name or None,
+        )
+        email_sent = bool(res.get("ok"))
+    except Exception as ex:
+        email_error = str(ex)
+        logging.warning("Resend payment link email failed for %s: %s", booking_id, ex)
+
+    # Stamp the relance event
+    await db.bookings.update_one(
+        {"id": booking_id},
+        {"$push": {"relance_log": {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "channel": "email",
+            "by_staff_id": staff.get("id"),
+            "by_staff_email": staff.get("email"),
+            "email_sent": email_sent,
+            "error": email_error,
+        }}},
+    )
+    return {
+        "ok": True,
+        "email_sent": email_sent,
+        "email_error": email_error,
+        "payment_link": payment_url,
+        "expires_at": expires_at,
+    }
+
 
 
 @api.get("/staff/bookings/calendar")
