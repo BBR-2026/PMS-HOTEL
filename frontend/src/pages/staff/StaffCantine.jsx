@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   UtensilsCrossed, Users, Calendar, CheckCircle2, AlertTriangle,
   Loader2, FileSpreadsheet, FileText, Briefcase, Building2,
-  TrendingUp, ChevronRight, RefreshCw,
+  TrendingUp, ChevronRight, RefreshCw, Settings as SettingsIcon, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../../lib/api";
@@ -25,6 +25,7 @@ export default function StaffCantine() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const load = async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true); else setLoading(true);
@@ -105,6 +106,13 @@ export default function StaffCantine() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#0A0A0A]/10 hover:border-[#B8922A] text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/70 hover:text-[#B8922A]"
+            data-testid="cantine-open-settings"
+          >
+            <SettingsIcon size={12} /> Paramètres
+          </button>
           <button
             onClick={() => load({ silent: true })}
             disabled={refreshing}
@@ -265,6 +273,10 @@ export default function StaffCantine() {
         <ChevronRight size={11} /> Pointage tablette : menu « Cantine — Pointage ».
         Personnel enregistré : menu « Cantine — Personnel ».
       </div>
+
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 }
@@ -299,6 +311,194 @@ function BreakdownRow({ icon: Icon, label, value, accent }) {
       <Icon size={12} className="flex-shrink-0" style={{ color: accent }} />
       <span className="text-sm text-[#0A0A0A]/80 flex-1">{label}</span>
       <span className="font-display-serif text-xl text-[#0A0A0A]">{value}</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Settings Modal — admin-configurable reservation window + monthly credits
+// ─────────────────────────────────────────────────────────────────────────
+function SettingsModal({ onClose }) {
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get("/staff/cantine/settings").then(({ data }) => setForm({
+      meal_offset_days: data.meal_offset_days ?? 1,
+      reservation_open_hhmm: data.reservation_open_hhmm || "00:00",
+      reservation_close_hhmm: data.reservation_close_hhmm || "23:59",
+      default_credits_personnel: data.default_credits_personnel ?? 22,
+      default_credits_prestataire: data.default_credits_prestataire ?? 0,
+      auto_renew_enabled: data.auto_renew_enabled !== false,
+    })).catch(() => toast.error("Impossible de charger les paramètres"));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put("/staff/cantine/settings", form);
+      toast.success("Paramètres enregistrés");
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Échec de l'enregistrement");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!form) {
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <Loader2 className="text-white animate-spin" size={28} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in"
+         data-testid="cantine-settings-modal">
+      <div className="bg-white shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-2 relative">
+        <button onClick={onClose} className="absolute top-3 right-3 p-1.5 hover:bg-[#FAF7F2] rounded">
+          <X size={16} />
+        </button>
+        <div className="p-6">
+          <div className="text-[0.62rem] uppercase tracking-[0.3em] text-[#B8922A] mb-1">
+            Configuration cantine
+          </div>
+          <h3 className="font-display-serif text-2xl text-[#0A0A0A] mb-6">
+            Paramètres de réservation
+          </h3>
+
+          {/* Reservation window */}
+          <div className="border border-[#0A0A0A]/10 p-4 mb-4">
+            <div className="text-[0.7rem] uppercase tracking-[0.22em] text-[#B8922A] mb-3 font-medium">
+              Fenêtre d&apos;inscription
+            </div>
+
+            <div className="mb-4">
+              <label className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1.5">
+                Jour du repas réservé
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { v: 0, l: "Aujourd'hui" },
+                  { v: 1, l: "Demain" },
+                  { v: 2, l: "J+2" },
+                ].map((o) => (
+                  <button
+                    key={o.v}
+                    onClick={() => setForm((f) => ({ ...f, meal_offset_days: o.v }))}
+                    data-testid={`settings-offset-${o.v}`}
+                    className={`py-2 text-[0.7rem] uppercase tracking-[0.18em] border ${
+                      form.meal_offset_days === o.v
+                        ? "bg-[#B8922A] text-white border-[#B8922A]"
+                        : "bg-white text-[#0A0A0A]/70 border-[#0A0A0A]/15 hover:border-[#B8922A]"
+                    }`}
+                  >
+                    {o.l}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[0.7rem] text-[#0A0A0A]/45 mt-2">
+                Les employés s&apos;inscrivent pour le repas du jour sélectionné.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1">
+                  Ouverture (HH:MM)
+                </label>
+                <input
+                  type="time"
+                  value={form.reservation_open_hhmm}
+                  onChange={(e) => setForm((f) => ({ ...f, reservation_open_hhmm: e.target.value }))}
+                  className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+                  data-testid="settings-open-hhmm"
+                />
+              </div>
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1">
+                  Clôture (HH:MM)
+                </label>
+                <input
+                  type="time"
+                  value={form.reservation_close_hhmm}
+                  onChange={(e) => setForm((f) => ({ ...f, reservation_close_hhmm: e.target.value }))}
+                  className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+                  data-testid="settings-close-hhmm"
+                />
+              </div>
+            </div>
+            <p className="text-[0.7rem] text-[#0A0A0A]/45 mt-2">
+              Heure Abidjan (UTC+0). Si la fermeture est antérieure à l&apos;ouverture
+              (ex. 18:00 → 09:00), la fenêtre traverse minuit.
+            </p>
+          </div>
+
+          {/* Credits */}
+          <div className="border border-[#0A0A0A]/10 p-4 mb-4">
+            <div className="text-[0.7rem] uppercase tracking-[0.22em] text-[#B8922A] mb-3 font-medium">
+              Crédits repas mensuels (par défaut)
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1">
+                  Personnel
+                </label>
+                <input
+                  type="number" min="0" max="62"
+                  value={form.default_credits_personnel}
+                  onChange={(e) => setForm((f) => ({ ...f, default_credits_personnel: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+                  data-testid="settings-credits-personnel"
+                />
+              </div>
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1">
+                  Prestataires
+                </label>
+                <input
+                  type="number" min="0" max="62"
+                  value={form.default_credits_prestataire}
+                  onChange={(e) => setForm((f) => ({ ...f, default_credits_prestataire: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+                  data-testid="settings-credits-prestataire"
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 mt-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.auto_renew_enabled}
+                onChange={(e) => setForm((f) => ({ ...f, auto_renew_enabled: e.target.checked }))}
+                className="w-4 h-4 accent-[#B8922A]"
+                data-testid="settings-auto-renew"
+              />
+              <span className="text-sm text-[#0A0A0A]/75">
+                Renouvellement automatique le 1<sup>er</sup> de chaque mois
+              </span>
+            </label>
+          </div>
+
+          <div className="flex gap-2 mt-6">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="flex-1 bg-[#B8922A] hover:bg-[#9d7a23] disabled:opacity-50 text-white py-2.5 text-[0.7rem] uppercase tracking-[0.22em]"
+              data-testid="settings-save"
+            >
+              {saving ? <Loader2 size={13} className="animate-spin inline" /> : "Enregistrer"}
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 bg-white hover:bg-[#FAF7F2] border border-[#0A0A0A]/15 text-[#0A0A0A]/70 py-2.5 text-[0.7rem] uppercase tracking-[0.22em]"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

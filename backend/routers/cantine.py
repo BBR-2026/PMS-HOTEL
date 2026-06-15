@@ -44,9 +44,31 @@ CANTINE_ADMIN_ROLES = ["admin", "management_general", "directeur", "rh"]
 
 
 DEFAULT_SERVICES = [
+    # iter-45: liste officielle des services BBr fournie par le user.
+    "Ressources Humaines",
+    "Logistique et Moyens Généraux",
+    "Achats",
+    "Technique",
+    "Hébergement",
+    "Food & Beverage",
+    "Beach Club",
+    "Cuisine",
+    "Finance",
+    "Informatique",
+    "Guest Relationship",
+    "Commercial",
+    "Marketing",
+    "Sécurité",
+    "Prestataires",
+    "Extras",
+]
+
+# iter-45: ancienne liste auto-seedée jusqu'en iter-42 — détectée pour migrer
+# automatiquement les bases existantes vers la nouvelle nomenclature.
+_LEGACY_SERVICES = {
     "Réception", "Restaurant", "Cuisine", "Housekeeping", "Maintenance",
     "Administration", "Comptabilité", "Informatique", "Sécurité", "Prestataires",
-]
+}
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -76,6 +98,15 @@ class CanteenSettingsUpdate(BaseModel):
     default_credits_personnel: Optional[int] = Field(default=None, ge=0, le=62)
     default_credits_prestataire: Optional[int] = Field(default=None, ge=0, le=62)
     auto_renew_enabled: Optional[bool] = None
+    # iter-45: reservation-window controls
+    meal_offset_days: Optional[int] = Field(default=None, ge=0, le=7,
+        description="0 = today's lunch, 1 = tomorrow, 2 = day after…")
+    reservation_open_hhmm: Optional[str] = Field(default=None,
+        pattern=r"^([0-1]\d|2[0-3]):[0-5]\d$",
+        description="Heure d'ouverture des inscriptions (HH:MM, fuseau Abidjan)")
+    reservation_close_hhmm: Optional[str] = Field(default=None,
+        pattern=r"^([0-1]\d|2[0-3]):[0-5]\d$",
+        description="Heure de clôture des inscriptions")
 
 
 class CanteenServiceUpsert(BaseModel):
@@ -137,23 +168,102 @@ async def _get_settings(db) -> dict:
             "default_credits_prestataire": 0,
             "auto_renew_enabled": True,
             "current_period": _today_abidjan().strftime("%Y-%m"),
+            # iter-45: configurable reservation window (admin override)
+            "meal_offset_days": 1,            # 0=today, 1=tomorrow
+            "reservation_open_hhmm": "00:00", # opens at this HH:MM (Abidjan UTC+0)
+            "reservation_close_hhmm": "23:59",
         }
         await db.canteen_settings.update_one(
             {"_id": "global"}, {"$set": s}, upsert=True,
         )
+    else:
+        # iter-45: ensure new fields exist on already-created singletons
+        upd = {}
+        if "meal_offset_days" not in s:
+            upd["meal_offset_days"] = 1
+        if "reservation_open_hhmm" not in s:
+            upd["reservation_open_hhmm"] = "00:00"
+        if "reservation_close_hhmm" not in s:
+            upd["reservation_close_hhmm"] = "23:59"
+        if upd:
+            await db.canteen_settings.update_one(
+                {"_id": "global"}, {"$set": upd},
+            )
+            s.update(upd)
     return s
 
 
+def _parse_hhmm(s: str, fallback: tuple = (0, 0)) -> tuple:
+    """Parse "HH:MM" into (h, m). Returns fallback on garbage input."""
+    try:
+        h, m = s.split(":")
+        return (int(h), int(m))
+    except Exception:
+        return fallback
+
+
+def _within_window(open_hhmm: str, close_hhmm: str) -> bool:
+    """True if current Abidjan-local time is within the inclusive window.
+
+    Supports same-day windows (open<=close) AND overnight windows
+    (open>close, e.g. open=18:00 close=09:00 wraps midnight).
+    """
+    now = datetime.now(timezone.utc)
+    cur = now.hour * 60 + now.minute
+    oh, om = _parse_hhmm(open_hhmm, (0, 0))
+    ch, cm = _parse_hhmm(close_hhmm, (23, 59))
+    o = oh * 60 + om
+    c = ch * 60 + cm
+    if o <= c:
+        return o <= cur <= c
+    # overnight wrap
+    return cur >= o or cur <= c
+
+
 async def _ensure_default_services(db) -> None:
-    """Seed the default 10 services if the collection is empty."""
-    n = await db.canteen_services.count_documents({})
-    if n == 0:
+    """Seed the default services if missing OR migrate legacy list (iter-45)."""
+    existing = await db.canteen_services.find({}, {"_id": 0, "name": 1}).to_list(length=500)
+    names = {s["name"] for s in existing}
+    if not names:
         docs = [
             {"id": str(uuid.uuid4()), "name": name, "sort_order": i,
              "active": True, "created_at": _now_iso()}
             for i, name in enumerate(DEFAULT_SERVICES)
         ]
         await db.canteen_services.insert_many(docs)
+        return
+    # iter-45: auto-migrate the legacy seed (iter-42) to the official BBr
+    # nomenclature. Only triggers when the DB still has the EXACT legacy set
+    # and nothing else — protects manually-added services.
+    if names == _LEGACY_SERVICES:
+        # Wipe & reseed with the new list. Existing canteen_users that
+        # referenced an old service name will be remapped below.
+        remap = {
+            "Réception": "Guest Relationship",
+            "Restaurant": "Food & Beverage",
+            "Housekeeping": "Hébergement",
+            "Maintenance": "Technique",
+            "Administration": "Ressources Humaines",
+            "Comptabilité": "Finance",
+            # identical names just need to be kept as-is
+        }
+        await db.canteen_services.delete_many({})
+        docs = [
+            {"id": str(uuid.uuid4()), "name": name, "sort_order": i,
+             "active": True, "created_at": _now_iso()}
+            for i, name in enumerate(DEFAULT_SERVICES)
+        ]
+        await db.canteen_services.insert_many(docs)
+        # Remap users
+        for old, new in remap.items():
+            await db.canteen_users.update_many(
+                {"service": old}, {"$set": {"service": new}},
+            )
+        # Remap reservations too so historical lookups stay consistent
+        for old, new in remap.items():
+            await db.canteen_reservations.update_many(
+                {"service": old}, {"$set": {"service": new}},
+            )
 
 
 async def _public_user_view(user: dict) -> dict:
@@ -252,12 +362,26 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             raise HTTPException(status_code=404, detail="Code Cantine introuvable ou désactivé.")
         return await _public_user_view(user)
 
-    # ── Public: reserve tomorrow's lunch ──────────────────────────────────
+    # ── Public: reserve the next meal (window-controlled) ────────────────
     @r.post("/cantine/public/reservations")
     async def reserve_tomorrow(payload: CanteenReserveRequest):
         if not payload.confirmed:
             raise HTTPException(status_code=400, detail="Veuillez confirmer votre présence.")
         code = payload.code.strip().upper()
+
+        # iter-45: respect admin-configured window + meal offset
+        settings = await _get_settings(db)
+        open_hhmm = settings.get("reservation_open_hhmm", "00:00")
+        close_hhmm = settings.get("reservation_close_hhmm", "23:59")
+        if not _within_window(open_hhmm, close_hhmm):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Inscriptions fermées. Ouvert chaque jour de "
+                       f"{open_hhmm} à {close_hhmm} (heure Abidjan).",
+            )
+
+        offset = int(settings.get("meal_offset_days", 1) or 0)
+        meal_date = (_today_abidjan() + timedelta(days=max(0, offset))).isoformat()
 
         user = await db.canteen_users.find_one(
             {"code": code, "active": True}, {"_id": 0},
@@ -273,7 +397,6 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
                 detail="Vous n'avez plus de crédits repas disponibles pour ce mois.",
             )
 
-        meal_date = _tomorrow_iso()
         # Idempotency: refuse a duplicate same-user / same-date reservation
         existing = await db.canteen_reservations.find_one(
             {"user_code": code, "meal_date": meal_date}, {"_id": 0, "id": 1},
@@ -294,7 +417,7 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             "position": user["position"],
             "type": user["type"],
             "meal_date": meal_date,
-            "status": "reserved",   # reserved | consumed | absent
+            "status": "reserved",
             "reserved_at": _now_iso(),
             "consumed_at": None,
             "consumed_by_staff_id": None,
@@ -303,7 +426,6 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         }
         await db.canteen_reservations.insert_one(reservation)
 
-        # Consume 1 credit (atomic increment)
         await db.canteen_users.update_one(
             {"id": user["id"]},
             {"$inc": {"credits_consumed": 1},
@@ -317,6 +439,23 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             "reservation_id": reservation["id"],
             "credits_remaining": new_remaining,
             "guest_name": f"{user['first_name']} {user['last_name']}",
+        }
+
+    # ── Public: window status (used by ReservePanel to display open/close) ──
+    @r.get("/cantine/public/window")
+    async def public_window():
+        settings = await _get_settings(db)
+        offset = int(settings.get("meal_offset_days", 1) or 0)
+        meal_date = (_today_abidjan() + timedelta(days=max(0, offset))).isoformat()
+        return {
+            "open_hhmm": settings.get("reservation_open_hhmm", "00:00"),
+            "close_hhmm": settings.get("reservation_close_hhmm", "23:59"),
+            "is_open": _within_window(
+                settings.get("reservation_open_hhmm", "00:00"),
+                settings.get("reservation_close_hhmm", "23:59"),
+            ),
+            "meal_date": meal_date,
+            "meal_offset_days": offset,
         }
 
     # ── Staff: dashboard summary ──────────────────────────────────────────

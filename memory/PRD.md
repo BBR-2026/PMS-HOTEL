@@ -316,3 +316,15 @@ See `/app/memory/test_credentials.md`.
   * **Validation** : `iteration_31.json` → **48/49 tests pytest** + frontend 100%. Scanner regression OK. iter-42/43 régression OK. Le 49e était une fausse attente (hotesse 403 alors qu'elle inherit manager via ROLE_INCLUDES — comportement intentionnel pour permettre aux hôtesses de faire les relances). Aucun bug bloquant.
   * Tests régression : `/app/backend/tests/test_iteration44_pending_relance.py` (17 tests, 5 classes : Scanner, Dashboard, BookingsListFiltering, PendingEndpoint, ResendPaymentLink).
 
+
+
+- 2026-02-16: **Iteration 45 — Cantine: services BBr officiels + fenêtre de réservation configurable** :
+  1. **16 services officiels BBr** (ancienne liste de 10 remplacée) : Ressources Humaines, Logistique et Moyens Généraux, Achats, Technique, Hébergement, Food & Beverage, Beach Club, Cuisine, Finance, Informatique, Guest Relationship, Commercial, Marketing, Sécurité, Prestataires, Extras.
+     * Migration auto dans `_ensure_default_services()` : si la base contient EXACTEMENT l'ancienne liste, elle est remplacée + remap des users existants (Réception→Guest Relationship, Restaurant→Food & Beverage, Housekeeping→Hébergement, Maintenance→Technique, Administration→Ressources Humaines, Comptabilité→Finance). Protège les services manuellement ajoutés.
+  2. **Fenêtre de réservation 100% configurable** (3 nouveaux paramètres dans `canteen_settings`) :
+     * `meal_offset_days` (0/1/2) — détermine si le repas réservé est pour aujourd'hui, demain ou J+2. **Suppression du "réserver la veille" obligatoire** : l'admin choisit le jour cible.
+     * `reservation_open_hhmm` et `reservation_close_hhmm` (format HH:MM, fuseau Abidjan UTC+0) — fenêtre quotidienne pendant laquelle l'endpoint public `/api/cantine/public/reservations` accepte les requêtes. Support des fenêtres traversant minuit (open=18:00, close=09:00 = wrap overnight).
+     * Hors fenêtre → HTTP 400 `Inscriptions fermées. Ouvert chaque jour de HH:MM à HH:MM (heure Abidjan)`.
+  3. **Modal "Paramètres" admin** (`/staff/cantine` → bouton ⚙️ Paramètres) : configure les 3 nouveaux paramètres + crédits par défaut + auto-renew. data-testid: cantine-open-settings, cantine-settings-modal, settings-offset-{0,1,2}, settings-open-hhmm, settings-close-hhmm, settings-save.
+  4. **Banner public sur la page Réserver** : nouveau endpoint `/api/cantine/public/window` qui expose {open_hhmm, close_hhmm, is_open, meal_date}. La page `/cantine` (onglet "Réserver mon repas") affiche une bandeau vert ("Inscriptions ouvertes · Repas du mardi 16 juin 2026") ou rouge ("Inscriptions fermées") selon l'état actuel.
+  * **Tests** : flow complet curl validé end-to-end. 16 services seedés, settings GET/PUT OK, window dynamique, reservation refusée hors fenêtre, acceptée après ré-ouverture. Lint clean.

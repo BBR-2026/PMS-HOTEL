@@ -238,6 +238,12 @@ function ReservePanel() {
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
+  const [windowInfo, setWindowInfo] = useState(null);
+
+  useEffect(() => {
+    api.get("/cantine/public/window").then(({ data }) => setWindowInfo(data))
+      .catch(() => {});
+  }, []);
 
   const lookup = async (e) => {
     e?.preventDefault?.();
@@ -323,6 +329,27 @@ function ReservePanel() {
 
   return (
     <div>
+      {windowInfo && (
+        <div className={`mb-4 p-3 border text-sm flex items-start gap-2 ${
+          windowInfo.is_open
+            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+            : "bg-red-50 border-red-200 text-red-700"
+        }`} data-testid="cantine-window-info">
+          {windowInfo.is_open
+            ? <CheckCircle2 size={14} className="mt-0.5 flex-shrink-0" />
+            : <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />}
+          <div>
+            <div className="font-medium">
+              {windowInfo.is_open ? "Inscriptions ouvertes" : "Inscriptions fermées"} ·
+              Repas du {formatDate(windowInfo.meal_date)}
+            </div>
+            <div className="text-[0.72rem] opacity-80">
+              Plage horaire : {windowInfo.open_hhmm} – {windowInfo.close_hhmm} (Abidjan)
+            </div>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={lookup} className="mb-5">
         <label className="text-[0.6rem] uppercase tracking-[0.22em] text-[#B8922A] block mb-1.5 inline-flex items-center gap-1.5">
           <Hash size={10} /> Code Cantine <span className="text-red-500">*</span>
