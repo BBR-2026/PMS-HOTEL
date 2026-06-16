@@ -8697,10 +8697,14 @@ class StaffUserCreate(BaseModel):
         "manager_pole", "management_general", "admin",
         # iter-42: canteen roles
         "directeur", "rh", "cuisine",
+        # iter-46: planning
+        "chef_dept",
         # Legacy roles still accepted for backward compatibility
         "receptionist", "manager",
     ]
     pole_id: Optional[Literal["beach_club", "hebergement", "corporate", "activites_events", "le_kaai"]] = None
+    # iter-46: dept_id for chef_dept role (planning module)
+    dept_id: Optional[str] = None
     # Optional per-user override of the sections visible in the sidebar.
     # When set (non-empty list), this fully replaces the role-defaults. When
     # None or empty, the role's default matrix is used (backward compatible).
@@ -8715,6 +8719,7 @@ class StaffUserUpdate(BaseModel):
         "hotesse", "serveur_caisse", "logistique", "verification",
         "manager_pole", "management_general", "admin",
         "directeur", "rh", "cuisine",
+        "chef_dept",
         "receptionist", "manager",
     ]] = None
     pole_id: Optional[Literal["beach_club", "hebergement", "corporate", "activites_events", "le_kaai"]] = None
@@ -11568,9 +11573,18 @@ app.include_router(
 
 # Iteration 42 — Cantine du personnel (Phase A)
 from routers import cantine as _cantine_mod  # noqa: E402
+from routers import planning as _planning_mod  # noqa: E402
 
 app.include_router(
     _cantine_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    ),
+    prefix="/api",
+)
+app.include_router(
+    _planning_mod.build_router(
         db=db,
         get_current_staff=get_current_staff,
         require_role=_require_role,

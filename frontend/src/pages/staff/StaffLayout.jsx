@@ -31,6 +31,7 @@ import {
   Camera,
   FileBarChart,
   AlertTriangle,
+  ClipboardList,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -91,6 +92,8 @@ const NAV = [
   { key: "cantine_dashboard", to: "/staff/cantine", icon: UtensilsCrossed, label: "Cantine — Dashboard", roles: R_CANTINE },
   { key: "cantine_personnel", to: "/staff/cantine/personnel", icon: Users, label: "Cantine — Personnel", roles: R_CANTINE },
   { key: "cantine_pointage", to: "/staff/cantine/pointage", icon: QrCode, label: "Cantine — Pointage", roles: R_CANTINE_POINTAGE },
+  { section: "Planning des équipes", roles: [...R_CANTINE, "chef_dept"] },
+  { key: "planning", to: "/staff/planning", icon: ClipboardList, label: "Planning hebdomadaire", roles: [...R_CANTINE, "chef_dept"] },
   { key: "config", to: "/staff/config", icon: Settings, label: "Configuration", roles: R_ADMIN_ONLY },
 ];
 
@@ -114,6 +117,7 @@ const ROLE_LABEL_FR = {
   directeur: "Directeur",
   rh: "RH",
   cuisine: "Cuisine",
+  chef_dept: "Chef de département",
 };
 
 function SidebarContent({ user, onNavigate, onLogout }) {

@@ -61,6 +61,7 @@ import StaffCantine from "./pages/staff/StaffCantine";
 import StaffCantinePersonnel from "./pages/staff/StaffCantinePersonnel";
 import StaffCantinePointage from "./pages/staff/StaffCantinePointage";
 import StaffPendingBookings from "./pages/staff/StaffPendingBookings";
+import StaffPlanning from "./pages/staff/StaffPlanning";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
 // the same routing access as legacy manager (read access; writes are gated by
@@ -72,6 +73,8 @@ const RES_ACCESS = [...MANAGER_PLUS, "hotesse", "receptionist"];
 // iter-42: Cantine
 const CANTINE_DASH_ACCESS = [...MANAGER_PLUS, "directeur", "rh", "cuisine"];
 const CANTINE_POINTAGE_ACCESS = [...CANTINE_DASH_ACCESS, "hotesse", "verification"];
+// iter-46: planning des équipes
+const PLANNING_ACCESS = [...MANAGER_PLUS, "directeur", "rh", "chef_dept"];
 
 function PublicLayout() {
   return (
@@ -163,6 +166,7 @@ function App() {
               <Route path="cantine" element={<RoleGuard allowed={CANTINE_DASH_ACCESS}><StaffCantine /></RoleGuard>} />
               <Route path="cantine/personnel" element={<RoleGuard allowed={CANTINE_DASH_ACCESS}><StaffCantinePersonnel /></RoleGuard>} />
               <Route path="cantine/pointage" element={<RoleGuard allowed={CANTINE_POINTAGE_ACCESS}><StaffCantinePointage /></RoleGuard>} />
+              <Route path="planning" element={<RoleGuard allowed={PLANNING_ACCESS}><StaffPlanning /></RoleGuard>} />
             </Route>
           </Routes>
         </StaffAuthProvider>
