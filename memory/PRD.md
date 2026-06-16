@@ -359,7 +359,6 @@ See `/app/memory/test_credentials.md`.
      * Cleanup OK ✓
   * Lint propre. Backend reload OK. Smoke screenshot validé (14 dépts listés, boutons "+ Générer un compte" présents).
 
-
 - 2026-06-16: **Iteration 48 — Manuel de Formation Planning (PDF) + audit complet du scanner QR Boarding Pass** :
   1. **Manuel PDF Planning** (`/app/scripts/generate_planning_manual.py`) — Document A4 7 pages stylé charte BBR (noir + or `#B8922A` + cream `#FAF7F2`) avec ReportLab :
      * **Couverture** noire avec logo BBR + bordures dorées en haut/bas, titre `Manuel de Formation` / `Planning des Équipes`, sous-titre "Guide à l'attention des Chefs de Département", édition mensuelle FR.
@@ -376,3 +375,12 @@ See `/app/memory/test_credentials.md`.
      * Registration QR (`/accueil/enregistrement`) : décode + accepté par `/staff/scan/registration/{token}`, frontend fallback gracieux sur 404 du scanner générique.
      * **Conclusion** : aucun défaut dans la chaîne de génération + résolution des QR boarding pass actuels. Les corrections d'iter-29 (QR_SIZE=440, ECC=M, JSON compact ~75 chars) et iter-41 (résolveur multi-formats : exact, lowercase, prefix 8+ hex, booking-id ref) protègent contre tous les cas d'usage. Si un QR ancien est non reconnu, c'est probablement un ticket pré-iter-29 où le payload était >600 chars (cf. changelog 2026-05-12).
   * Fichiers ajoutés : `scripts/generate_planning_manual.py`, `scripts/capture_planning_screenshots.py`, `scripts/capture_admin_view.py`, `backend/tests/test_qr_audit_boarding.py`, `manual_assets/{01-04}*.png`, `frontend/public/Manuel_Planning_BBr.pdf`.
+
+- 2026-06-16: **Iteration 49 — Manuel de Formation Cantine (PDF)** :
+  * Document A4 8 pages branded BBR (noir + or + cream), généré via ReportLab dans `/app/scripts/generate_cantine_manual.py`.
+  * Structure : Couverture (logo + titre) → Bienvenue (règles + URL portail) → Étape 1 Créer mon compte → Étape 2 Récupérer mon code personnel → Étape 3 Réserver mon repas → Étape 4 Confirmer et valider → Section Staff (RH/Direction/Cuisine) → FAQ 7 questions.
+  * 8 captures d'écran réelles capturées via Playwright (`scripts/capture_cantine_screenshots.py`) intégrées avec bordure dorée + légendes : landing register, register filled, register success avec code, reserve landing, reserve user found, reserve confirmed, staff dashboard, staff pointage tablette.
+  * Sortie : `/app/frontend/public/Manuel_Cantine_BBr.pdf` (438 KB, 8 pages). Servi en HTTP 200 sur `/Manuel_Cantine_BBr.pdf`.
+  * **Discoverability double** : (1) bouton "Manuel" doré ajouté en haut de `/staff/cantine` (data-testid `cantine-manual-pdf`) ; (2) lien "📘 Télécharger le manuel d'utilisation (PDF)" en bas de la page publique `/cantine` (data-testid `cantine-public-manual-link`) pour les employés.
+  * Test data cleanup : compte fictif (Aminata Kouassi, code WGE909) créé pour les captures puis supprimé via DELETE /staff/cantine/users/{id}.
+

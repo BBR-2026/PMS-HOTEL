@@ -106,6 +106,16 @@ export default function StaffCantine() {
               </button>
             ))}
           </div>
+          <a
+            href="/Manuel_Cantine_BBr.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#B8922A]/40 hover:bg-[#FAF7F2] text-[0.7rem] uppercase tracking-[0.18em] text-[#B8922A]"
+            data-testid="cantine-manual-pdf"
+            title="Télécharger le manuel d'utilisation (PDF)"
+          >
+            <FileText size={12} /> Manuel
+          </a>
           <button
             onClick={() => setShowSettings(true)}
             className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#0A0A0A]/10 hover:border-[#B8922A] text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/70 hover:text-[#B8922A]"

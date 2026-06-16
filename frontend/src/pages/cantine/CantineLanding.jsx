@@ -63,6 +63,16 @@ export default function CantineLanding() {
 
         <p className="text-center text-[0.7rem] text-[#0A0A0A]/40 mt-10 leading-relaxed">
           Boulay Beach Resort — Cantine du personnel
+          <br />
+          <a
+            href="/Manuel_Cantine_BBr.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#B8922A] hover:underline mt-1 inline-block"
+            data-testid="cantine-public-manual-link"
+          >
+            📘 Télécharger le manuel d'utilisation (PDF)
+          </a>
         </p>
       </div>
     </div>
