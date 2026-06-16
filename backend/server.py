@@ -11588,6 +11588,7 @@ app.include_router(
         db=db,
         get_current_staff=get_current_staff,
         require_role=_require_role,
+        hash_password=hash_password,
     ),
     prefix="/api",
 )

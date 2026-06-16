@@ -337,3 +337,24 @@ See `/app/memory/test_credentials.md`.
   * **Endpoints** : GET/PUT departments, GET/POST/PATCH/DELETE employees, GET week (matrice complète + can_edit), POST week/cell (upsert atomique), POST week/validate, GET hr/summary, GET exports/{xlsx,pdf}.
   * **Tests curl end-to-end OK** : 14 dépts seedés, création employé, toggle cellule Mer=R, validation week → summary RH affiche validated_count=1, PDF généré (2.4 KB), cleanup OK.
   * **Phase 2 backlog** : horaires (08-17h / 14-22h), rotations, congés/absences, remplacements, validation RH bloquante, stats présence, vue mensuelle, notifications push.
+
+
+- 2026-02-16: **Iteration 47 — Planning : génération automatique des comptes chefs de département** suite à 2 demandes user.
+  1. **Endpoints HR** (`routers/planning.py`) :
+     * `GET /api/staff/planning/hr/chefs` — liste 14 dépts avec leur chef assigné (ou "Aucun compte")
+     * `POST /api/staff/planning/hr/chefs/generate?dept_id=X` — auto-génère un compte staff : email `chef.{slug}@boulay.ci` (avec suffixe si collision) + mot de passe 10 chars (lettres + chiffres, `secrets.choice`). Hashé via bcrypt, stocké dans `db.staff`. Retourne les credentials **UNE SEULE FOIS** en clair. Refuse les doublons (HTTP 409).
+     * `POST /api/staff/planning/hr/chefs/{user_id}/regenerate-password` — régénère un nouveau mot de passe, stamp `password_rotated_at` / `password_rotated_by`.
+     * `DELETE /api/staff/planning/hr/chefs/{user_id}` — supprime le compte + détache le `manager_staff_id` du département.
+  2. **Section UI "Comptes Chefs de département"** dans `/staff/planning` (visible seulement aux RH, sous la grille) :
+     * Table 14 dépts × { nom, compte chef (email mono / "Aucun"), créé le, actions }
+     * Bouton **"+ Générer un compte"** quand pas de chef → modal credentials avec emails/mot de passe affichés en gros, bouton Copier (email seul, mot de passe seul, ou les 2)
+     * Bouton 🔑 **Régénérer mot de passe** (confirmation) → même modal credentials
+     * Bouton 🗑 **Supprimer** (confirmation)
+     * Tous les data-testids prévus : `chefs-management`, `chef-row-{dept_id}`, `chef-generate-{dept_id}`, `chef-regen-{dept_id}`, `chef-delete-{dept_id}`, `creds-modal`, `creds-email`, `creds-password`, `creds-copy-both`.
+  3. **Redirection post-login** : un `chef_dept` qui se connecte sur `/staff/login` est automatiquement redirigé vers `/staff/planning` (au lieu du dashboard général qu'il ne peut pas voir). La sidebar n'affiche pour lui que "Planning hebdomadaire".
+  4. **Isolation parfaite** vérifiée par curl end-to-end :
+     * RH génère → chef se connecte avec les credentials retournés ✓
+     * Chef voit UNIQUEMENT son département (filtré par `dept_id`) dans la liste ✓
+     * Chef HTTP 403 sur `/api/staff/planning/hr/chefs` (HR_ROLES enforce) ✓
+     * Cleanup OK ✓
+  * Lint propre. Backend reload OK. Smoke screenshot validé (14 dépts listés, boutons "+ Générer un compte" présents).

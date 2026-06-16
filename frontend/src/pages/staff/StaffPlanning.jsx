@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Users, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Plus,
   Loader2, FileSpreadsheet, FileText, Printer, Trash2, Pencil, X,
-  RefreshCw, ClipboardList, BadgeCheck,
+  RefreshCw, ClipboardList, BadgeCheck, KeyRound, Copy, UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../../lib/api";
@@ -352,6 +352,232 @@ export default function StaffPlanning() {
       {newEmpModal && (
         <EmployeeModal onClose={() => setNewEmpModal(false)} onSave={addEmployee} />
       )}
+
+      {/* iter-47: HR-only chefs management section */}
+      {hrSummary && <ChefsManagement />}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// HR-only: generate & manage chef_dept accounts
+// ─────────────────────────────────────────────────────────────────────────
+function ChefsManagement() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(null); // dept_id during generate / user_id during regen / delete
+  const [credsModal, setCredsModal] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/staff/planning/hr/chefs");
+      setRows(data.items || []);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Échec du chargement");
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const generate = async (dept) => {
+    setBusy(dept.id);
+    try {
+      const { data } = await api.post("/staff/planning/hr/chefs/generate",
+        null, { params: { dept_id: dept.id } });
+      setCredsModal({ ...data, kind: "generated" });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Échec");
+    } finally { setBusy(null); }
+  };
+
+  const regen = async (dept) => {
+    if (!dept.chef) return;
+    if (!window.confirm(`Régénérer le mot de passe de ${dept.chef.email} ?\n\nL'ancien mot de passe deviendra immédiatement invalide.`)) return;
+    setBusy(dept.chef.id);
+    try {
+      const { data } = await api.post(`/staff/planning/hr/chefs/${dept.chef.id}/regenerate-password`);
+      setCredsModal({ ...data, department: dept.name, kind: "regenerated" });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Échec");
+    } finally { setBusy(null); }
+  };
+
+  const remove = async (dept) => {
+    if (!dept.chef) return;
+    if (!window.confirm(`Supprimer le compte ${dept.chef.email} ?\n\nLe chef ne pourra plus se connecter.`)) return;
+    setBusy(dept.chef.id);
+    try {
+      await api.delete(`/staff/planning/hr/chefs/${dept.chef.id}`);
+      toast.success("Compte supprimé");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Échec");
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <div className="bg-white border border-[#0A0A0A]/10 overflow-hidden" data-testid="chefs-management">
+      <div className="px-4 sm:px-5 py-3.5 border-b border-[#0A0A0A]/8 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-display-serif text-lg text-[#0A0A0A] inline-flex items-center gap-2">
+            <UserCog size={16} className="text-[#B8922A]" />
+            Comptes Chefs de département
+          </h3>
+          <p className="text-[0.7rem] text-[#0A0A0A]/55 mt-0.5">
+            Générez un identifiant + mot de passe par département. Le chef se connecte
+            sur <code className="bg-[#FAF7F2] px-1">/staff/login</code> et accède à son planning.
+          </p>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        {loading ? (
+          <div className="py-10 flex items-center justify-center">
+            <Loader2 className="animate-spin text-[#B8922A]" size={20} />
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-[#FAF7F2] text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 text-left">
+                <th className="px-4 py-2.5">Département</th>
+                <th className="px-4 py-2.5">Compte chef</th>
+                <th className="px-4 py-2.5 hidden md:table-cell">Créé le</th>
+                <th className="px-4 py-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((d) => (
+                <tr key={d.id} className="border-t border-[#0A0A0A]/5" data-testid={`chef-row-${d.id}`}>
+                  <td className="px-4 py-2.5 font-medium text-[#0A0A0A]">{d.name}</td>
+                  <td className="px-4 py-2.5">
+                    {d.chef ? (
+                      <span className="font-mono text-[0.78rem] text-[#0A0A0A]" data-testid={`chef-email-${d.id}`}>
+                        {d.chef.email}
+                      </span>
+                    ) : (
+                      <span className="text-[0.78rem] text-[#0A0A0A]/40 italic">Aucun compte</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 hidden md:table-cell text-[0.78rem] text-[#0A0A0A]/55">
+                    {d.chef?.created_at?.slice(0, 10) || "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    {!d.chef ? (
+                      <button
+                        onClick={() => generate(d)}
+                        disabled={busy === d.id}
+                        data-testid={`chef-generate-${d.id}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#B8922A] hover:bg-[#9d7a23] disabled:opacity-50 text-white text-[0.65rem] uppercase tracking-[0.18em]"
+                      >
+                        {busy === d.id ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                        Générer un compte
+                      </button>
+                    ) : (
+                      <div className="inline-flex gap-1">
+                        <button
+                          onClick={() => regen(d)}
+                          disabled={busy === d.chef.id}
+                          title="Régénérer le mot de passe"
+                          data-testid={`chef-regen-${d.id}`}
+                          className="p-1.5 border border-[#0A0A0A]/15 hover:border-[#B8922A] text-[#0A0A0A]/55 hover:text-[#B8922A]"
+                        >
+                          {busy === d.chef.id ? <Loader2 size={12} className="animate-spin" /> : <KeyRound size={12} />}
+                        </button>
+                        <button
+                          onClick={() => remove(d)}
+                          disabled={busy === d.chef.id}
+                          title="Supprimer le compte"
+                          data-testid={`chef-delete-${d.id}`}
+                          className="p-1.5 border border-[#0A0A0A]/15 hover:border-red-500 text-[#0A0A0A]/55 hover:text-red-500"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {credsModal && (
+        <CredentialsModal data={credsModal} onClose={() => setCredsModal(null)} />
+      )}
+    </div>
+  );
+}
+
+function CredentialsModal({ data, onClose }) {
+  const copy = (text, label) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copié`);
+  };
+  const both = `Email : ${data.email}\nMot de passe : ${data.password}`;
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" data-testid="creds-modal">
+      <div className="bg-white shadow-xl w-full max-w-md p-6 relative">
+        <button onClick={onClose} className="absolute top-3 right-3 p-1.5 hover:bg-[#FAF7F2]">
+          <X size={16} />
+        </button>
+        <div className="text-[0.62rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
+          {data.kind === "generated" ? "Nouveau compte créé" : "Mot de passe régénéré"}
+        </div>
+        <h3 className="font-display-serif text-2xl text-[#0A0A0A] mb-1">
+          Chef {data.department}
+        </h3>
+        <p className="text-[0.78rem] text-[#0A0A0A]/55 mb-5">
+          ⚠ {data.warning}
+        </p>
+
+        <div className="bg-[#FAF7F2] border border-[#0A0A0A]/10 p-4 mb-4">
+          <div className="flex items-baseline justify-between py-2 border-b border-[#0A0A0A]/8">
+            <div>
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 mb-1">
+                Identifiant (email)
+              </div>
+              <code className="text-sm text-[#0A0A0A]" data-testid="creds-email">{data.email}</code>
+            </div>
+            <button onClick={() => copy(data.email, "Email")} className="text-[#B8922A] hover:text-[#9d7a23]">
+              <Copy size={14} />
+            </button>
+          </div>
+          <div className="flex items-baseline justify-between py-2">
+            <div>
+              <div className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/50 mb-1">
+                Mot de passe
+              </div>
+              <code className="text-lg font-bold tracking-wider text-[#0A0A0A]" data-testid="creds-password">
+                {data.password}
+              </code>
+            </div>
+            <button onClick={() => copy(data.password, "Mot de passe")} className="text-[#B8922A] hover:text-[#9d7a23]">
+              <Copy size={14} />
+            </button>
+          </div>
+        </div>
+
+        <p className="text-[0.78rem] text-[#0A0A0A]/65 mb-4">
+          Le chef se connecte sur <code className="bg-[#FAF7F2] px-1">/staff/login</code>
+          {" "}avec ces identifiants et accède directement au menu « Planning hebdomadaire ».
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => copy(both, "Identifiants")}
+            className="flex-1 bg-[#B8922A] hover:bg-[#9d7a23] text-white py-2.5 text-[0.7rem] uppercase tracking-[0.22em] inline-flex items-center justify-center gap-1.5"
+            data-testid="creds-copy-both"
+          >
+            <Copy size={12} /> Copier les 2 identifiants
+          </button>
+          <button onClick={onClose}
+            className="px-4 bg-white hover:bg-[#FAF7F2] border border-[#0A0A0A]/15 text-[#0A0A0A]/70 py-2.5 text-[0.7rem] uppercase tracking-[0.22em]">
+            Fermer
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

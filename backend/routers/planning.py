@@ -109,7 +109,7 @@ def _user_can_manage(staff: dict, dept: dict) -> bool:
 
 
 # ── Router ──────────────────────────────────────────────────────────────────
-def build_router(db, get_current_staff, require_role) -> APIRouter:
+def build_router(db, get_current_staff, require_role, hash_password=None) -> APIRouter:
     r = APIRouter()
 
     @r.get("/staff/planning/departments")
@@ -299,6 +299,117 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             "validated_count": validated,
             "pending_count": max(0, total_depts - validated),
         }
+
+    # ── HR: chef_dept account management (iter-47) ─────────────────────────
+    def _slugify(name: str) -> str:
+        import re
+        import unicodedata
+        n = unicodedata.normalize("NFKD", name).encode("ASCII", "ignore").decode()
+        n = re.sub(r"[^a-zA-Z0-9]+", ".", n.lower()).strip(".")
+        return n
+
+    def _gen_password() -> str:
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        return "".join(secrets.choice(alphabet) for _ in range(10))
+
+    @r.get("/staff/planning/hr/chefs")
+    async def list_chefs(staff=Depends(get_current_staff)):
+        await require_role(staff, HR_ROLES)
+        await _seed_departments(db)
+        depts = await db.planning_departments.find({}, {"_id": 0}).sort("sort_order", 1).to_list(length=200)
+        chefs = await db.staff.find(
+            {"role": "chef_dept"},
+            {"_id": 0, "id": 1, "name": 1, "email": 1, "dept_id": 1,
+             "created_at": 1, "active": 1, "password_rotated_at": 1},
+        ).to_list(length=200)
+        by_dept = {c.get("dept_id"): c for c in chefs}
+        out = []
+        for d in depts:
+            c = by_dept.get(d["id"])
+            out.append({**d, "chef": c, "has_chef": bool(c)})
+        return {"items": out, "orphan_chefs":
+                [c for c in chefs if c.get("dept_id") not in {d["id"] for d in depts}]}
+
+    @r.post("/staff/planning/hr/chefs/generate")
+    async def generate_chef(dept_id: str, staff=Depends(get_current_staff)):
+        await require_role(staff, HR_ROLES)
+        if hash_password is None:
+            raise HTTPException(500, "Password hasher not wired.")
+        dept = await db.planning_departments.find_one({"id": dept_id}, {"_id": 0})
+        if not dept:
+            raise HTTPException(404, "Département introuvable.")
+        existing = await db.staff.find_one({"role": "chef_dept", "dept_id": dept_id})
+        if existing:
+            raise HTTPException(409, "Ce département a déjà un chef.")
+        base_slug = _slugify(dept["name"])
+        email = f"chef.{base_slug}@boulay.ci"
+        suffix = 0
+        while await db.staff.find_one({"email": email}, {"_id": 0, "email": 1}):
+            suffix += 1
+            email = f"chef.{base_slug}{suffix}@boulay.ci"
+        password = _gen_password()
+        new_user = {
+            "id": str(uuid.uuid4()),
+            "name": f"Chef {dept['name']}",
+            "email": email,
+            "password_hash": hash_password(password),
+            "role": "chef_dept",
+            "dept_id": dept_id,
+            "pole_id": None,
+            "active": True,
+            "created_at": _now_iso(),
+            "created_by": staff.get("email"),
+        }
+        await db.staff.insert_one(new_user)
+        await db.planning_departments.update_one(
+            {"id": dept_id}, {"$set": {"manager_staff_id": new_user["id"]}},
+        )
+        return {
+            "ok": True,
+            "department": dept["name"],
+            "email": email,
+            "password": password,
+            "user_id": new_user["id"],
+            "warning": "Conservez ce mot de passe. Il ne sera plus jamais affiché en clair.",
+        }
+
+    @r.post("/staff/planning/hr/chefs/{user_id}/regenerate-password")
+    async def regen_chef_password(user_id: str, staff=Depends(get_current_staff)):
+        await require_role(staff, HR_ROLES)
+        if hash_password is None:
+            raise HTTPException(500, "Password hasher not wired.")
+        u = await db.staff.find_one(
+            {"id": user_id, "role": "chef_dept"}, {"_id": 0, "email": 1, "dept_id": 1},
+        )
+        if not u:
+            raise HTTPException(404, "Chef introuvable.")
+        password = _gen_password()
+        await db.staff.update_one(
+            {"id": user_id},
+            {"$set": {"password_hash": hash_password(password),
+                      "password_rotated_at": _now_iso(),
+                      "password_rotated_by": staff.get("email")}},
+        )
+        return {"ok": True, "email": u["email"], "password": password,
+                "warning": "Conservez ce mot de passe. Il ne sera plus jamais affiché en clair."}
+
+    @r.delete("/staff/planning/hr/chefs/{user_id}")
+    async def delete_chef(user_id: str, staff=Depends(get_current_staff)):
+        await require_role(staff, HR_ROLES)
+        u = await db.staff.find_one(
+            {"id": user_id, "role": "chef_dept"}, {"_id": 0, "dept_id": 1, "email": 1},
+        )
+        if not u:
+            raise HTTPException(404, "Chef introuvable.")
+        await db.staff.delete_one({"id": user_id})
+        if u.get("dept_id"):
+            await db.planning_departments.update_one(
+                {"id": u["dept_id"]}, {"$set": {"manager_staff_id": None}},
+            )
+        return {"ok": True, "deleted_email": u["email"]}
+
 
     # ── Exports ──
     @r.get("/staff/planning/exports/xlsx")

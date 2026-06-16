@@ -18,9 +18,10 @@ export default function StaffLogin() {
     e.preventDefault();
     setBusy(true);
     try {
-      await login(email.trim().toLowerCase(), password);
+      const u = await login(email.trim().toLowerCase(), password);
       toast.success("Connexion réussie");
-      navigate("/staff");
+      // iter-47: chef_dept lands directly on planning (only page they can access)
+      navigate(u?.role === "chef_dept" ? "/staff/planning" : "/staff");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Identifiants invalides");
     } finally {
