@@ -358,3 +358,21 @@ See `/app/memory/test_credentials.md`.
      * Chef HTTP 403 sur `/api/staff/planning/hr/chefs` (HR_ROLES enforce) ✓
      * Cleanup OK ✓
   * Lint propre. Backend reload OK. Smoke screenshot validé (14 dépts listés, boutons "+ Générer un compte" présents).
+
+
+- 2026-06-16: **Iteration 48 — Manuel de Formation Planning (PDF) + audit complet du scanner QR Boarding Pass** :
+  1. **Manuel PDF Planning** (`/app/scripts/generate_planning_manual.py`) — Document A4 7 pages stylé charte BBR (noir + or `#B8922A` + cream `#FAF7F2`) avec ReportLab :
+     * **Couverture** noire avec logo BBR + bordures dorées en haut/bas, titre `Manuel de Formation` / `Planning des Équipes`, sous-titre "Guide à l'attention des Chefs de Département", édition mensuelle FR.
+     * **6 pages intérieures** : Bienvenue + Étape 1 (Se connecter), Étape 2 (Constituer son équipe), Étape 3 (Créer le planning de la semaine), Étape 4 (Valider et exporter), Aide / FAQ (6 questions).
+     * **4 captures d'écran réelles** intégrées avec bordure dorée + légendes : login, grille chef, modal d'ajout d'employé, vue RH avec KPIs.
+     * **Composants réutilisables** : boîte d'info cream/or, étape numérotée, header gold hairline, footer "Page N", page templates ReportLab personnalisés.
+     * Sortie : `/app/frontend/public/Manuel_Planning_BBr.pdf` (2.1 MB, 7 pages). Servi en HTTP 200 sur `/Manuel_Planning_BBr.pdf`.
+     * **Discoverability** : bouton "Manuel" doré ajouté dans le header de la page `/staff/planning` (data-testid `planning-manual-pdf`, ouvre le PDF dans un nouvel onglet). Visible pour chefs et RH.
+     * Scripts annexes : `/app/scripts/capture_planning_screenshots.py` (regénère les captures via Playwright headless).
+  2. **Audit complet QR Boarding Pass** (suite à msg 371) — `/app/backend/tests/test_qr_audit_boarding.py` : 10/10 tests passent, **0 bug trouvé**.
+     * 4 offres testées (pass_day · sunset · brunch · le_kaai) : booking → pay → ticket PNG → décodage pyzbar (équivalent caméra téléphone) → validation `{"type":"ticket","token":"<32hex>","ref":"<8up>"}` → /staff/scan accepte le payload brut → 200 OK.
+     * 4 formats d'entrée acceptés : ref 10-char imprimé (`5DF111909C`), ref 8-char booking-id (iter-41 fallback), token 32-hex en MAJUSCULES, JSON brut URL-encodé.
+     * QR taille mesurée ≥ 380px sur le ticket (`QR_SIZE=440` PIL, ECC=M, contraste noir/blanc) → caméra téléphone décode sans difficulté.
+     * Registration QR (`/accueil/enregistrement`) : décode + accepté par `/staff/scan/registration/{token}`, frontend fallback gracieux sur 404 du scanner générique.
+     * **Conclusion** : aucun défaut dans la chaîne de génération + résolution des QR boarding pass actuels. Les corrections d'iter-29 (QR_SIZE=440, ECC=M, JSON compact ~75 chars) et iter-41 (résolveur multi-formats : exact, lowercase, prefix 8+ hex, booking-id ref) protègent contre tous les cas d'usage. Si un QR ancien est non reconnu, c'est probablement un ticket pré-iter-29 où le payload était >600 chars (cf. changelog 2026-05-12).
+  * Fichiers ajoutés : `scripts/generate_planning_manual.py`, `scripts/capture_planning_screenshots.py`, `scripts/capture_admin_view.py`, `backend/tests/test_qr_audit_boarding.py`, `manual_assets/{01-04}*.png`, `frontend/public/Manuel_Planning_BBr.pdf`.

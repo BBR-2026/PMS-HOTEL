@@ -174,13 +174,25 @@ export default function StaffPlanning() {
             Validez quand le planning est prêt pour les RH.
           </p>
         </div>
-        <button
-          onClick={() => { setRefreshing(true); loadDepts(); loadWeek().finally(() => setRefreshing(false)); }}
-          className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#0A0A0A]/10 hover:border-[#B8922A] text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/70"
-          data-testid="planning-refresh"
-        >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} /> Rafraîchir
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="/Manuel_Planning_BBr.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#B8922A]/40 hover:bg-[#FAF7F2] text-[0.7rem] uppercase tracking-[0.18em] text-[#B8922A]"
+            data-testid="planning-manual-pdf"
+            title="Télécharger le manuel de formation (PDF)"
+          >
+            <FileText size={12} /> Manuel
+          </a>
+          <button
+            onClick={() => { setRefreshing(true); loadDepts(); loadWeek().finally(() => setRefreshing(false)); }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#0A0A0A]/10 hover:border-[#B8922A] text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/70"
+            data-testid="planning-refresh"
+          >
+            <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} /> Rafraîchir
+          </button>
+        </div>
       </div>
 
       {/* HR KPIs (only visible for HR/admin roles by virtue of the endpoint returning 200) */}
