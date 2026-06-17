@@ -401,3 +401,25 @@ See `/app/memory/test_credentials.md`.
   * **Fichiers ajoutés** : `scripts/revenue_engine_diagrams.py`, `scripts/generate_revenue_engine_pdf.py`, `manual_assets/revenue_engine/01-05*.png` (5 diagrammes + sources .dot), `frontend/public/BBR_Revenue_Engine_Architecture.pdf`.
   * **Prochain prompt utilisateur attendu** : passage à PROMPT 2 (implémentation par phases). Démarrer probablement par Phase P0 (Fondations PG + Auth + Audit + RBAC + pont Ops↔Revenue) — voir roadmap §10.
 
+
+- 2026-06-17: **Iteration 51 — Document de spécifications "BBR Booking Engine"** (PROMPT 2 — livraison stratégique, pas de code) :
+  * Document PDF A4 **29 pages** branded BBR (noir + or + cream) à `/app/frontend/public/BBR_Booking_Engine.pdf` (1.35 MB, HTTP 200 OK).
+  * **Note qualité automatisée : 9.5/10** (Gemini : "tous les 10 livrables présents, structure exceptionnelle, présentation professionnelle, diagrammes et tableaux bien intégrés").
+  * **Structure complète des 10 livrables du prompt** : Cover + Sommaire + Résumé exécutif + §1 Architecture (3 couches + composants : tunnel, catalogue, availability, pricing, upsell/cross-sell, rules, payment orchestrator) + §2 Flux fonctionnels par type (8 produits : chambres, day pass, sunset, brunch, activités, corporate, événements, membership) + §3 Wireframes du tunnel 7 étapes (avec entonnoir conversion 100% → 32%) + §4 Modèle de données (machine à états + 6 tables additionnelles : booking_holds, reservation_options, quotes, promo_codes, refunds, reschedules + DDL complet) + §5 API REST détaillées (4 namespaces, Swagger 3.1, exemples create/pay/scan) + §6 Règles métier (matrice annulation par produit, no-show, reprog., grâce 48h, overbooking 5%) + §7 Disponibilités (SERIALIZABLE + verrouillage ligne + algorithme atomique SQL) + §8 Paiements (6 PSPs : Wave, OM, MTN, Moov, Stripe, PayPal + modes + sécurité HMAC) + §9 QR Codes (lifecycle complet, token 32-hex ECC=M 440px, validé par audit iter-48) + §10 Plan PMS+OTA (channel manager push 5min, ingestion webhooks, intégration Front Desk/Housekeeping/F&B/Compta) + Annexes A (espace client), B (dashboard), C (scanner accès), D (KPIs + tableau objectifs : conversion ≥32%, ROAS Meta ≥6x, RevPAR 75k XOF).
+  * **8 diagrammes Graphviz** générés via `scripts/booking_engine_diagrams.py` : architecture du booking engine, entonnoir 7 étapes, wireframes des 7 écrans, machine à états réservation, séquence paiement, cycle de vie QR, cartographie API REST, topologie PMS+OTA.
+  * **Décisions clés documentées** :
+    1. Tunnel 7 étapes optimisé mobile-first (73% trafic BBr sur mobile)
+    2. Mobile money en priorité dans l'UI (Wave/OM/MTN/Moov = 90% paiements CI)
+    3. Hold panier 5 min via transactions SERIALIZABLE PG → zéro double-booking
+    4. Idempotency-Key obligatoire sur tous les POST critiques
+    5. Conserve le boarding pass Pillow existant + ajoute Wallet Apple/Google en phase 2
+    6. Channel Manager sortant toutes les 5 min, deltas seulement
+  * Pas de code applicatif modifié — uniquement le document de spec.
+  * **Fichiers ajoutés** : `scripts/booking_engine_diagrams.py`, `scripts/generate_booking_engine_pdf.py`, `manual_assets/booking_engine/01-08*.png` (8 diagrammes + sources .dot), `frontend/public/BBR_Booking_Engine.pdf`.
+  * **Documents stratégiques disponibles à ce stade** :
+    1. `/Manuel_Planning_BBr.pdf` (7p) — formation chefs Planning
+    2. `/Manuel_Cantine_BBr.pdf` (8p) — usage Cantine
+    3. `/BBR_Revenue_Engine_Architecture.pdf` (27p) — architecture globale (PROMPT 1)
+    4. `/BBR_Booking_Engine.pdf` (29p) — spec Booking Engine (PROMPT 2)
+  * **Prochain prompt attendu** : PROMPT 3 (probablement design détaillé site vitrine, channel manager OTA, ou Marketing/Analytics — selon vision utilisateur).
+

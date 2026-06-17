@@ -1,0 +1,26 @@
+
+digraph G {
+  rankdir=LR; nodesep=0.3; ranksep=0.5;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=box style="rounded,filled" fillcolor="#FFFFFF"];
+
+  gen [label="① GENERATION\nToken 32-hex\n+ ref 8-char\nECC=M · 440px"];
+  pld [label="② PAYLOAD JSON\n{type:'ticket',\ntoken,ref}\n~75 chars"];
+  tpl [label="③ TICKET PDF\n+ Boarding Pass\nimage Pillow"];
+  snd [label="④ DELIVERY\nEmail + WhatsApp\n+ Wallet (Apple/Google)"];
+  scn [label="⑤ SCAN sur site\n(jour J)" fillcolor="#FFE9B0"];
+  res [label="⑥ RESOLVER\n_resolve_qr_token\nmulti-format"];
+  val [label="⑦ VALIDATION\nstatus, date, capacity"];
+  out [label="⑧ DÉCISION\n✓ Valider  /  ✕ Refuser"];
+
+  gen -> pld -> tpl -> snd -> scn -> res -> val -> out
+    [color="#B8922A" penwidth=1.5];
+
+  rev [label="↻ REVOCATION\n(perte · fraude · refund)\nrevoked=true" fillcolor="#FAF7F2"];
+  scn -> rev [style=dashed dir=back color="#5F6670"];
+}

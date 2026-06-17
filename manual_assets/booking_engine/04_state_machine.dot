@@ -1,0 +1,30 @@
+
+digraph G {
+  rankdir=LR; nodesep=0.4; ranksep=0.7;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=ellipse style="filled" fillcolor="#FFFFFF" penwidth=1.2];
+
+  pending  [label="PENDING\n(panier soumis)" fillcolor="#FAF7F2"];
+  conf     [label="CONFIRMED\n(acompte payé)" fillcolor="#FFF8E8"];
+  paid     [label="PAID\n(intégralité réglée)" fillcolor="#FFE9B0"];
+  ci       [label="CHECKED_IN\n(QR scanné)" fillcolor="#FFE9B0"];
+  done     [label="COMPLETED\n(séjour terminé)" fillcolor="#E5D9C0"];
+  cancel   [label="CANCELLED" fillcolor="#FAF7F2" shape=doublecircle];
+  noshow   [label="NO_SHOW" fillcolor="#FAF7F2" shape=doublecircle];
+  ref      [label="REFUNDED" fillcolor="#FAF7F2" shape=doublecircle];
+
+  pending -> conf   [label="paiement\n(50% ou 100%)"];
+  pending -> cancel [label="abandon panier\n(15 min)" color="#5F6670" style=dashed];
+  conf -> paid      [label="solde payé"];
+  conf -> cancel    [label="annulation client\n(règles)" color="#5F6670"];
+  paid -> ci        [label="scan QR\nle jour J"];
+  ci -> done        [label="check-out\nautomatique J+N"];
+  paid -> noshow    [label="absent au jour J" color="#5F6670"];
+  conf -> noshow    [label="absent + non payé" color="#5F6670"];
+  cancel -> ref     [label="remboursement\nautomatique"];
+}

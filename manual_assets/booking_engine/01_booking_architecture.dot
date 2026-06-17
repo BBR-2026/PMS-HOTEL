@@ -1,0 +1,74 @@
+
+digraph G {
+  rankdir=TB; nodesep=0.4; ranksep=0.7;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+
+  subgraph cluster_clients {
+    label="ENTRÉES";
+    labeljust=l; color="#B8922A"; style="rounded,dashed"; fontcolor="#B8922A";
+    web   [label="Site vitrine\n+ widget réservation"];
+    app   [label="Web App\n/reservations"];
+    portal [label="Espace client\n/account"];
+    api_ext [label="API publique\n(partenaires)"];
+  }
+
+  subgraph cluster_core {
+    label="BOOKING ENGINE — Cœur central";
+    labeljust=l; color="#B8922A"; style="rounded,filled"; fillcolor="#FFF8E8";
+    funnel [label="Tunnel de conversion\n(7 étapes)" fillcolor="#FFE9B0"];
+    catalog [label="Catalogue\nproduits + tarifs"];
+    avail [label="Availability Engine\n(stocks · slots · capacités)"];
+    pricing [label="Pricing Engine\n(yield · promo · membership)"];
+    rules [label="Business Rules\n(annulation · no-show · reprog.)"];
+    upsell [label="Upsell / Cross-sell\nEngine"];
+    cart [label="Cart / Order\nMulti-produits"];
+  }
+
+  subgraph cluster_pay {
+    label="PAIEMENT";
+    labeljust=l; color="#B8922A"; style="rounded,dashed"; fontcolor="#B8922A";
+    payorch [label="Payment Orchestrator\n(routeur · retry · webhook)" fillcolor="#FFE9B0"];
+    wave [label="Wave"];
+    om [label="Orange Money"];
+    mtn [label="MTN Money"];
+    moov [label="Moov Money"];
+    stripe [label="Stripe\n(Visa · Mastercard)"];
+    paypal [label="PayPal"];
+  }
+
+  subgraph cluster_post {
+    label="POST-PAIEMENT";
+    labeljust=l; color="#B8922A"; style="rounded,dashed"; fontcolor="#B8922A";
+    ref_gen [label="Génération référence\nBBR-YYYYMMDD-XXXX"];
+    qr_gen [label="Génération QR\n+ Ticket PDF Premium"];
+    notif [label="Notifications\nEmail · WhatsApp · SMS"];
+    sync_ota [label="Sync OTA\n(Booking · Airbnb · …)"];
+    sync_ana [label="Analytics + CRM\n(attribution UTM)"];
+  }
+
+  subgraph cluster_ops {
+    label="OPÉRATIONS SUR SITE";
+    labeljust=l; color="#0A0A0A"; style="rounded,dashed";
+    scan [label="Scanner QR\n+ Check-in"];
+    pms [label="PMS Front Desk\n(housekeeping · facturation)"];
+    dashboard [label="Dashboard interne\n(CA · occupation · KPIs)"];
+  }
+
+  // Entrées vers tunnel
+  web -> funnel; app -> funnel; portal -> funnel; api_ext -> funnel;
+  funnel -> catalog; funnel -> avail; funnel -> pricing;
+  funnel -> upsell; funnel -> cart;
+  cart -> rules;
+  cart -> payorch [color="#B8922A" penwidth=2];
+  payorch -> wave; payorch -> om; payorch -> mtn; payorch -> moov;
+  payorch -> stripe; payorch -> paypal;
+  payorch -> ref_gen [color="#B8922A" penwidth=2 label="webhook OK"];
+  ref_gen -> qr_gen -> notif;
+  ref_gen -> sync_ota; ref_gen -> sync_ana;
+  qr_gen -> scan; ref_gen -> pms; ref_gen -> dashboard;
+}

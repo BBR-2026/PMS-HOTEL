@@ -1,0 +1,32 @@
+
+digraph G {
+  rankdir=TB; nodesep=0.25; ranksep=0.35;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=box style="rounded,filled" fillcolor="#FFFFFF"];
+
+  c1 [label="① Client valide le panier\n(étape 6)"];
+  c2 [label="② Booking Engine\nfreeze inventory (5 min hold)"];
+  c3 [label="③ Crée payment_intent\n(idempotency key)"];
+  c4 [label="④ Routeur PSP\nchoisit Wave / OM / Stripe / …"];
+  c5 [label="⑤ Redirige vers PSP\n(ou OTP mobile money)"];
+  c6 [label="⑥ Client autorise\nle paiement"];
+  c7 [label="⑦ PSP webhook\nstatus=captured"];
+  c8 [label="⑧ Booking Engine\nconfirme reservation\n→ status=PAID"];
+  c9 [label="⑨ Décrément final\ninventory.capacity_sold"];
+  c10 [label="⑩ Trigger post-paiement\n(QR, PDF, notif, OTA sync, analytics)"];
+
+  c1->c2->c3->c4->c5->c6->c7->c8->c9->c10
+    [color="#B8922A" penwidth=1.5];
+
+  // Failure paths
+  c7_fail [label="⑦b PSP webhook\nstatus=failed" fillcolor="#FAF7F2"];
+  c6 -> c7_fail [style=dashed color="#5F6670"];
+  c7_fail_action [label="Release hold\nNotif client\nProposer autre PSP"
+                  fillcolor="#FAF7F2"];
+  c7_fail -> c7_fail_action [color="#5F6670"];
+}

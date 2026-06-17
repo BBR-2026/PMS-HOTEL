@@ -1,0 +1,55 @@
+
+digraph G {
+  rankdir=TB; nodesep=0.4; ranksep=0.6;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+
+  be [label="BOOKING ENGINE\n(source de vérité)"
+      shape=doublecircle fillcolor="#FFE9B0" penwidth=2];
+
+  subgraph cluster_ota {
+    label="DISTRIBUTION OTA — sortants";
+    labeljust=l; color="#B8922A"; style="rounded,dashed"; fontcolor="#B8922A";
+    book [label="Booking.com\n(XML / API v2)"];
+    abnb [label="Airbnb\n(GraphQL)"];
+    expe [label="Expedia\n(EQC API)"];
+    trav [label="TravelOka\n(REST)"];
+    direct [label="Site direct BBR\n(le canal le plus rentable)" fillcolor="#FFF8E8"];
+  }
+
+  subgraph cluster_pms {
+    label="PMS / FRONT DESK / HOUSEKEEPING";
+    labeljust=l; color="#0A0A0A"; style="rounded,dashed";
+    pms_room [label="Module Chambres\n(tape chart · état)"];
+    pms_hk [label="Housekeeping\n(propre · sale · OOS)"];
+    pms_fb [label="F&B Restaurant\n(POS + Le Kaai)"];
+    pms_acct [label="Comptabilité\n(facturation · TVA)"];
+  }
+
+  subgraph cluster_chan {
+    label="CHANNEL MANAGER (workers Celery)";
+    labeljust=l; color="#B8922A"; style="rounded";
+    chmgr [label="Channel Manager\n(push prix + stocks toutes les 5 min)"
+           fillcolor="#FFF8E8"];
+  }
+
+  be -> chmgr [color="#B8922A" penwidth=2 label="prix + dispo"];
+  chmgr -> book; chmgr -> abnb; chmgr -> expe; chmgr -> trav;
+  be -> direct [color="#B8922A" penwidth=2];
+
+  // Réservations OTA -> Booking Engine
+  book -> be   [dir=back style=dashed color="#5F6670" label="webhooks bookings"];
+  abnb -> be   [dir=back style=dashed color="#5F6670"];
+  expe -> be   [dir=back style=dashed color="#5F6670"];
+  trav -> be   [dir=back style=dashed color="#5F6670"];
+
+  // Booking Engine -> PMS
+  be -> pms_room [label="checkin · attribution"];
+  be -> pms_hk [label="post-checkout\n→ chambre à nettoyer" color="#5F6670"];
+  be -> pms_fb [label="forfaits inclus"];
+  be -> pms_acct [label="facturation"];
+}

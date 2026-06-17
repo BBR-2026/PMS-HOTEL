@@ -1,0 +1,57 @@
+
+digraph G {
+  rankdir=LR; nodesep=0.3; ranksep=0.6;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=record style=filled fillcolor="#FFFFFF"];
+
+  pub [label="{<h>API PUBLIQUE  · /api/booking|
+GET  /catalog/products\l
+GET  /catalog/availability\l
+POST /quote\l
+POST /reservations\l
+POST /reservations/\{id\}/pay\l
+GET  /reservations/\{ref\}\l
+PATCH /reservations/\{id\}\l
+POST /reservations/\{id\}/cancel\l
+GET  /reservations/\{id\}/ticket.pdf\l
+}" fillcolor="#FFF8E8"];
+
+  client [label="{<h>ESPACE CLIENT  · /api/account|
+POST /auth/otp/send\l
+POST /auth/otp/verify\l
+GET  /me/reservations\l
+GET  /me/tickets\l
+POST /me/reservations/\{id\}/pay-balance\l
+POST /me/reservations/\{id\}/reschedule\l
+}" fillcolor="#FFF8E8"];
+
+  staff [label="{<h>STAFF  · /api/staff/booking|
+GET  /bookings\l
+GET  /bookings/today\l
+POST /bookings/\{id\}/checkin\l
+POST /scan/\{token\}\l
+POST /bookings/manual\l
+POST /bookings/\{id\}/refund\l
+GET  /kpis\l
+}" fillcolor="#FFE9B0"];
+
+  webhooks [label="{<h>WEBHOOKS ENTRANTS|
+POST /webhooks/wave\l
+POST /webhooks/orange-money\l
+POST /webhooks/mtn-money\l
+POST /webhooks/moov-money\l
+POST /webhooks/stripe\l
+POST /webhooks/paypal\l
+POST /webhooks/ota/booking-com\l
+POST /webhooks/ota/airbnb\l
+}" fillcolor="#FAF7F2"];
+
+  pub -> staff [style=invis];
+  client -> staff [style=invis];
+  staff -> webhooks [style=invis];
+}

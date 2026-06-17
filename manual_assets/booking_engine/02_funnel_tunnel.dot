@@ -1,0 +1,36 @@
+
+digraph G {
+  rankdir=LR; nodesep=0.25; ranksep=0.5;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=box style="rounded,filled" fillcolor="#FFF8E8"];
+
+  s1 [label="①\nProduit"];
+  s2 [label="②\nDate"];
+  s3 [label="③\nParticipants"];
+  s4 [label="④\nOptions\n(upsell)"];
+  s5 [label="⑤\nClient"];
+  s6 [label="⑥\nPaiement"];
+  s7 [label="⑦\nConfirmation" fillcolor="#FFE9B0"];
+
+  s1 -> s2 -> s3 -> s4 -> s5 -> s6 -> s7 [penwidth=2 color="#B8922A"];
+
+  // Conversion targets visualised below
+  c1 [label="100%" shape=plaintext fontcolor="#5F6670"];
+  c2 [label="78%" shape=plaintext fontcolor="#5F6670"];
+  c3 [label="68%" shape=plaintext fontcolor="#5F6670"];
+  c4 [label="58%" shape=plaintext fontcolor="#5F6670"];
+  c5 [label="48%" shape=plaintext fontcolor="#5F6670"];
+  c6 [label="35%" shape=plaintext fontcolor="#5F6670"];
+  c7 [label="32%" shape=plaintext fontcolor="#0A0A0A"];
+
+  {rank=same; s1; s2; s3; s4; s5; s6; s7;}
+  {rank=same; c1; c2; c3; c4; c5; c6; c7;}
+  s1 -> c1 [style=invis]; s2 -> c2 [style=invis]; s3 -> c3 [style=invis];
+  s4 -> c4 [style=invis]; s5 -> c5 [style=invis]; s6 -> c6 [style=invis];
+  s7 -> c7 [style=invis];
+}

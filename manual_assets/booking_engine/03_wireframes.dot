@@ -1,0 +1,81 @@
+
+digraph G {
+  rankdir=TB; nodesep=0.25; ranksep=0.25;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=none margin=0];
+
+  step1 [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLPADDING="6" CELLSPACING="0" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="3"><FONT COLOR="white"><B>ÉTAPE 1 — Choisissez votre expérience</B></FONT></TD></TR>
+      <TR><TD BGCOLOR="#F4ECDA"><B>HÉBERGEMENT</B><BR/>Suites + Chambres</TD>
+          <TD BGCOLOR="#F4ECDA"><B>BEACH CLUB</B><BR/>Day Pass · Sunset · Brunch</TD>
+          <TD BGCOLOR="#F4ECDA"><B>ACTIVITÉS</B><BR/>Jet ski · Quad · Padel · …</TD></TR>
+      <TR><TD BGCOLOR="#F4ECDA"><B>CORPORATE</B><BR/>Séminaires · Team building</TD>
+          <TD BGCOLOR="#F4ECDA"><B>ÉVÉNEMENTIEL</B><BR/>Mariages · Soirées</TD>
+          <TD BGCOLOR="#F4ECDA"><B>MEMBERSHIP</B><BR/>Carte fidélité</TD></TR>
+    </TABLE>>];
+
+  step2 [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLPADDING="6" CELLSPACING="0" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="3"><FONT COLOR="white"><B>ÉTAPE 2 — Quand ?</B></FONT></TD></TR>
+      <TR><TD><B>Date d'arrivée</B><BR/>[___/___/____]</TD>
+          <TD><B>Date de départ</B><BR/>[___/___/____]</TD>
+          <TD>Calendrier (mois courant + suivant)<BR/>● disponible<BR/>○ tarif majoré<BR/>✕ complet</TD></TR>
+    </TABLE>>];
+
+  step3 [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLPADDING="6" CELLSPACING="0" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="3"><FONT COLOR="white"><B>ÉTAPE 3 — Combien de participants ?</B></FONT></TD></TR>
+      <TR><TD><B>Adultes</B><BR/>[ – ]  2  [ + ]</TD>
+          <TD><B>Enfants</B> (3-12 ans)<BR/>[ – ]  0  [ + ]</TD>
+          <TD><B>Bébés</B> (gratuit)<BR/>[ – ]  0  [ + ]</TD></TR>
+      <TR><TD COLSPAN="3"><I>Total estimé : 145 000 XOF — 2 adultes en Suite Lagune, 2 nuits</I></TD></TR>
+    </TABLE>>];
+
+  step4 [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLPADDING="6" CELLSPACING="0" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="3"><FONT COLOR="white"><B>ÉTAPE 4 — Ajoutez à votre séjour (upsell + cross-sell)</B></FONT></TD></TR>
+      <TR><TD>[ ] Transfert privé<BR/>30 000 XOF</TD>
+          <TD>[ ] Brunch dominical<BR/>22 000 XOF / pers.</TD>
+          <TD>[ ] Massage couple<BR/>45 000 XOF</TD></TR>
+      <TR><TD>[ ] Sunset Experience<BR/>15 000 XOF / pers.</TD>
+          <TD>[ ] Jet ski 30 min<BR/>35 000 XOF</TD>
+          <TD>[ ] Padel court 1h<BR/>12 000 XOF</TD></TR>
+    </TABLE>>];
+
+  step5 [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLPADDING="6" CELLSPACING="0" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>ÉTAPE 5 — Vos informations</B></FONT></TD></TR>
+      <TR><TD><B>Nom · Prénom</B><BR/>[__________________]</TD>
+          <TD><B>Téléphone (WhatsApp)</B><BR/>[+225 ____________]</TD></TR>
+      <TR><TD><B>Email</B><BR/>[__________________]</TD>
+          <TD><B>Nationalité</B><BR/>[ Sénégalaise ▼ ]</TD></TR>
+      <TR><TD COLSPAN="2">[ ] J'accepte les CGV — [ ] Je souhaite recevoir les offres BBr</TD></TR>
+    </TABLE>>];
+
+  step6 [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLPADDING="6" CELLSPACING="0" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="3"><FONT COLOR="white"><B>ÉTAPE 6 — Paiement sécurisé</B></FONT></TD></TR>
+      <TR><TD>○ Acompte 50% <B>72 500 XOF</B><BR/>Solde à payer avant arrivée</TD>
+          <TD>● Paiement intégral <B>145 000 XOF</B><BR/>Annulation flexible jusqu'à 72h</TD>
+          <TD>○ Paiement sur place<BR/><I>(sur autorisation)</I></TD></TR>
+      <TR><TD>[ Wave ]</TD><TD>[ Orange Money ]</TD><TD>[ MTN Money ]</TD></TR>
+      <TR><TD>[ Moov Money ]</TD><TD>[ Visa · Mastercard ]</TD><TD>[ PayPal ]</TD></TR>
+    </TABLE>>];
+
+  step7 [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLPADDING="6" CELLSPACING="0" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>ÉTAPE 7 — Confirmé ✓</B></FONT></TD></TR>
+      <TR><TD COLSPAN="2"><B>Réservation BBR-20260712-A4F2</B></TD></TR>
+      <TR><TD>● Ticket PDF Premium téléchargé<BR/>● QR Code généré<BR/>● Email + WhatsApp envoyés</TD>
+          <TD>[ Télécharger le ticket ]<BR/>[ Ajouter au calendrier ]<BR/>[ Voir mes réservations ]</TD></TR>
+    </TABLE>>];
+
+  step1 -> step2 -> step3 -> step4 -> step5 -> step6 -> step7
+    [color="#B8922A" penwidth=2];
+}
