@@ -384,3 +384,20 @@ See `/app/memory/test_credentials.md`.
   * **Discoverability double** : (1) bouton "Manuel" doré ajouté en haut de `/staff/cantine` (data-testid `cantine-manual-pdf`) ; (2) lien "📘 Télécharger le manuel d'utilisation (PDF)" en bas de la page publique `/cantine` (data-testid `cantine-public-manual-link`) pour les employés.
   * Test data cleanup : compte fictif (Aminata Kouassi, code WGE909) créé pour les captures puis supprimé via DELETE /staff/cantine/users/{id}.
 
+
+- 2026-06-17: **Iteration 50 — Document d'Architecture "BBR Revenue Engine"** (livraison stratégique, pas de code en production) :
+  * Document PDF A4 27 pages branded BBR (noir + or + cream) généré via ReportLab à `/app/frontend/public/BBR_Revenue_Engine_Architecture.pdf` (1.2 MB, HTTP 200 OK).
+  * **Note qualité automatisée : 9.5/10** (analyse Gemini : mise en page propre, aucun débordement, diagrammes nets, SQL lisible).
+  * **Structure complète** : Couverture noire/or + Sommaire + Résumé exécutif + §1 Architecture globale + §2 Arborescence des dossiers (tree complet du monorepo) + §3 UML Modules (9 modules) + §4 UML BDD (ERD complet) + §5 DDL PostgreSQL complet (13 tables + 14 types ENUM + indexes) + §6 Tables détaillées (fiche par table avec colonnes/types/descriptions/volumétrie) + §7 Relations entre tables (matrice FK avec règles ON DELETE) + §8 Sécurité 6 niveaux (RBAC matrix 7 rôles × 13 modules, RLS PostgreSQL avec exemples, audit_log, CSRF/XSS/JWT/MFA, sauvegardes) + §9 Scalabilité 3 paliers (50k → 200k → 1M réservations/an) + §10 Roadmap 7 phases sur 32 semaines + Annexes (conventions code, API, glossaire).
+  * **5 diagrammes générés via Graphviz** (`scripts/revenue_engine_diagrams.py`) : architecture système 5 couches, UML 9 modules avec dépendances, ERD complet 13 tables PostgreSQL, séquence de booking 14 étapes (ad Meta → check-in), matrice des 7 rôles RBAC.
+  * **Décisions d'architecture validées** :
+    1. Cohabitation Ops (existant React+FastAPI+MongoDB conservé) ↔ Revenue Engine (nouveau, sur PostgreSQL).
+    2. Stack cohérent avec l'existant (React+FastAPI) au lieu de Next.js/Supabase — préserve les 8 mois de travail.
+    3. PostgreSQL 16 ajouté spécifiquement pour CRM/OTA/Marketing/Analytics (richesse relationnelle là où elle est utile).
+    4. Schéma PG isolé sous `revenue_engine.*` pour facilité de backup et migration future.
+    5. Bridge Ops↔Revenue via Events sortants (webhooks) + API de lecture inverse (sync prix/inventory).
+    6. 7 phases de roadmap, livraison incrémentale tous les 4-6 semaines, chacune autonome.
+  * **Pas de code applicatif modifié** — uniquement document d'architecture (le prompt explicitait "Ne développe aucune interface utilisateur à ce stade").
+  * **Fichiers ajoutés** : `scripts/revenue_engine_diagrams.py`, `scripts/generate_revenue_engine_pdf.py`, `manual_assets/revenue_engine/01-05*.png` (5 diagrammes + sources .dot), `frontend/public/BBR_Revenue_Engine_Architecture.pdf`.
+  * **Prochain prompt utilisateur attendu** : passage à PROMPT 2 (implémentation par phases). Démarrer probablement par Phase P0 (Fondations PG + Auth + Audit + RBAC + pont Ops↔Revenue) — voir roadmap §10.
+

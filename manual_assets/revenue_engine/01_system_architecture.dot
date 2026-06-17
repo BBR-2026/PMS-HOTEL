@@ -1,0 +1,79 @@
+
+digraph G {
+  rankdir=TB; nodesep=0.5; ranksep=0.7;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11 splines=ortho];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+
+  subgraph cluster_clients {
+    label="① CLIENTS (Web · Mobile · Concierges)";
+    labeljust=l; color="#B8922A"; style="rounded,dashed"; fontcolor="#B8922A";
+    web   [label="Site vitrine\n(bbr.com)" fillcolor="#FFFFFF"];
+    app   [label="Web App\nRéservation" fillcolor="#FFFFFF"];
+    qr    [label="QR Code Boarding Pass\n(WhatsApp / Email)" fillcolor="#FFFFFF"];
+  }
+
+  subgraph cluster_edge {
+    label="② EDGE — Cloudflare CDN + WAF";
+    labeljust=l; color="#B8922A"; style="rounded,dashed"; fontcolor="#B8922A";
+    cf    [label="Cloudflare\nCDN · DDoS · WAF" fillcolor="#FFE9B0"];
+  }
+
+  subgraph cluster_ops {
+    label="③ COUCHE OPÉRATIONNELLE — BBR Operations (existant)";
+    labeljust=l; color="#0A0A0A"; style="rounded,filled"; fillcolor="#FFFFFF";
+    react_ops [label="React 18 + Vite\n/staff/* · /cantine · /accueil"];
+    fastapi   [label="FastAPI\n/api/* (700+ endpoints)" fillcolor="#FFE9B0"];
+    mongo     [label="MongoDB\n(opérationnel temps réel)" shape=cylinder
+              style=filled fillcolor="#E5D9C0"];
+    pillow    [label="Pillow / ReportLab\nBoarding Pass + Manuels"];
+  }
+
+  subgraph cluster_rev {
+    label="④ COUCHE COMMERCIALE — BBR Revenue Engine (nouveau)";
+    labeljust=l; color="#B8922A"; style="rounded,filled"; fillcolor="#FFF8E8";
+    react_rev [label="React 18 + Vite\n/revenue/* (sous-app)" fillcolor="#FFFFFF"];
+    fastapi_rev [label="FastAPI Revenue\n/api/revenue/*" fillcolor="#FFE9B0"];
+    pg        [label="PostgreSQL 16\n(CRM · OTA · Marketing · Analytics)"
+              shape=cylinder style=filled fillcolor="#E5D9C0"];
+    redis     [label="Redis\n(cache · jobs · rate-limit)"
+              shape=cylinder style=filled fillcolor="#E5D9C0"];
+  }
+
+  subgraph cluster_ext {
+    label="⑤ INTÉGRATIONS EXTERNES";
+    labeljust=l; color="#5F6670"; style="rounded,dashed"; fontcolor="#5F6670";
+    ota   [label="OTA Channel Manager\nBooking · Airbnb · Expedia"];
+    meta  [label="Meta Business\n(Pixel · Conversions API)"];
+    gads  [label="Google Ads\n(GA4 · Tag · Conversions)"];
+    pay   [label="Paiement\nFineoPay · Stripe"];
+    msg   [label="Messaging\nTwilio · SendGrid"];
+  }
+
+  // Flows
+  web -> cf; app -> cf; qr -> cf;
+  cf -> react_ops [label="opérations"];
+  cf -> react_rev [label="commercial"];
+  react_ops -> fastapi;
+  react_rev -> fastapi_rev;
+  fastapi -> mongo;
+  fastapi -> pillow;
+  fastapi_rev -> pg;
+  fastapi_rev -> redis;
+
+  // Bridge between Ops and Revenue Engine
+  fastapi -> fastapi_rev [label="Events (booking · paiement)\nWebhooks"
+                          color="#B8922A" penwidth=2 style=bold];
+  fastapi_rev -> fastapi [label="Sync prix · stocks · CRM"
+                          color="#B8922A" penwidth=2 style=bold dir=back];
+
+  // External integrations
+  fastapi_rev -> ota   [label="REST · iCal"];
+  fastapi_rev -> meta  [label="CAPI"];
+  fastapi_rev -> gads  [label="API"];
+  fastapi -> pay       [label="HTTPS"];
+  fastapi -> msg       [label="HTTPS"];
+}

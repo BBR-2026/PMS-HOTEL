@@ -1,0 +1,33 @@
+
+digraph G {
+  rankdir=TB; nodesep=0.3; ranksep=0.4;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11 splines=ortho];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=box style="rounded,filled" fillcolor="#FFFFFF"];
+
+  c1 [label="① Visiteur clique\nMeta Ad (UTM tracking)"];
+  c2 [label="② Atterrit sur le\nsite vitrine BBR"];
+  c3 [label="③ Choisit Day Pass\n→ moteur de réservation"];
+  c4 [label="④ Revenue Engine\nvérifie inventory PG"];
+  c5 [label="⑤ Affiche prix\n(+ yield + tier membership)"];
+  c6 [label="⑥ Soumet booking\n+ paiement FineoPay/Stripe"];
+  c7 [label="⑦ Webhook paiement OK\n→ Operations crée booking Mongo"];
+  c8 [label="⑧ Génère QR Code\n(Pillow, ECC=M, 440px)"];
+  c9 [label="⑨ Envoie WhatsApp + Email\n(Twilio · SendGrid)"];
+  c10 [label="⑩ Sync inventory\n→ OTA channel manager"];
+  c11 [label="⑪ Évènement \"conversion\"\n→ analytics_events + CAPI Meta"];
+  c12 [label="⑫ Recalcul CRM\nLTV · loyalty_score · RFM"];
+  c13 [label="⑬ Update campaign.spent\nROAS / CPA / Pacing"];
+  c14 [label="⑭ Jour J — Scanner QR\n→ checkin + audit_log"];
+
+  c1->c2->c3->c4->c5->c6->c7->c8->c9->c10->c11->c12->c13->c14;
+
+  // side branches
+  c7 -> c10 [style=dashed color="#B8922A" label="parallèle"];
+  c7 -> c11 [style=dashed color="#B8922A"];
+  c12 -> c13 [style=dashed color="#5F6670"];
+}

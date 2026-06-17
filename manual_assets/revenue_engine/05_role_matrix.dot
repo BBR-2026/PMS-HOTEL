@@ -1,0 +1,21 @@
+
+digraph G {
+  rankdir=LR; nodesep=0.3; ranksep=0.5;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11 splines=ortho];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=record style=filled fillcolor="#FFFFFF"];
+
+  super  [label="{Super Admin|R/W tous modules\lGestion utilisateurs\lConfiguration système\l}" fillcolor="#FFE9B0"];
+  direction [label="{Direction Générale|R global\lExports stratégiques\lValidation des prix\l}" fillcolor="#FFFFFF"];
+  marketing [label="{Marketing|R/W Campagnes\lR/W Marketing\lR CRM (segments)\lR Analytics\l}" fillcolor="#FFFFFF"];
+  reception [label="{Réception|R/W Réservations\lR/W Check-in/out\lR CRM (lecture)\lScanner QR\l}" fillcolor="#FFFFFF"];
+  compta    [label="{Comptabilité|R/W Paiements\lR/W Factures\lR Réservations\lExports compta\l}" fillcolor="#FFFFFF"];
+  commercial [label="{Commercial|R/W Corporate\lR/W Évènementiel\lR/W Devis · Contrats\lR CRM B2B\l}" fillcolor="#FFFFFF"];
+  scan       [label="{Contrôle Embarquement|Scan QR uniquement\lValidation tickets\lAccès visiteurs\l}" fillcolor="#FFFFFF"];
+
+  super -> direction -> marketing -> reception -> compta -> commercial -> scan [style=invis];
+}

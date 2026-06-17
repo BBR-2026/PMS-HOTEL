@@ -1,0 +1,50 @@
+
+digraph G {
+  rankdir=LR; nodesep=0.4; ranksep=0.8;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11 splines=ortho];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=record fillcolor="#FFFFFF"];
+
+  hotel [label="{<h>Module HÔTEL|+ Chambres Exclusives\l+ Suites Lagune\l+ Suites Jardin\l+ Tape Chart (calendrier)\l+ Tarifs saisonniers\l+ Yield rules\l}" fillcolor="#FFF8E8"];
+
+  beach [label="{<h>Module BEACH CLUB|+ Day Pass\l+ Sunset Experience\l+ Brunch dominical\l+ Quota journalier\l+ Pré-achat groupes\l}" fillcolor="#FFF8E8"];
+
+  acti  [label="{<h>Module ACTIVITÉS|+ Jet Ski · Paddle · Canoë\l+ Quad · Buggy · VTT\l+ Padel · Multisports\l+ Slots horaires\l+ Encadrants\l}" fillcolor="#FFF8E8"];
+
+  corp  [label="{<h>Module CORPORATE|+ Séminaires · Conférences\l+ Team Building\l+ Journées d'étude\l+ Devis · Contrats\l+ Pipeline commercial\l}" fillcolor="#FFF8E8"];
+
+  event [label="{<h>Module ÉVÉNEMENTIEL|+ Mariages · Anniversaires\l+ Privés · Concerts · Soirées\l+ Forfaits packagés\l+ Espaces réservables\l+ Devis personnalisés\l}" fillcolor="#FFF8E8"];
+
+  member [label="{<h>Module MEMBERSHIP|+ Cartes (Bronze · Or · Platine)\l+ Avantages (%, accès, surclassement)\l+ Historique d'utilisation\l+ Renouvellement auto\l}" fillcolor="#FFF8E8"];
+
+  crm   [label="{<h>Module CRM|+ Clients individuels\l+ Entreprises\l+ Historique achats / séjours\l+ Préférences (allergies, etc.)\l+ Segmentation RFM\l+ Score fidélité\l+ Lifetime Value\l}" fillcolor="#FFE9B0"];
+
+  mkt   [label="{<h>Module MARKETING|+ Campagnes Meta\l+ Campagnes Google Ads\l+ Pixels · Conversions API\l+ UTM tracking\l+ Email · WhatsApp blasts\l+ Sources d'acquisition\l}" fillcolor="#FFE9B0"];
+
+  ana   [label="{<h>Module ANALYTICS|+ KPIs temps réel\l+ Funnels de conversion\l+ Attribution multi-touch\l+ Cohortes & rétention\l+ Pacing budgétaire\l+ Forecast IA\l}" fillcolor="#FFE9B0"];
+
+  // CRM is central
+  crm -> hotel  [label="profil client"];
+  crm -> beach  [label="profil client"];
+  crm -> acti   [label="profil client"];
+  crm -> corp   [label="entreprise"];
+  crm -> event  [label="organisateur"];
+  crm -> member [label="détenteur"];
+
+  // Marketing feeds CRM
+  mkt -> crm [label="acquisition\n+ tracking" color="#B8922A" penwidth=1.6];
+
+  // Analytics consumes everything
+  hotel -> ana  [style=dashed];
+  beach -> ana  [style=dashed];
+  acti  -> ana  [style=dashed];
+  corp  -> ana  [style=dashed];
+  event -> ana  [style=dashed];
+  member -> ana [style=dashed];
+  mkt   -> ana  [style=dashed];
+  crm   -> ana  [style=dashed];
+}

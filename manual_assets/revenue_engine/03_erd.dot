@@ -1,0 +1,199 @@
+
+digraph G {
+  rankdir=LR; nodesep=0.35; ranksep=0.6;
+
+  graph [bgcolor="#FAF7F2" fontname="Helvetica" fontsize=11 splines=ortho];
+  node  [fontname="Helvetica" fontsize=10 shape=box style="rounded,filled"
+         fillcolor="#FFFFFF" color="#0A0A0A" penwidth=1.0 margin="0.2,0.12"];
+  edge  [fontname="Helvetica" fontsize=9 color="#5F6670" arrowsize=0.7];
+
+  node [shape=plaintext];
+
+  users [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"
+           BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>users</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">email</TD><TD ALIGN="left">CITEXT UQ</TD></TR>
+      <TR><TD ALIGN="left">password_hash</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">role</TD><TD ALIGN="left">user_role</TD></TR>
+      <TR><TD ALIGN="left">first_name · last_name</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">phone</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">status</TD><TD ALIGN="left">user_status</TD></TR>
+      <TR><TD ALIGN="left">mfa_enabled</TD><TD ALIGN="left">BOOL</TD></TR>
+      <TR><TD ALIGN="left">created_at</TD><TD ALIGN="left">TIMESTAMPTZ</TD></TR>
+    </TABLE>>];
+
+  customers [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>customers</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">type</TD><TD ALIGN="left">individual · company</TD></TR>
+      <TR><TD ALIGN="left">email · phone</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">first_name · last_name</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">company_name · vat_id</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">nationality · language</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">date_of_birth</TD><TD ALIGN="left">DATE</TD></TR>
+      <TR><TD ALIGN="left">preferences</TD><TD ALIGN="left">JSONB</TD></TR>
+      <TR><TD ALIGN="left">loyalty_score</TD><TD ALIGN="left">INT</TD></TR>
+      <TR><TD ALIGN="left">lifetime_value</TD><TD ALIGN="left">NUMERIC</TD></TR>
+      <TR><TD ALIGN="left">rfm_segment</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">acquisition_source_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+    </TABLE>>];
+
+  products [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>products</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">category</TD><TD ALIGN="left">product_category</TD></TR>
+      <TR><TD ALIGN="left">module</TD><TD ALIGN="left">module_type</TD></TR>
+      <TR><TD ALIGN="left">code · name_fr · name_en</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">description</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">base_price</TD><TD ALIGN="left">NUMERIC</TD></TR>
+      <TR><TD ALIGN="left">capacity</TD><TD ALIGN="left">INT</TD></TR>
+      <TR><TD ALIGN="left">attributes</TD><TD ALIGN="left">JSONB</TD></TR>
+      <TR><TD ALIGN="left">status</TD><TD ALIGN="left">product_status</TD></TR>
+    </TABLE>>];
+
+  inventory [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>inventory</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">product_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">date</TD><TD ALIGN="left">DATE</TD></TR>
+      <TR><TD ALIGN="left">slot</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">capacity_total</TD><TD ALIGN="left">INT</TD></TR>
+      <TR><TD ALIGN="left">capacity_sold</TD><TD ALIGN="left">INT</TD></TR>
+      <TR><TD ALIGN="left">price_override</TD><TD ALIGN="left">NUMERIC</TD></TR>
+    </TABLE>>];
+
+  reservations [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>reservations</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">reference</TD><TD ALIGN="left">TEXT UQ</TD></TR>
+      <TR><TD ALIGN="left">customer_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">product_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">date_in · date_out</TD><TD ALIGN="left">DATE</TD></TR>
+      <TR><TD ALIGN="left">slot</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">adults · children</TD><TD ALIGN="left">INT</TD></TR>
+      <TR><TD ALIGN="left">amount_total · paid</TD><TD ALIGN="left">NUMERIC</TD></TR>
+      <TR><TD ALIGN="left">status</TD><TD ALIGN="left">reservation_status</TD></TR>
+      <TR><TD ALIGN="left">channel_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">campaign_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">membership_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">created_at</TD><TD ALIGN="left">TIMESTAMPTZ</TD></TR>
+    </TABLE>>];
+
+  payments [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>payments</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">reservation_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">type</TD><TD ALIGN="left">deposit · final · refund</TD></TR>
+      <TR><TD ALIGN="left">method</TD><TD ALIGN="left">card · cash · transfer</TD></TR>
+      <TR><TD ALIGN="left">provider · provider_ref</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">amount</TD><TD ALIGN="left">NUMERIC</TD></TR>
+      <TR><TD ALIGN="left">currency</TD><TD ALIGN="left">CHAR(3)</TD></TR>
+      <TR><TD ALIGN="left">status</TD><TD ALIGN="left">payment_status</TD></TR>
+    </TABLE>>];
+
+  qr_codes [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>qr_codes</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">reservation_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">token</TD><TD ALIGN="left">TEXT UQ</TD></TR>
+      <TR><TD ALIGN="left">type</TD><TD ALIGN="left">ticket · wallet · regist.</TD></TR>
+      <TR><TD ALIGN="left">scan_count</TD><TD ALIGN="left">INT</TD></TR>
+      <TR><TD ALIGN="left">last_scan_at</TD><TD ALIGN="left">TIMESTAMPTZ</TD></TR>
+      <TR><TD ALIGN="left">last_scan_by</TD><TD ALIGN="left">UUID FK users</TD></TR>
+    </TABLE>>];
+
+  channels [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>channels</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">code</TD><TD ALIGN="left">direct · booking · airbnb · …</TD></TR>
+      <TR><TD ALIGN="left">name · commission_pct</TD><TD ALIGN="left">TEXT · NUMERIC</TD></TR>
+      <TR><TD ALIGN="left">api_endpoint · api_creds_ref</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">sync_strategy</TD><TD ALIGN="left">push · ical · poll</TD></TR>
+    </TABLE>>];
+
+  channel_mappings [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>channel_product_map</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">channel_id · product_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">external_id</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">price_uplift_pct</TD><TD ALIGN="left">NUMERIC</TD></TR>
+      <TR><TD ALIGN="left">availability_pct</TD><TD ALIGN="left">NUMERIC</TD></TR>
+    </TABLE>>];
+
+  campaigns [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>campaigns</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">platform</TD><TD ALIGN="left">meta · gads · email · whatsapp</TD></TR>
+      <TR><TD ALIGN="left">name · objective</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">target_module</TD><TD ALIGN="left">module_type</TD></TR>
+      <TR><TD ALIGN="left">budget · spent</TD><TD ALIGN="left">NUMERIC</TD></TR>
+      <TR><TD ALIGN="left">starts_at · ends_at</TD><TD ALIGN="left">TIMESTAMPTZ</TD></TR>
+      <TR><TD ALIGN="left">utm_source · medium · campaign</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">status</TD><TD ALIGN="left">campaign_status</TD></TR>
+    </TABLE>>];
+
+  memberships [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>memberships</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">customer_id</TD><TD ALIGN="left">UUID FK</TD></TR>
+      <TR><TD ALIGN="left">card_no</TD><TD ALIGN="left">TEXT UQ</TD></TR>
+      <TR><TD ALIGN="left">tier</TD><TD ALIGN="left">bronze · gold · platinum</TD></TR>
+      <TR><TD ALIGN="left">starts_at · expires_at</TD><TD ALIGN="left">DATE</TD></TR>
+      <TR><TD ALIGN="left">benefits</TD><TD ALIGN="left">JSONB</TD></TR>
+      <TR><TD ALIGN="left">status</TD><TD ALIGN="left">membership_status</TD></TR>
+    </TABLE>>];
+
+  events [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>analytics_events</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">session_id · visitor_id</TD><TD ALIGN="left">UUID</TD></TR>
+      <TR><TD ALIGN="left">customer_id</TD><TD ALIGN="left">UUID FK (nullable)</TD></TR>
+      <TR><TD ALIGN="left">event_type</TD><TD ALIGN="left">page_view · click · conv.</TD></TR>
+      <TR><TD ALIGN="left">page · referrer</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">utm_source · medium · campaign</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">value</TD><TD ALIGN="left">NUMERIC</TD></TR>
+      <TR><TD ALIGN="left">props</TD><TD ALIGN="left">JSONB</TD></TR>
+      <TR><TD ALIGN="left">occurred_at</TD><TD ALIGN="left">TIMESTAMPTZ</TD></TR>
+    </TABLE>>];
+
+  audit [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white">
+      <TR><TD BGCOLOR="#B8922A" COLSPAN="2"><FONT COLOR="white"><B>audit_log</B></FONT></TD></TR>
+      <TR><TD ALIGN="left">id</TD><TD ALIGN="left">UUID PK</TD></TR>
+      <TR><TD ALIGN="left">actor_id</TD><TD ALIGN="left">UUID FK users</TD></TR>
+      <TR><TD ALIGN="left">entity_type · entity_id</TD><TD ALIGN="left">TEXT · UUID</TD></TR>
+      <TR><TD ALIGN="left">action</TD><TD ALIGN="left">create · update · delete</TD></TR>
+      <TR><TD ALIGN="left">diff</TD><TD ALIGN="left">JSONB</TD></TR>
+      <TR><TD ALIGN="left">ip · user_agent</TD><TD ALIGN="left">TEXT</TD></TR>
+      <TR><TD ALIGN="left">occurred_at</TD><TD ALIGN="left">TIMESTAMPTZ</TD></TR>
+    </TABLE>>];
+
+  // Relationships
+  reservations -> customers [label="N..1"];
+  reservations -> products  [label="N..1"];
+  reservations -> channels  [label="N..1"];
+  reservations -> campaigns [label="N..1 (attribution)"];
+  reservations -> memberships [label="N..1"];
+  payments -> reservations [label="N..1"];
+  qr_codes -> reservations [label="N..1"];
+  inventory -> products [label="N..1"];
+  channel_mappings -> channels [label="N..1"];
+  channel_mappings -> products [label="N..1"];
+  memberships -> customers [label="N..1"];
+  events -> customers [label="N..1 (opt)"];
+  events -> campaigns [label="N..1 (attribution)"];
+  audit -> users [label="N..1"];
+}
