@@ -28,7 +28,7 @@ export default function UniversHero({
               {kicker}
             </div>
           )}
-          <h1 className="font-serif italic font-light text-white leading-[1] text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-[5rem]">
+          <h1 className="font-serif font-light text-white leading-[1] text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-[5rem]">
             {title}
           </h1>
           {tagline && (

@@ -75,7 +75,7 @@ export default function VitrineBlogArticle() {
              data-testid="blog-article-category">
           {article.category || "Journal"}
         </div>
-        <h1 className="font-serif italic font-light text-4xl md:text-6xl leading-[1.05] mb-8"
+        <h1 className="font-serif font-light text-4xl md:text-6xl leading-[1.05] mb-8"
             data-testid="blog-article-title">
           {article.title}
         </h1>
@@ -90,7 +90,7 @@ export default function VitrineBlogArticle() {
         </div>
 
         {article.excerpt && (
-          <p className="text-xl md:text-2xl text-[#0A0A0A]/80 font-light leading-relaxed italic mb-12">
+          <p className="text-xl md:text-2xl text-[#0A0A0A]/80 font-light leading-relaxed mb-12">
             {article.excerpt}
           </p>
         )}
@@ -98,10 +98,10 @@ export default function VitrineBlogArticle() {
         <div
           className="prose prose-lg max-w-none font-light leading-[1.85] text-[#0A0A0A]/85
                      [&_p]:mb-6 [&_p]:text-base [&_p]:md:text-lg
-                     [&_h2]:font-serif [&_h2]:italic [&_h2]:font-light [&_h2]:text-3xl [&_h2]:md:text-4xl [&_h2]:mt-12 [&_h2]:mb-6
-                     [&_h3]:font-serif [&_h3]:italic [&_h3]:font-light [&_h3]:text-2xl [&_h3]:mt-10 [&_h3]:mb-4
+                     [&_h2]:font-serif [&_h2]:font-light [&_h2]:text-3xl [&_h2]:md:text-4xl [&_h2]:mt-12 [&_h2]:mb-6
+                     [&_h3]:font-serif [&_h3]:font-light [&_h3]:text-2xl [&_h3]:mt-10 [&_h3]:mb-4
                      [&_a]:text-[#B8922A] [&_a]:underline [&_a]:underline-offset-4
-                     [&_blockquote]:border-l-2 [&_blockquote]:border-[#B8922A] [&_blockquote]:pl-6 [&_blockquote]:italic [&_blockquote]:text-[#0A0A0A]/65 [&_blockquote]:my-8
+                     [&_blockquote]:border-l-2 [&_blockquote]:border-[#B8922A] [&_blockquote]:pl-6 [&_blockquote]:text-[#0A0A0A]/65 [&_blockquote]:my-8
                      [&_img]:my-8 [&_img]:w-full
                      [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-6 [&_ul_li]:mb-2
                      [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6"
@@ -117,7 +117,7 @@ export default function VitrineBlogArticle() {
             <div className="text-[0.6rem] tracking-[0.5em] uppercase text-[#B8922A] mb-4 text-center">
               · À lire aussi ·
             </div>
-            <h2 className="font-serif italic font-light text-3xl md:text-4xl text-center mb-14">
+            <h2 className="font-serif font-light text-3xl md:text-4xl text-center mb-14">
               Dans le même esprit.
             </h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12" data-testid="blog-related">
@@ -136,7 +136,7 @@ export default function VitrineBlogArticle() {
                   <div className="text-[0.55rem] tracking-[0.45em] uppercase text-[#B8922A] mb-2">
                     {a.category}
                   </div>
-                  <h3 className="font-serif italic text-xl md:text-2xl leading-tight group-hover:text-[#B8922A] transition-colors">
+                  <h3 className="font-serif text-xl md:text-2xl leading-tight group-hover:text-[#B8922A] transition-colors">
                     {a.title}
                   </h3>
                   <div className="mt-4 inline-flex items-center gap-1.5 text-[0.6rem] tracking-[0.35em] uppercase text-[#0A0A0A]/55">

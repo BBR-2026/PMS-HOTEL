@@ -85,7 +85,7 @@ export default function VitrineMemberships() {
             <Crown size={14} strokeWidth={1.5} />
             BBR Memberships
           </div>
-          <h1 className="font-serif italic font-light text-5xl md:text-7xl leading-[1.05] max-w-4xl mx-auto">
+          <h1 className="font-serif font-light text-5xl md:text-7xl leading-[1.05] max-w-4xl mx-auto">
             L'île pour habitude.
           </h1>
           <p className="mt-6 text-base md:text-lg text-white/75 max-w-2xl mx-auto leading-relaxed font-light">
@@ -102,7 +102,7 @@ export default function VitrineMemberships() {
             <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-4">
               Choisissez votre carte
             </div>
-            <h2 className="font-serif italic font-light text-4xl md:text-5xl leading-tight">
+            <h2 className="font-serif font-light text-4xl md:text-5xl leading-tight">
               Trois manières<br />de vous appartenir à l'île.
             </h2>
           </div>
@@ -133,14 +133,14 @@ export default function VitrineMemberships() {
                   >
                     <Icon size={20} strokeWidth={1.5} />
                   </div>
-                  <h3 className="font-serif italic font-light text-3xl md:text-4xl mb-2">{p.name}</h3>
-                  <p className="text-sm text-[#0A0A0A]/65 italic leading-relaxed mb-6">
+                  <h3 className="font-serif font-light text-3xl md:text-4xl mb-2">{p.name}</h3>
+                  <p className="text-sm text-[#0A0A0A]/65 leading-relaxed mb-6">
                     {p.tagline}
                   </p>
                   <div className="mb-6">
-                    <div className="font-serif italic text-3xl text-[#0A0A0A]">
+                    <div className="font-serif text-3xl text-[#0A0A0A]">
                       {p.price_xof.toLocaleString("fr-FR")}
-                      <span className="text-base text-[#0A0A0A]/55 not-italic font-sans"> XOF</span>
+                      <span className="text-base text-[#0A0A0A]/55 font-sans"> XOF</span>
                     </div>
                     <div className="text-[10px] tracking-[0.3em] uppercase text-[#0A0A0A]/45 mt-1">
                       / an
@@ -180,7 +180,7 @@ export default function VitrineMemberships() {
             <div className="text-[0.65rem] tracking-[0.5em] uppercase text-white/60 mb-4">
               {selectedPlan ? `Carte ${selectedPlan.name}` : "Souscription"}
             </div>
-            <h2 className="font-serif italic font-light text-3xl md:text-5xl leading-tight mb-6">
+            <h2 className="font-serif font-light text-3xl md:text-5xl leading-tight mb-6">
               Réservez votre carte.
             </h2>
             <p className="text-base text-white/70 leading-relaxed font-light">
@@ -197,7 +197,7 @@ export default function VitrineMemberships() {
               <div className="inline-flex items-center justify-center w-14 h-14 border border-[#B8922A] text-[#B8922A]">
                 <Check size={20} strokeWidth={1.5} />
               </div>
-              <h3 className="font-serif italic text-2xl md:text-3xl">Demande enregistrée.</h3>
+              <h3 className="font-serif text-2xl md:text-3xl">Demande enregistrée.</h3>
               <p className="text-sm text-white/70">
                 Merci. Notre conciergerie revient vers vous sous 24 h.
               </p>
@@ -205,7 +205,7 @@ export default function VitrineMemberships() {
           ) : (
             <form onSubmit={onSubmit} className="space-y-5" data-testid="membership-form">
               {!selectedPlan && (
-                <p className="text-center text-sm text-white/60 pb-3 italic">
+                <p className="text-center text-sm text-white/60 pb-3">
                   Sélectionnez d'abord une carte ci-dessus.
                 </p>
               )}

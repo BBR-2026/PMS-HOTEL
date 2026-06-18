@@ -31,7 +31,7 @@ export default function VitrineBlog() {
           <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-6">
             · Le journal BBR ·
           </div>
-          <h1 className="font-serif italic font-light text-5xl md:text-7xl leading-[1.05]">
+          <h1 className="font-serif font-light text-5xl md:text-7xl leading-[1.05]">
             Récits de l'île.
           </h1>
           <p className="mt-8 text-base md:text-lg text-[#0A0A0A]/65 max-w-2xl mx-auto font-light leading-relaxed">
@@ -75,7 +75,7 @@ export default function VitrineBlog() {
                     <div className="text-[0.6rem] tracking-[0.5em] uppercase text-[#B8922A] mb-5">
                       {featured.category || "À la une"}
                     </div>
-                    <h2 className="font-serif italic font-light text-3xl md:text-5xl leading-[1.1] mb-6 group-hover:text-[#B8922A] transition-colors">
+                    <h2 className="font-serif font-light text-3xl md:text-5xl leading-[1.1] mb-6 group-hover:text-[#B8922A] transition-colors">
                       {featured.title}
                     </h2>
                     {featured.excerpt && (
@@ -127,7 +127,7 @@ function BlogCard({ a }) {
       <div className="text-[0.55rem] tracking-[0.45em] uppercase text-[#B8922A] mb-3">
         {a.category || "Journal"}
       </div>
-      <h3 className="font-serif italic font-light text-xl md:text-2xl leading-tight text-[#0A0A0A] mb-3 group-hover:text-[#B8922A] transition-colors">
+      <h3 className="font-serif font-light text-xl md:text-2xl leading-tight text-[#0A0A0A] mb-3 group-hover:text-[#B8922A] transition-colors">
         {a.title}
       </h3>
       {a.excerpt && (

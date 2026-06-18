@@ -1,6 +1,30 @@
 # BBR Revenue Engine — CHANGELOG
 
-## 2026-06-18 (4) — UI Premium luxury + Blog/Journal
+## 2026-06-18 (5) — UI polish : Logo XL centered, no italic, 2-col Univers, Instagram, Blog on landing, /reserver = Vitrine
+
+### Changements appliqués
+1. **Logo +100%** : de `h-10/12/14` à `h-20/24/28` (~ 80px / 96px / 112px).
+2. **Logo centré sur mobile** : positionnement absolu `left-1/2 -translate-x-1/2` < lg ; alignement gauche sur desktop.
+3. **Page d'accueil du workflow remplacée** : route `/reserver` pointe désormais sur `VitrineLanding`. Chaque carte univers expose 2 CTA : « Découvrir » (page univers détaillée) et « Réserver » qui pointe directement sur le tunnel `/booking/<offerId>` pré-rempli (`pass_day`, `hebergement`, `le_kaai`, `seminaire`, `offres_loisirs`). Le calendrier de réservation s'ouvre directement.
+4. **Plus aucun italique** sur la Vitrine publique (10 fichiers nettoyés : Landing, Nav, Footer, Layout, Boutique, Contact, Memberships, Blog, BlogArticle, BookingExtras + Univers pages).
+5. **Section Instagram** : nouvelle section sur la landing — 6 visuels @boulaybeachresort en grille 2/3/6 colonnes, overlay Instagram au hover, lien « Suivez-nous » vers le compte officiel. Tracking `click_instagram` émis.
+6. **Section Journal** : 3 derniers articles publiés affichés sur la landing (fetch `/api/blog/articles?limit=3`) + lien « Tous les articles ».
+7. **UNIVERS réorganisé** : grille 2 colonnes desktop, rectangles verticaux 4:5, titre + description + 2 CTA (Découvrir / Réserver) sous l'image. Plus de 5e ligne déséquilibrée.
+
+### Fichiers modifiés
+- `components/vitrine/VitrineNav.jsx` — logo XL + centrage mobile.
+- `components/vitrine/VitrineLayout.jsx` — padding-top ajusté.
+- `pages/vitrine/VitrineLanding.jsx` — refonte sections + Instagram + Blog preview + UNIVERS 2-col + suppression italics.
+- `pages/vitrine/VitrineBlogArticle.jsx`, `VitrineMemberships.jsx` — suppression `italic`.
+- `App.js` — route `/reserver` → VitrineLanding.
+
+---
+
+## Entrées précédentes
+- 2026-06-18 (4) — Header horizontal desktop + Blog module + UI luxury.
+- 2026-06-18 (3) — Logo XL doré + Optima partout.
+- 2026-06-18 (2) — CRM 360° + Memberships + Événementiel + Upsell (`iteration_33.json`).
+- 2026-06-18 (1) — Marketing Dashboard + Inbox + Vitrine pages (`iteration_32.json`).
 
 ### Header (refonte luxury hotel)
 - **Logo -75%** : de `h-36 md:h-52` à `h-10 md:h-12 lg:h-14` (compact luxury hotel).

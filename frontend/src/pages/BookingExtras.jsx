@@ -107,7 +107,7 @@ export default function BookingExtras() {
             <ShoppingBag size={14} className="inline mr-2" />
             Sublimez votre séjour
           </div>
-          <h1 className="font-serif italic font-light text-4xl md:text-6xl leading-tight">
+          <h1 className="font-serif font-light text-4xl md:text-6xl leading-tight">
             Ajoutez l'inattendu.
           </h1>
           <p className="text-white/70 text-sm mt-4 font-mono">
@@ -169,7 +169,7 @@ export default function BookingExtras() {
                 <div key={cat} data-testid={`extras-cat-${cat}`}>
                   <div className="flex items-center gap-3 mb-8">
                     <Icon size={18} className="text-[#B8922A]" strokeWidth={1.5} />
-                    <h2 className="font-serif italic font-light text-2xl md:text-3xl">
+                    <h2 className="font-serif font-light text-2xl md:text-3xl">
                       {meta.label}
                     </h2>
                   </div>
@@ -189,14 +189,14 @@ export default function BookingExtras() {
                             </div>
                           )}
                           <div className="p-5 flex-1 flex flex-col">
-                            <h3 className="font-serif italic text-xl mb-2">{o.name}</h3>
+                            <h3 className="font-serif text-xl mb-2">{o.name}</h3>
                             {o.description && (
                               <p className="text-sm text-[#0A0A0A]/65 leading-relaxed flex-1">
                                 {o.description}
                               </p>
                             )}
                             <div className="flex items-end justify-between mt-5">
-                              <div className="font-serif italic text-2xl tabular-nums">
+                              <div className="font-serif text-2xl tabular-nums">
                                 {o.price_xof.toLocaleString("fr-FR")}
                                 <span className="text-xs text-[#0A0A0A]/55 not-italic font-sans"> XOF</span>
                               </div>

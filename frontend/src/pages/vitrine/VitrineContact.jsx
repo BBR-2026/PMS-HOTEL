@@ -79,7 +79,7 @@ export default function VitrineContact() {
           <div className="text-[0.65rem] tracking-[0.5em] uppercase text-white/80 mb-6">
             Contactez-nous
           </div>
-          <h1 className="font-serif italic font-light text-5xl md:text-7xl leading-[1.05]">
+          <h1 className="font-serif font-light text-5xl md:text-7xl leading-[1.05]">
             Restons en lien.
           </h1>
         </div>
@@ -93,7 +93,7 @@ export default function VitrineContact() {
             <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-6">
               Notre équipe vous répond
             </div>
-            <h2 className="font-serif italic font-light text-3xl md:text-5xl mb-10 leading-[1.05]">
+            <h2 className="font-serif font-light text-3xl md:text-5xl mb-10 leading-[1.05]">
               Une question,<br />une réservation,<br />un projet sur-mesure ?
             </h2>
             <p className="text-base md:text-lg text-[#0A0A0A]/75 leading-[1.85] font-light mb-12">
@@ -149,7 +149,7 @@ export default function VitrineContact() {
                   <div className="inline-flex items-center justify-center w-14 h-14 border border-[#B8922A] text-[#B8922A]">
                     <Check size={22} strokeWidth={1.5} />
                   </div>
-                  <h3 className="font-serif italic text-3xl md:text-4xl leading-tight">
+                  <h3 className="font-serif text-3xl md:text-4xl leading-tight">
                     Message envoyé.
                   </h3>
                   <p className="text-[#0A0A0A]/75 leading-relaxed font-light">

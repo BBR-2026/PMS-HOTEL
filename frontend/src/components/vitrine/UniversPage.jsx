@@ -30,7 +30,7 @@ export default function UniversPage({
           <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-6">
             {intro.kicker}
           </div>
-          <h2 className="font-serif italic font-light text-4xl md:text-5xl leading-[1.1] mb-10 text-[#0A0A0A]">
+          <h2 className="font-serif font-light text-4xl md:text-5xl leading-[1.1] mb-10 text-[#0A0A0A]">
             {intro.title}
           </h2>
           <p className="text-base md:text-lg leading-[1.85] text-[#0A0A0A]/75 font-light">
@@ -66,7 +66,7 @@ export default function UniversPage({
                     )}
                   </div>
                   <div className="text-center">
-                    <h3 className="font-serif italic font-light text-2xl md:text-3xl mb-3 text-[#0A0A0A]">
+                    <h3 className="font-serif font-light text-2xl md:text-3xl mb-3 text-[#0A0A0A]">
                       {o.title}
                     </h3>
                     <p className="text-sm text-[#0A0A0A]/65 leading-relaxed mb-5 max-w-sm mx-auto">
@@ -113,7 +113,7 @@ export default function UniversPage({
                       {editorial.kicker}
                     </div>
                   )}
-                  <h2 className="font-serif italic font-light text-4xl md:text-5xl leading-[1.1] mb-8 text-[#0A0A0A]">
+                  <h2 className="font-serif font-light text-4xl md:text-5xl leading-[1.1] mb-8 text-[#0A0A0A]">
                     {editorial.title}
                   </h2>
                   <p className="text-base md:text-lg leading-[1.85] text-[#0A0A0A]/75 font-light">
@@ -130,7 +130,7 @@ export default function UniversPage({
                       {editorial.kicker}
                     </div>
                   )}
-                  <h2 className="font-serif italic font-light text-4xl md:text-5xl leading-[1.1] mb-8 text-[#0A0A0A]">
+                  <h2 className="font-serif font-light text-4xl md:text-5xl leading-[1.1] mb-8 text-[#0A0A0A]">
                     {editorial.title}
                   </h2>
                   <p className="text-base md:text-lg leading-[1.85] text-[#0A0A0A]/75 font-light">
@@ -154,7 +154,7 @@ export default function UniversPage({
           />
           <div className="absolute inset-0 bg-black/45" />
           <div className="relative z-10 max-w-3xl mx-auto px-6 text-center text-white">
-            <h2 className="font-serif italic font-light text-4xl sm:text-5xl md:text-6xl leading-[1.05] mb-8">
+            <h2 className="font-serif font-light text-4xl sm:text-5xl md:text-6xl leading-[1.05] mb-8">
               {finalCta.title}
             </h2>
             <p className="text-white/80 text-base md:text-lg leading-relaxed mb-12 max-w-xl mx-auto font-light">

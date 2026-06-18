@@ -145,7 +145,7 @@ function App() {
               <Route path="/blog" element={<VitrineBlog />} />
               <Route path="/blog/:slug" element={<VitrineBlogArticle />} />
               {/* iter-55 — Tunnel de réservation unifié sous la vitrine */}
-              <Route path="/reserver" element={<LandingPage />} />
+              <Route path="/reserver" element={<VitrineLanding />} />
               <Route path="/pole/:poleId" element={<PolePage />} />
               <Route path="/booking/:offerId" element={<BookingTunnel />} />
               <Route path="/payment/fineo/result" element={<FineoResult />} />

@@ -5,12 +5,17 @@
  * lifestyle gallery, story, footer. Serif headings (Cormorant), white space,
  * photos do the talking.
  */
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Instagram, ArrowRight } from "lucide-react";
 import { trackEvent } from "../../lib/tracking";
+
+const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
 const UNIVERS = [
   {
     to: "/univers/beach-club",
+    bookOfferId: "pass_day",
     name: "Beach Club",
     description:
       "Day Pass, The Sunset, B Brunch — trois rituels signature pour vivre l'île à votre rythme. Une parenthèse exclusive entre lagune et océan, ouverte sept jours sur sept.",
@@ -19,6 +24,7 @@ const UNIVERS = [
   },
   {
     to: "/univers/hebergement",
+    bookOfferId: "hebergement",
     name: "Hébergement",
     description:
       "Une nuit en suspens entre lagune et océan, dans nos suites signature. Chambres Supérieures et Suites côté jardin ou côté lagune, soins Spa & Wellness signature au bord de l'eau.",
@@ -27,6 +33,7 @@ const UNIVERS = [
   },
   {
     to: "/le-kaai",
+    bookOfferId: "le_kaai",
     name: "Restaurant Le Kaai",
     description:
       "Le KAAÏ est le nouveau restaurant du BBr. Une table à l'ambition gastronomique affirmée, portée par des saveurs d'inspiration africaine contemporaine, dans une atmosphère élégante et chaleureuse.",
@@ -35,6 +42,7 @@ const UNIVERS = [
   },
   {
     to: "/univers/corporate",
+    bookOfferId: "seminaire",
     name: "Corporate",
     description:
       "Séminaires résidentiels, journées d'étude, team building, déjeuners et dîners d'entreprise — salles équipées, vue océan, hébergement et pauses gastronomiques pour vos événements professionnels.",
@@ -43,12 +51,23 @@ const UNIVERS = [
   },
   {
     to: "/univers/activites",
+    bookOfferId: "offres_loisirs",
     name: "Activités & Events",
     description:
       "Jet ski, paddle, kayak et plus — une journée d'activités lagunaires. Privatisations, soirées privées et expériences sur-mesure pour fédérer vos équipes ou célébrer vos grands moments.",
     image:
       "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ocqva33h_ACTIVITE.png",
   },
+];
+
+// Instagram-style posts (curated) — using existing BBR assets.
+const INSTAGRAM_POSTS = [
+  { src: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4kr4z5g1_DAY%20PASS.jpeg", caption: "Day Pass" },
+  { src: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/3g3onmkg_THE%20SUNSET.jpeg", caption: "The Sunset" },
+  { src: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/1txrnqdp_B%20BRUNCH.jpeg", caption: "B Brunch" },
+  { src: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/kgqk46mw_LE%20KAAI.jpeg", caption: "Le Kaai" },
+  { src: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ivhtbefz_BBR%20_SHOOT%202_15.jpg", caption: "Île Boulay" },
+  { src: "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2hilix5p_BBR%20_SHOOT%202_29.jpg", caption: "BBR Life" },
 ];
 
 const LIFESTYLE = [
@@ -59,6 +78,15 @@ const LIFESTYLE = [
 ];
 
 export default function VitrineLanding() {
+  const [blogArticles, setBlogArticles] = useState([]);
+
+  useEffect(() => {
+    fetch(`${BACKEND}/api/blog/articles?limit=3`)
+      .then((r) => r.json())
+      .then((d) => setBlogArticles(d.items || []))
+      .catch(() => {});
+  }, []);
+
   return (
     <div data-testid="vitrine-landing" className="bg-white text-[#0A0A0A]">
       {/* ─── HERO ───────────────────────────────────────── */}
@@ -97,30 +125,22 @@ export default function VitrineLanding() {
         </div>
       </section>
 
-      {/* ─── NOS UNIVERS — refined luxury hotel grid ──────── */}
+      {/* ─── NOS UNIVERS — 2 per row vertical rectangles ─────── */}
       <section className="py-28 md:py-40 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          {/* Section header */}
           <div className="text-center mb-16 md:mb-20">
             <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-6">
               · Nos univers ·
             </div>
-            <h2 className="font-serif italic font-light text-3xl sm:text-4xl md:text-5xl leading-[1.15] text-[#0A0A0A] max-w-2xl mx-auto">
+            <h2 className="font-serif font-light text-3xl sm:text-4xl md:text-5xl leading-[1.15] text-[#0A0A0A] max-w-2xl mx-auto">
               Cinq expériences,<br />une seule destination d'exception.
             </h2>
             <div className="w-12 h-px bg-[#B8922A] mx-auto mt-10" />
           </div>
 
-          {/* Editorial 5-card grid : 3 on top row, 2 on bottom row, centered */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-x-6 gap-y-10 md:gap-y-14">
-            {UNIVERS.slice(0, 3).map((u) => (
-              <UniversCard key={u.to} u={u} className="lg:col-span-2" />
-            ))}
-            <div className="hidden lg:block lg:col-span-1" />
-            {UNIVERS.slice(3, 5).map((u) => (
-              <UniversCard key={u.to} u={u} className="lg:col-span-2" />
-            ))}
-            <div className="hidden lg:block lg:col-span-1" />
+          {/* 2 cards per row — vertical rectangles */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+            {UNIVERS.map((u) => <UniversCard key={u.to} u={u} />)}
           </div>
         </div>
       </section>
@@ -132,7 +152,7 @@ export default function VitrineLanding() {
             <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-6">
               Notre Beach Club
             </div>
-            <h2 className="font-serif italic font-light text-4xl md:text-5xl leading-[1.1] mb-8 text-[#0A0A0A]">
+            <h2 className="font-serif font-light text-4xl md:text-5xl leading-[1.1] mb-8 text-[#0A0A0A]">
               L'art de vivre balnéaire, à l'ivoirienne.
             </h2>
             <p className="text-base md:text-lg leading-[1.85] text-[#0A0A0A]/75 mb-8 font-light">
@@ -174,7 +194,7 @@ export default function VitrineLanding() {
             <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-6">
               Le Kaai · Restaurant signature
             </div>
-            <h2 className="font-serif italic font-light text-4xl md:text-5xl leading-[1.1] mb-8 text-[#0A0A0A]">
+            <h2 className="font-serif font-light text-4xl md:text-5xl leading-[1.1] mb-8 text-[#0A0A0A]">
               Une cuisine qui voyage,<br />face à la lagune.
             </h2>
             <p className="text-base md:text-lg leading-[1.85] text-[#0A0A0A]/75 mb-8 font-light">
@@ -215,7 +235,7 @@ export default function VitrineLanding() {
           <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-6">
             Notre histoire
           </div>
-          <h2 className="font-serif italic font-light text-4xl md:text-5xl leading-[1.1] mb-10 text-[#0A0A0A]">
+          <h2 className="font-serif font-light text-4xl md:text-5xl leading-[1.1] mb-10 text-[#0A0A0A]">
             Une île, une vision,<br />un art de recevoir.
           </h2>
           <p className="text-base md:text-lg leading-[1.85] text-[#0A0A0A]/75 mb-10 font-light">
@@ -233,6 +253,117 @@ export default function VitrineLanding() {
         </div>
       </section>
 
+      {/* ─── INSTAGRAM FEED ──────────────────────────────── */}
+      <section className="py-24 md:py-32 bg-white" data-testid="vitrine-instagram">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-12 md:mb-16">
+            <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-5 inline-flex items-center justify-center gap-2">
+              <Instagram size={13} strokeWidth={1.5} /> · @boulaybeachresort ·
+            </div>
+            <h2 className="font-serif font-light text-3xl sm:text-4xl md:text-5xl leading-[1.15] text-[#0A0A0A]">
+              L'instant BBR.
+            </h2>
+            <div className="w-12 h-px bg-[#B8922A] mx-auto mt-8" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
+            {INSTAGRAM_POSTS.map((p, i) => (
+              <a
+                key={i}
+                href="https://www.instagram.com/boulaybeachresort"
+                target="_blank"
+                rel="noreferrer"
+                className="group relative aspect-square overflow-hidden bg-[#FAF7F2]"
+                data-testid={`ig-post-${i}`}
+                onClick={() => trackEvent("click_instagram", { post: p.caption })}
+              >
+                <img
+                  src={p.src}
+                  alt={p.caption}
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1.4s] ease-out group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-300 flex items-center justify-center">
+                  <Instagram
+                    size={26}
+                    strokeWidth={1.5}
+                    className="text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  />
+                </div>
+              </a>
+            ))}
+          </div>
+          <div className="text-center mt-12">
+            <a
+              href="https://www.instagram.com/boulaybeachresort"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-[0.65rem] tracking-[0.35em] uppercase text-[#0A0A0A] border-b border-[#0A0A0A]/60 pb-1 hover:text-[#B8922A] hover:border-[#B8922A] transition-colors"
+              data-testid="ig-follow-link"
+            >
+              <Instagram size={13} />
+              Suivez-nous sur Instagram
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── JOURNAL — recent blog articles ───────────────── */}
+      {blogArticles.length > 0 && (
+        <section className="py-24 md:py-32 bg-[#FAF7F2]" data-testid="vitrine-blog-preview">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="text-center mb-14">
+              <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-5">
+                · Le Journal ·
+              </div>
+              <h2 className="font-serif font-light text-3xl sm:text-4xl md:text-5xl leading-[1.15] text-[#0A0A0A]">
+                Récits de l'île.
+              </h2>
+              <div className="w-12 h-px bg-[#B8922A] mx-auto mt-8" />
+            </div>
+            <div className="grid md:grid-cols-3 gap-8 md:gap-10">
+              {blogArticles.slice(0, 3).map((a) => (
+                <Link
+                  key={a.id}
+                  to={`/blog/${a.slug}`}
+                  className="group block"
+                  data-testid={`landing-blog-${a.slug}`}
+                >
+                  <div className="aspect-[4/5] overflow-hidden bg-white mb-6">
+                    {a.cover_image_url && (
+                      <img
+                        src={a.cover_image_url}
+                        alt={a.title}
+                        className="w-full h-full object-cover transition-transform duration-[1.6s] ease-out group-hover:scale-[1.05]"
+                      />
+                    )}
+                  </div>
+                  <div className="text-[0.55rem] tracking-[0.45em] uppercase text-[#B8922A] mb-3">
+                    {a.category || "Journal"}
+                  </div>
+                  <h3 className="font-serif font-light text-xl md:text-2xl leading-tight text-[#0A0A0A] mb-3 group-hover:text-[#B8922A] transition-colors">
+                    {a.title}
+                  </h3>
+                  {a.excerpt && (
+                    <p className="text-sm text-[#0A0A0A]/65 leading-relaxed line-clamp-2 font-light">
+                      {a.excerpt}
+                    </p>
+                  )}
+                </Link>
+              ))}
+            </div>
+            <div className="text-center mt-14">
+              <Link
+                to="/blog"
+                className="inline-flex items-center gap-2 text-[0.65rem] tracking-[0.35em] uppercase text-[#0A0A0A] border-b border-[#0A0A0A]/60 pb-1 hover:text-[#B8922A] hover:border-[#B8922A] transition-colors"
+                data-testid="landing-blog-all"
+              >
+                Tous les articles
+                <ArrowRight size={11} />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ─── FINAL — RÉSERVATION ────────────────────────── */}
       <section className="relative py-32 md:py-44 overflow-hidden">
         <div
@@ -247,7 +378,7 @@ export default function VitrineLanding() {
           <div className="text-[0.65rem] tracking-[0.5em] uppercase text-white/75 mb-8">
             Réservation directe
           </div>
-          <h2 className="font-serif italic font-light text-4xl sm:text-5xl md:text-6xl leading-[1.05] mb-10">
+          <h2 className="font-serif font-light text-4xl sm:text-5xl md:text-6xl leading-[1.05] mb-10">
             Votre prochaine évasion<br />commence ici.
           </h2>
           <p className="text-white/75 text-base md:text-lg leading-relaxed mb-12 max-w-xl mx-auto font-light">
@@ -269,40 +400,54 @@ export default function VitrineLanding() {
 }
 
 /**
- * Single refined universe card — luxury hotel aesthetic.
- *
- * - Portrait image (aspect 3/4) with subtle hover zoom.
- * - Title in italic serif under the image.
- * - 3-line description with ellipsis (line-clamp-3) for visual rhythm.
- * - Gold hairline + "Découvrir" link on hover.
+ * Vertical rectangle universe card — 2 per row.
+ * Image above (aspect 4/5), title + description below.
+ * Two CTAs : "Découvrir" (link to universe page) and "Réserver" (direct
+ * link to the matching booking tunnel /booking/<offerId>).
  */
-function UniversCard({ u, className = "" }) {
+function UniversCard({ u }) {
   return (
-    <Link
-      to={u.to}
-      onClick={() => trackEvent("view_offer", { offer: u.name })}
-      className={`group block ${className}`}
-      data-testid={`univers-card-${u.to.split("/").pop()}`}
-    >
-      <div className="relative aspect-[3/4] overflow-hidden bg-[#FAF7F2]">
-        <div
-          className="absolute inset-0 bg-cover bg-center transition-transform duration-[1.8s] ease-out group-hover:scale-[1.05]"
-          style={{ backgroundImage: `url(${u.image})` }}
-        />
-        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/55 to-transparent" />
-      </div>
-      <div className="pt-6 px-1">
-        <h3 className="font-serif italic font-light text-2xl md:text-[1.65rem] leading-tight text-[#0A0A0A] mb-3">
+    <article className="group block" data-testid={`univers-card-${u.to.split("/").pop()}`}>
+      <Link
+        to={u.to}
+        onClick={() => trackEvent("view_offer", { offer: u.name })}
+        className="block"
+      >
+        <div className="relative aspect-[4/5] overflow-hidden bg-[#FAF7F2]">
+          <div
+            className="absolute inset-0 bg-cover bg-center transition-transform duration-[1.8s] ease-out group-hover:scale-[1.04]"
+            style={{ backgroundImage: `url(${u.image})` }}
+          />
+          <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/50 to-transparent" />
+        </div>
+      </Link>
+      <div className="pt-7 px-1">
+        <h3 className="font-serif font-light text-2xl md:text-3xl leading-tight text-[#0A0A0A] mb-4">
           {u.name}
         </h3>
-        <p className="text-sm md:text-[0.95rem] text-[#0A0A0A]/65 leading-relaxed line-clamp-3 font-light mb-5">
+        <p className="text-sm md:text-base text-[#0A0A0A]/65 leading-relaxed line-clamp-3 font-light mb-6">
           {u.description}
         </p>
-        <div className="inline-flex items-center gap-2 text-[0.6rem] tracking-[0.4em] uppercase text-[#B8922A] border-b border-[#B8922A]/40 pb-1 group-hover:border-[#B8922A] transition-colors">
-          Découvrir
-          <span className="inline-block transition-transform group-hover:translate-x-1">→</span>
+        <div className="flex items-center gap-6">
+          <Link
+            to={u.to}
+            className="inline-flex items-center gap-2 text-[0.65rem] tracking-[0.35em] uppercase text-[#0A0A0A] border-b border-[#0A0A0A]/60 pb-1 hover:text-[#B8922A] hover:border-[#B8922A] transition-colors"
+            data-testid={`univers-discover-${u.to.split("/").pop()}`}
+          >
+            Découvrir
+            <ArrowRight size={11} />
+          </Link>
+          <Link
+            to={`/booking/${u.bookOfferId}`}
+            onClick={() => trackEvent("start_booking", { source: "univers_card", offer: u.bookOfferId })}
+            className="inline-flex items-center gap-2 text-[0.65rem] tracking-[0.35em] uppercase text-[#B8922A] hover:text-[#D4AF37] transition-colors"
+            data-testid={`univers-book-${u.to.split("/").pop()}`}
+          >
+            Réserver
+            <ArrowRight size={11} />
+          </Link>
         </div>
       </div>
-    </Link>
+    </article>
   );
 }

@@ -93,7 +93,7 @@ export default function VitrineBoutique() {
             <ShoppingBag size={14} strokeWidth={1.5} />
             Boutique BBR · Très bientôt
           </div>
-          <h1 className="font-serif italic font-light text-5xl md:text-7xl leading-[1.05] max-w-4xl mx-auto">
+          <h1 className="font-serif font-light text-5xl md:text-7xl leading-[1.05] max-w-4xl mx-auto">
             L'île à emporter.
           </h1>
         </div>
@@ -105,7 +105,7 @@ export default function VitrineBoutique() {
           <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-6">
             Notre vestiaire
           </div>
-          <h2 className="font-serif italic font-light text-4xl md:text-5xl leading-[1.1] mb-10">
+          <h2 className="font-serif font-light text-4xl md:text-5xl leading-[1.1] mb-10">
             Des pièces signature,<br />pour prolonger l'expérience.
           </h2>
           <p className="text-base md:text-lg leading-[1.85] text-[#0A0A0A]/75 font-light">
@@ -133,7 +133,7 @@ export default function VitrineBoutique() {
                 <div className="text-[0.55rem] tracking-[0.4em] uppercase text-[#B8922A] mb-2">
                   {p.label}
                 </div>
-                <h3 className="font-serif italic font-light text-xl md:text-2xl leading-tight mb-1">
+                <h3 className="font-serif font-light text-xl md:text-2xl leading-tight mb-1">
                   {p.name}
                 </h3>
                 <p className="text-xs md:text-sm text-[#0A0A0A]/60 font-light">{p.note}</p>
@@ -152,7 +152,7 @@ export default function VitrineBoutique() {
           <div className="text-[0.65rem] tracking-[0.5em] uppercase text-white/60 mb-6">
             Liste d'attente
           </div>
-          <h2 className="font-serif italic font-light text-3xl md:text-5xl leading-[1.1] mb-8">
+          <h2 className="font-serif font-light text-3xl md:text-5xl leading-[1.1] mb-8">
             Soyez les premiers prévenus.
           </h2>
           <p className="text-base md:text-lg leading-[1.85] text-white/70 font-light mb-12">

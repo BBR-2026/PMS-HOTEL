@@ -14,7 +14,7 @@ export default function VitrineFooter() {
 
         {/* Top — brand + tagline */}
         <div className="text-center pb-16 border-b border-[#0A0A0A]/8">
-          <div className="font-serif italic text-4xl md:text-5xl font-light mb-3">BBR</div>
+          <div className="font-serif text-4xl md:text-5xl font-light mb-3">BBR</div>
           <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#0A0A0A]/55">
             Boulay  ·  Beach  ·  Resort
           </div>

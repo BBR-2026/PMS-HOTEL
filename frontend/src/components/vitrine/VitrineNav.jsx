@@ -85,8 +85,9 @@ export default function VitrineNav() {
             : "bg-transparent"
         }`}
         data-testid="vitrine-nav"
+        style={{ position: "fixed" }}
       >
-        <div className="max-w-[1800px] mx-auto px-6 md:px-10 lg:px-12 h-16 md:h-20 flex items-center gap-6">
+        <div className="max-w-[1800px] mx-auto px-6 md:px-10 lg:px-12 h-24 md:h-28 lg:h-32 flex items-center gap-6">
           {/* MOBILE hamburger (only < lg) */}
           <button
             onClick={() => setMenuOpen(!menuOpen)}
@@ -97,24 +98,24 @@ export default function VitrineNav() {
             {menuOpen ? <X size={22} strokeWidth={1.5} /> : <Menu size={22} strokeWidth={1.5} />}
           </button>
 
-          {/* LOGO — left aligned on desktop, center on mobile */}
+          {/* LOGO — perfectly centered on mobile (absolute) ; left-aligned on desktop */}
           <Link
             to="/"
-            className="flex-1 lg:flex-none flex items-center justify-center lg:justify-start"
+            className="absolute left-1/2 -translate-x-1/2 lg:static lg:translate-x-0 lg:left-auto flex items-center"
             data-testid="vitrine-logo"
             aria-label="Boulay Beach Resort — Accueil"
           >
             <img
               src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"
               alt="BBR — Boulay Beach Resort"
-              className={`h-10 md:h-12 lg:h-14 w-auto transition-all duration-500 ${
+              className={`h-20 md:h-24 lg:h-28 w-auto transition-all duration-500 ${
                 onHero ? "brightness-0 invert" : "logo-gold"
               }`}
             />
           </Link>
 
-          {/* DESKTOP horizontal inline nav (≥ lg only) */}
-          <nav className="hidden lg:flex flex-1 items-center justify-center gap-5 xl:gap-7"
+          {/* DESKTOP horizontal inline nav (≥ lg only) — flex-1 takes remaining space */}
+          <nav className="hidden lg:flex flex-1 items-center justify-center gap-4 xl:gap-6"
                data-testid="vitrine-inline-nav">
             {INLINE_ITEMS.map((item) => {
               const active = loc.pathname === item.to;
@@ -122,7 +123,7 @@ export default function VitrineNav() {
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`relative text-[0.72rem] xl:text-[0.78rem] tracking-[0.22em] uppercase font-medium transition-colors ${linkColor} ${
+                  className={`relative text-[0.7rem] xl:text-[0.75rem] tracking-[0.22em] uppercase font-medium transition-colors ${linkColor} ${
                     active ? "text-[#B8922A] hover:text-[#B8922A]" : ""
                   }`}
                   data-testid={`nav-${item.label.toLowerCase().replace(/\W+/g, "-")}`}
@@ -136,8 +137,11 @@ export default function VitrineNav() {
             })}
           </nav>
 
+          {/* Spacer for mobile to balance the centered logo */}
+          <div className="flex-1 lg:hidden" />
+
           {/* RÉSERVER button — gold (right) */}
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end ml-auto lg:ml-0">
             <Link
               to="/reserver"
               className={`inline-flex items-center px-4 md:px-5 lg:px-6 py-2 md:py-2.5 text-[0.62rem] md:text-[0.7rem] tracking-[0.3em] uppercase font-medium transition-all duration-300 border ${
@@ -190,7 +194,7 @@ export default function VitrineNav() {
                     }`}
                     data-testid={`menu-${item.label.toLowerCase().replace(/\W+/g, "-")}`}
                   >
-                    <span className="font-serif italic text-2xl md:text-4xl leading-tight">
+                    <span className="font-serif text-2xl md:text-4xl leading-tight">
                       {item.label}
                     </span>
                     <span className="text-[0.6rem] tracking-[0.4em] uppercase opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all">
