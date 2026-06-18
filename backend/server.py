@@ -11803,6 +11803,17 @@ _revenue_router = _revenue_mod.build_router(
 )
 app.include_router(_revenue_router)
 
+# Phase C — Vague 3 — OTA & Channel Manager (SiteMinder pmsXchange)
+from routers import ota as _ota_mod  # noqa: E402
+
+app.include_router(
+    _ota_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
 
 @app.on_event("startup")
 async def _init_object_storage():
