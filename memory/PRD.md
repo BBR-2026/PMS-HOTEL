@@ -2,6 +2,22 @@
 
 ## Latest update — 2026-06-18
 
+### Phase C Revenue Engine — Vague 1 (iteration 45)
+**Status: ✅ Backend 15/15 pytest + Frontend e2e self-tested**
+- **Module 1 — CRM Marketing** : CRUD complet des campagnes (`/api/staff/marketing/campaigns`) avec nom, univers (5), offre, budget total/quotidien, dates, objectif, statut (draft/active/paused/ended). Gestion créatifs (Meta 3 formats, Google 5 formats, YouTube 3 formats — total 11 slots avec dimensions affichées).
+- **Médiathèque** : nouvelle page `/staff/marketing/media` propulsée par **Emergent Object Storage** (`/api/staff/media-library` + lecture publique `/api/media-library/{id}`). Upload images + vidéos (max 50 Mo), classement par univers/offre/tags, édition métadonnées, soft-delete.
+- **Module 2 — Analytics enhancements** : ajout endpoints `/api/staff/marketing/top-offers` (vues, démarrages, achats, taux de conversion par offre) et `/api/staff/marketing/abandons` (résumé global + per-offer). Tableaux affichés dans `/staff/marketing`.
+- **Pixels & Tracking (stratégie GTM unique)** : nouvelle section `tracking` dans `site_settings` (gtm_container_id, gtm_enabled, notes). Onglet "Tracking (GTM)" dans Configuration du site. Composant `GTMLoader.jsx` injecte automatiquement le snippet GTM (dataLayer + noscript) lorsque activé.
+- Sidebar : 2 nouvelles entrées sous Administration (Campagnes Marketing, Médiathèque).
+- Configuration : `EMERGENT_LLM_KEY` + `APP_NAME=boulay-beach-resort` ajoutés à `/app/backend/.env`.
+
+### Pending — Vague 2 (P1)
+- Moteur d'acquisition automatique : lier chaque Offer à 1+ Campaigns permanentes.
+- Revenue Management : rate plans (saisonnier / week-end / événementiel), promos auto.
+
+### Pending — Vague 3 (P2)
+- OTA & Channel Manager (Booking.com / Airbnb / Expedia / Hotels.com / Agoda) — voie Channel Manager tiers retenue par l'utilisateur.
+
 ### Phase B Responsive Design Standardization (iteration 34)
 **Status: ✅ Frontend 98% (iteration_34.json) — 1 minor cosmetic fix applied**
 - Standardized main wrapper `p-4 md:p-8 lg:p-10 max-w-7xl mx-auto` on all 8 new Phase-B staff pages: Marketing, CRM, Memberships, Events Pipeline, Upsells, Blog, Leads, Site Settings.
