@@ -45,6 +45,8 @@ import StaffActivitiesConfig from "./pages/staff/StaffActivitiesConfig";
 import StaffSpecialEvents from "./pages/staff/StaffSpecialEvents";
 import StaffPolePage from "./pages/staff/StaffPolePage";
 import StaffPayments from "./pages/staff/StaffPayments";
+import StaffMarketing from "./pages/staff/StaffMarketing";
+import StaffLeads from "./pages/staff/StaffLeads";
 import PolePage from "./pages/PolePage";
 import Gallery from "./pages/Gallery";
 import GalleryAlbum from "./pages/GalleryAlbum";
@@ -171,6 +173,8 @@ function App() {
               <Route path="evenements-speciaux" element={<RoleGuard allowed={MANAGER_PLUS}><StaffSpecialEvents /></RoleGuard>} />
               <Route path="pole/:poleId" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPolePage /></RoleGuard>} />
               <Route path="paiements" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPayments /></RoleGuard>} />
+              <Route path="marketing" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMarketing /></RoleGuard>} />
+              <Route path="leads" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLeads /></RoleGuard>} />
               <Route path="hebergement" element={<RoleGuard allowed={MANAGER_PLUS}><StaffHebergement /></RoleGuard>} />
               <Route path="clients" element={<RoleGuard allowed={MANAGER_PLUS}><StaffClients /></RoleGuard>} />
               <Route path="loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLoisirs /></RoleGuard>} />

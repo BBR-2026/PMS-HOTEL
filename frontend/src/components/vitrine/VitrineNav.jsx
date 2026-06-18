@@ -57,13 +57,20 @@ export default function VitrineNav() {
         }`}
         data-testid="vitrine-nav"
       >
-        <div className="max-w-[1600px] mx-auto px-6 md:px-10 lg:px-14 h-20 md:h-24 grid grid-cols-3 items-center">
-          {/* LEFT (empty / mobile reserved CTA) */}
-          <div className="flex items-center">
-            {/* intentionally empty on desktop — logo is centered */}
+        <div className="max-w-[1800px] mx-auto px-6 md:px-10 lg:px-14 h-24 md:h-28 grid grid-cols-3 items-center">
+          {/* LEFT : HAMBURGER */}
+          <div className="flex items-center justify-start">
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className={`p-2 -ml-2 transition-colors ${textColor}`}
+              aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+              data-testid="vitrine-hamburger"
+            >
+              {menuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
+            </button>
           </div>
 
-          {/* CENTER : LOGO */}
+          {/* CENTER : LOGO (1.5× bigger) */}
           <Link
             to="/"
             className="flex items-center justify-center"
@@ -71,19 +78,16 @@ export default function VitrineNav() {
             aria-label="Boulay Beach Resort — Accueil"
           >
             <img
-              src={onHero
-                ? "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"
-                : "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"}
+              src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"
               alt="BBR — Boulay Beach Resort"
-              className={`h-12 md:h-16 w-auto transition-all duration-500 ${
+              className={`h-20 md:h-28 w-auto transition-all duration-500 ${
                 onHero ? "" : "invert"
               }`}
             />
           </Link>
 
-          {/* RIGHT : SHOP · RÉSERVER · Hamburger (more spacing, pushed to edge) */}
-          <div className="flex items-center justify-end gap-6 md:gap-10 lg:gap-12">
-            {/* SHOP */}
+          {/* RIGHT : SHOP · RÉSERVER (pushed to extreme right) */}
+          <div className="flex items-center justify-end gap-6 md:gap-10 lg:gap-14">
             <Link
               to="/boutique"
               className={`hidden sm:inline-flex items-center gap-2 text-[0.65rem] md:text-[0.7rem] tracking-[0.3em] uppercase transition-colors ${
@@ -94,8 +98,6 @@ export default function VitrineNav() {
               <ShoppingBag size={14} strokeWidth={1.5} />
               Shop
             </Link>
-
-            {/* RÉSERVER — premium button */}
             <Link
               to="/reserver"
               className={`inline-flex items-center px-4 md:px-6 py-2 md:py-2.5 text-[0.6rem] md:text-[0.7rem] tracking-[0.3em] uppercase font-medium transition-all duration-300 border ${
@@ -107,16 +109,6 @@ export default function VitrineNav() {
             >
               Réserver
             </Link>
-
-            {/* HAMBURGER */}
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className={`p-2 transition-colors ${textColor}`}
-              aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
-              data-testid="vitrine-hamburger"
-            >
-              {menuOpen ? <X size={22} strokeWidth={1.5} /> : <Menu size={22} strokeWidth={1.5} />}
-            </button>
           </div>
         </div>
       </header>

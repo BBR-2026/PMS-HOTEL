@@ -33,7 +33,7 @@ export default function VitrineLayout() {
     <div className="bg-[#FAF7F2] text-[#0A0A0A] min-h-screen flex flex-col"
          data-testid="vitrine-layout">
       <VitrineNav />
-      <main className={`flex-1 ${heroPage ? "" : "pt-20 md:pt-24"}`}>
+      <main className={`flex-1 ${heroPage ? "" : "pt-24 md:pt-28"}`}>
         <Outlet />
       </main>
       <VitrineFooter />

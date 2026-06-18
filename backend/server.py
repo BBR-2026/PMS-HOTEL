@@ -11637,4 +11637,26 @@ from routers import marketing as _marketing_mod  # noqa: E402
 
 app.include_router(_marketing_mod.router)
 
+# Phase B Revenue Engine — Public lead capture (contact + newsletter)
+from routers import leads as _leads_mod  # noqa: E402
+
+app.include_router(
+    _leads_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
+# Phase B Revenue Engine — Marketing analytics dashboard (back-office)
+from routers import marketing_analytics as _mkt_analytics_mod  # noqa: E402
+
+app.include_router(
+    _mkt_analytics_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

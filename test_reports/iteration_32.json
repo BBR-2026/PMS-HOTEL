@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration Phase-B Revenue Engine — full backend + frontend QA. 19/19 pytest passing (100%). Public Boutique waitlist + Public Contact form + Staff Marketing dashboard + Staff Leads (Messages + Newsletter) all functional. Existing /api/marketing/events + /api/marketing/stats/today regression OK. No critical bugs found. Minor: data-testid naming mismatch between review request and actual implementation (review says contact-form-name/email/message but code uses contact-input-name/email/message; review says lead-message-row-{id} but code uses lead-msg-{id}; review says mkt-period-selector but the period selector is split into 4 individual mkt-period-7d/30d/90d/365d buttons). All flows still work — just selector aliases differ from review brief.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_phaseB_revenue.py",
+    "/app/test_reports/pytest/iter_phaseB.xml"
+  ],
+  "action_items": [
+    "Optional: align data-testid naming with the review-request spec for QA consistency. Either (a) update the spec or (b) rename contact-input-* → contact-form-*, lead-msg-{id} → lead-message-row-{id}, add a wrapper data-testid='mkt-period-selector' around the four period buttons. Not blocking — all features functional."
+  ],
+  "critical_code_review_comments": [
+    "leads.py: contact_messages and newsletter_subscribers MongoDB collections use string UUIDs as _id (good — no ObjectId serialization issues). The endpoint correctly renames _id→id when returning items.",
+    "marketing_analytics.py: funnel uses unique-visitor counts (distinct visitor_id per event_type). prev_count carry-forward when c==0 (line 179) is intentional so a 100% drop step doesn't mute the next step — acceptable but worth documenting.",
+    "marketing_analytics.py: by_source breakdown uses $ifNull on attribution.utm_source defaulting to 'direct' — good. by_event count uses total events (not unique visitors) — fine for tile labels.",
+    "leads.py: newsletter subscribe is correctly idempotent ($inc signup_count, $set last_seen_at). Good. Returns 200 with already_subscribed=true.",
+    "Both new routers correctly call require_role for staff endpoints — admin/manager/manager_pole/management_general allowed (consistent with rest of app).",
+    "marketing_analytics.py dashboard endpoint: heavy aggregation (6 separate aggregations + 5 distinct queries for funnel + 4 count_documents). For current dataset (~132 events, period=30d) latency is sub-second. Should add an index on marketing_events.occurred_at and marketing_events.event_type before production scale (>50k events)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_phaseB_revenue.py (new — 19 tests, all passing)"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19)",
+    "frontend": "100% — Boutique waitlist submit + success state, Contact form submit + success state, Marketing dashboard (8 KPI tiles, period selector 7d/30d/90d/365d, trend chart, funnel bars, traffic sources, leads pipeline), Leads page (6 messages listed, detail pane opens, Marquer en cours advances status & shows toast, Newsletter tab with kpi/sources/search/list, CSV export downloaded as bbr_newsletter_2026-06-18.csv), Sidebar links to /staff/marketing and /staff/leads visible."
+  },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (staff login at /api/auth/staff/login)",
+  "seed_data_creation": "Test created several contact_messages (qa-contact-* + TEST seed) and newsletter_subscribers (qa-boutique-*, qa-idem-*, qa-seed-*) entries. All prefixed with 'qa-' or 'TEST_' for easy cleanup. Also one marketing_events entry with utm_source=qa (visible as 'qa' bar in Sources de trafic chart).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iteration_phaseB_revenue.py uses /api/auth/staff/login for the admin token. The 4 actual data-testid names that diverge from the review brief: contact-input-name|email|message (not contact-form-*), lead-msg-{id} (not lead-message-row-{id}), newsletter-export-csv-btn (not newsletter-export-csv), and individual mkt-period-7d/30d/90d/365d buttons (no wrapper mkt-period-selector). The marketing dashboard relies on existing marketing_events; if the collection is reset the chart will look empty but all aggregations still return 200 with zero values. The newsletter endpoint is idempotent — re-running the test suite will increment signup_count but not create duplicates."
+}

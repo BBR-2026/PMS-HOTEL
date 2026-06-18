@@ -32,6 +32,8 @@ import {
   FileBarChart,
   AlertTriangle,
   ClipboardList,
+  Inbox,
+  BarChart3,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -78,6 +80,8 @@ const NAV = [
   { key: "consommation", to: "/staff/activites", icon: Waves, label: "Consommation sur place", roles: R_ACT },
   { section: "Administration", roles: R_ADMIN },
   { key: "notifications", to: "/staff/notifications", icon: Bell, label: "Notifications SMS/WhatsApp", roles: R_MGMT },
+  { key: "marketing", to: "/staff/marketing", icon: BarChart3, label: "Marketing & Acquisition", roles: R_MGMT },
+  { key: "leads", to: "/staff/leads", icon: Inbox, label: "Inbox & Leads", roles: R_MGMT },
   { key: "campaigns", to: "/staff/campaigns", icon: Megaphone, label: "Campagnes e-mail", roles: R_MGMT },
   { key: "feedback", to: "/staff/feedback", icon: MessageSquare, label: "Retour expérience", roles: R_MGMT },
   { key: "enregistrements", to: "/staff/enregistrements", icon: UserCheck, label: "Enregistrements", roles: R_MGMT },

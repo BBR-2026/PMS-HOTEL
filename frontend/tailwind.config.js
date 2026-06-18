@@ -8,7 +8,8 @@ module.exports = {
   theme: {
   	extend: {
   		fontFamily: {
-  			serif: ['"Cormorant Garamond"', 'serif'],
+  			display: ['Optima', '"Optima Nova LT"', 'URWOptima', '"Quattrocento Sans"', 'system-ui', 'sans-serif'],
+  			serif: ['Optima', '"Optima Nova LT"', 'URWOptima', '"Quattrocento Sans"', 'system-ui', 'sans-serif'],
   			sans: ['Inter', 'system-ui', 'sans-serif'],
   		},
   		borderRadius: {
