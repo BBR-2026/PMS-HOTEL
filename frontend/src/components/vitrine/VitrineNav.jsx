@@ -58,7 +58,7 @@ export default function VitrineNav() {
         }`}
         data-testid="vitrine-nav"
       >
-        <div className="max-w-[1800px] mx-auto px-6 md:px-10 lg:px-14 h-24 md:h-28 grid grid-cols-3 items-center">
+        <div className="max-w-[1800px] mx-auto px-6 md:px-10 lg:px-14 h-40 md:h-56 grid grid-cols-3 items-center">
           {/* LEFT : HAMBURGER */}
           <div className="flex items-center justify-start">
             <button
@@ -67,11 +67,11 @@ export default function VitrineNav() {
               aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
               data-testid="vitrine-hamburger"
             >
-              {menuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
+              {menuOpen ? <X size={26} strokeWidth={1.5} /> : <Menu size={26} strokeWidth={1.5} />}
             </button>
           </div>
 
-          {/* CENTER : LOGO (1.5× bigger) */}
+          {/* CENTER : LOGO (+100% from previous iteration — now 2× larger) */}
           <Link
             to="/"
             className="flex items-center justify-center"
@@ -81,8 +81,8 @@ export default function VitrineNav() {
             <img
               src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"
               alt="BBR — Boulay Beach Resort"
-              className={`h-20 md:h-28 w-auto transition-all duration-500 ${
-                onHero ? "" : "invert"
+              className={`h-36 md:h-52 w-auto transition-all duration-500 ${
+                onHero ? "brightness-0 invert" : "logo-gold"
               }`}
             />
           </Link>
@@ -92,7 +92,7 @@ export default function VitrineNav() {
             <Link
               to="/boutique"
               className={`hidden sm:inline-flex items-center gap-2 text-[0.65rem] md:text-[0.7rem] tracking-[0.3em] uppercase transition-colors ${
-                onHero ? "text-white/85 hover:text-white" : "text-[#0A0A0A]/75 hover:text-[#B8922A]"
+                onHero ? "text-white/85 hover:text-white" : "text-[#B8922A] hover:text-[#D4AF37]"
               }`}
               data-testid="vitrine-shop"
             >
@@ -103,8 +103,8 @@ export default function VitrineNav() {
               to="/reserver"
               className={`inline-flex items-center px-4 md:px-6 py-2 md:py-2.5 text-[0.6rem] md:text-[0.7rem] tracking-[0.3em] uppercase font-medium transition-all duration-300 border ${
                 onHero
-                  ? "text-white border-white hover:bg-white hover:text-[#0A0A0A]"
-                  : "text-white bg-[#0A0A0A] border-[#0A0A0A] hover:bg-[#B8922A] hover:border-[#B8922A]"
+                  ? "text-white border-white hover:bg-[#B8922A] hover:border-[#B8922A]"
+                  : "text-white bg-[#B8922A] border-[#B8922A] hover:bg-[#D4AF37] hover:border-[#D4AF37]"
               }`}
               data-testid="vitrine-cta-reserver"
             >

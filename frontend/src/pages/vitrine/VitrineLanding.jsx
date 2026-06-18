@@ -12,35 +12,40 @@ const UNIVERS = [
   {
     to: "/univers/beach-club",
     name: "Beach Club",
-    description: "Une parenthèse exclusive entre lagune et océan.",
+    description:
+      "Day Pass, The Sunset, B Brunch — trois rituels signature pour vivre l'île à votre rythme. Une parenthèse exclusive entre lagune et océan, ouverte sept jours sur sept.",
     image:
       "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/trz2j0jd_BEACH%20CLUB.png",
   },
   {
     to: "/univers/hebergement",
     name: "Hébergement",
-    description: "Des séjours raffinés dans un cadre exceptionnel.",
+    description:
+      "Une nuit en suspens entre lagune et océan, dans nos suites signature. Chambres Supérieures et Suites côté jardin ou côté lagune, soins Spa & Wellness signature au bord de l'eau.",
     image:
       "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/7bcipz8w_HEBERGEMENT.png",
   },
   {
     to: "/le-kaai",
     name: "Restaurant Le Kaai",
-    description: "Une expérience culinaire signée Boulay Beach Resort.",
+    description:
+      "Le KAAÏ est le nouveau restaurant du BBr. Une table à l'ambition gastronomique affirmée, portée par des saveurs d'inspiration africaine contemporaine, dans une atmosphère élégante et chaleureuse.",
     image:
       "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/v2f73qqm_KAAI.png",
   },
   {
     to: "/univers/corporate",
     name: "Corporate",
-    description: "Le lieu idéal pour vos événements professionnels.",
+    description:
+      "Séminaires résidentiels, journées d'étude, team building, déjeuners et dîners d'entreprise — salles équipées, vue océan, hébergement et pauses gastronomiques pour vos événements professionnels.",
     image:
       "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/oy7zzngs_SEMINAIRE.png",
   },
   {
     to: "/univers/activites",
     name: "Activités & Events",
-    description: "Des expériences uniques à vivre toute l'année.",
+    description:
+      "Jet ski, paddle, kayak et plus — une journée d'activités lagunaires. Privatisations, soirées privées et expériences sur-mesure pour fédérer vos équipes ou célébrer vos grands moments.",
     image:
       "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ocqva33h_ACTIVITE.png",
   },
@@ -70,10 +75,21 @@ export default function VitrineLanding() {
           <div className="text-[0.7rem] tracking-[0.55em] uppercase text-white/80 mb-10">
             Île Boulay  ·  Abidjan
           </div>
-          <h1 className="font-serif text-white font-light leading-[0.95] text-5xl sm:text-6xl md:text-7xl lg:text-[5.5rem] xl:text-[6.5rem] max-w-5xl">
-            <span className="italic">Le luxe pieds nus,</span><br />
-            sur une île privée.
+          <h1
+            className="font-serif text-white leading-[0.95] text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[7rem] max-w-5xl"
+            style={{ fontWeight: 400, letterSpacing: "0.04em" }}
+            data-testid="vitrine-hero-title"
+          >
+            LIDE IS HERE
           </h1>
+          <p
+            className="mt-8 text-base sm:text-lg md:text-xl text-white/85 max-w-2xl leading-relaxed font-light"
+            data-testid="vitrine-hero-subtitle"
+          >
+            Une île privée, à quelques minutes d'Abidjan.
+            Un autre rythme. Une autre énergie.
+            Des expériences premium inoubliables.
+          </p>
           <div className="mt-12 w-px h-12 bg-white/60" />
           <div className="mt-6 text-[0.65rem] tracking-[0.4em] uppercase text-white/70">
             Découvrir

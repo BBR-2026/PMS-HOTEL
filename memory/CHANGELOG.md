@@ -1,6 +1,36 @@
 # BBR Revenue Engine — CHANGELOG
 
-## 2026-06-18 — Phase B (continued) — CRM 360° + Memberships + Événementiel + Upsell
+## 2026-06-18 (3) — UI Refresh : Logo XL, Logo doré au scroll, Optima partout
+
+### Changements visuels
+- **Logo +100%** : passé de `h-20/h-28` à `h-36/h-52` (de ~80px à ~208px). Header agrandi en conséquence (`h-40 md:h-56`).
+- **Logo doré au scroll** : nouvelle classe CSS `.logo-gold` (filter sepia + invert + hue-rotate calibré pour matcher `#B8922A`). En haut de page sur la landing, le logo reste blanc (sur fond image). Dès qu'on scroll, le header devient blanc et le logo passe en doré BBR. **Le logo noir n'est plus utilisé.**
+- **Bouton RÉSERVER doré** : couleur de fond passée du noir au doré BBR `#B8922A`, hover `#D4AF37`. Le lien SHOP passe également en doré au scroll.
+- **Police Optima partout** : `body`, `font-serif`, `font-display-serif` et `font-body` pointent désormais tous sur la stack Optima (les fichiers locaux `.woff2` existent déjà dans `/src/assets/fonts/`). Plus de Poppins ni de Playfair sur la vitrine.
+
+### Contenu
+- **Hero accueil** :
+  - Titre : `LIDE IS HERE`
+  - Sous-titre : « Une île privée, à quelques minutes d'Abidjan. Un autre rythme. Une autre énergie. Des expériences premium inoubliables. »
+- **Descriptions des 5 univers** : remplacées par les taglines longues issues du workflow de réservation (`OFFER_TYPES.tagline_fr` côté backend) pour cohérence éditoriale entre la Vitrine et le tunnel de réservation.
+
+### Fichiers modifiés
+- `/app/frontend/src/components/vitrine/VitrineNav.jsx`
+- `/app/frontend/src/components/vitrine/VitrineLayout.jsx` (padding top ajusté à `pt-40 md:pt-56`)
+- `/app/frontend/src/pages/vitrine/VitrineLanding.jsx`
+- `/app/frontend/src/index.css`
+
+---
+
+## 2026-06-18 (2) — Phase B (continued) — CRM 360° + Memberships + Événementiel + Upsell
+
+(Voir l'entrée précédente du changelog pour les détails complets — `iteration_33.json`)
+
+---
+
+## 2026-06-18 (1) — Phase B — Marketing Dashboard + Inbox + Vitrine pages
+
+(`iteration_32.json` — 100% green)
 
 ### Validation
 - **23/23 backend pytest passing** (`/app/backend/tests/test_iteration33_phaseB_modules.py`).
