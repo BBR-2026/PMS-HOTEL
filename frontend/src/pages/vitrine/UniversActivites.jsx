@@ -11,7 +11,7 @@ export default function UniversActivites() {
         title: "Sport, glisse, adrénaline.",
         tagline:
           "Sept activités sport et plein air pour pimenter votre séjour. Équipements premium, encadrants brevetés.",
-        cta: { to: "/reserver", label: "Réserver une activité" },
+        cta: { to: "/booking/offres_loisirs", label: "Réserver une activité" },
       }}
       intro={{
         kicker: "L'aventure à portée de pas",
@@ -29,7 +29,7 @@ export default function UniversActivites() {
           price: "35 000 XOF",
           priceSuffix: "/ 30 min",
           image: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "Réserver" },
+          cta: { to: "/booking/offres_loisirs", label: "Réserver" },
         },
         {
           testId: "padel",
@@ -39,7 +39,7 @@ export default function UniversActivites() {
           price: "12 000 XOF",
           priceSuffix: "/ heure / court",
           image: "https://images.unsplash.com/photo-1554062614-6da4fa67725a?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "Réserver" },
+          cta: { to: "/booking/offres_loisirs", label: "Réserver" },
         },
         {
           testId: "paddle-canoe",
@@ -49,7 +49,7 @@ export default function UniversActivites() {
           price: "10 000 XOF",
           priceSuffix: "/ heure",
           image: "https://images.unsplash.com/photo-1526761122248-c31c93f8b2b9?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "Réserver" },
+          cta: { to: "/booking/offres_loisirs", label: "Réserver" },
         },
         {
           testId: "quad",
@@ -59,7 +59,7 @@ export default function UniversActivites() {
           price: "40 000 XOF",
           priceSuffix: "/ quad / 45 min",
           image: "https://images.unsplash.com/photo-1567204395950-e2eb2e89e93e?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "Réserver" },
+          cta: { to: "/booking/offres_loisirs", label: "Réserver" },
         },
         {
           testId: "buggy",
@@ -69,7 +69,7 @@ export default function UniversActivites() {
           price: "55 000 XOF",
           priceSuffix: "/ buggy / 1h",
           image: "https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "Réserver" },
+          cta: { to: "/booking/offres_loisirs", label: "Réserver" },
         },
         {
           testId: "multisports",
@@ -79,7 +79,7 @@ export default function UniversActivites() {
           price: "Inclus",
           priceSuffix: "pour les résidents",
           image: "https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "En savoir plus" },
+          cta: { to: "/devis?type=activites", label: "Demander un devis" },
           badge: "Gratuit",
         },
       ]}
@@ -104,7 +104,7 @@ export default function UniversActivites() {
         image: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&w=2400&q=85",
         title: "Quelle aventure aujourd'hui ?",
         body: "Réservation conseillée, surtout en week-end. Les créneaux populaires partent vite.",
-        to: "/reserver",
+        to: "/booking/offres_loisirs",
         label: "Réserver mon activité",
       }}
     />

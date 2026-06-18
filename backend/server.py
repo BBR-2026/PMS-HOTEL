@@ -11703,4 +11703,15 @@ app.include_router(
     )
 )
 
+# Phase B Revenue Engine — Site Configuration Portal (Vitrine CMS)
+from routers import site_settings as _site_settings_mod  # noqa: E402
+
+app.include_router(
+    _site_settings_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

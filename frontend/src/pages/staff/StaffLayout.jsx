@@ -91,6 +91,7 @@ const NAV = [
   { key: "events_pipeline", to: "/staff/events-pipeline", icon: KanbanSquare, label: "Pipeline événementiel", roles: R_MGMT },
   { key: "upsells", to: "/staff/upsells", icon: ShoppingBag, label: "Upsells & Cross-sell", roles: R_MGMT },
   { key: "blog", to: "/staff/blog", icon: BookOpen, label: "Journal — Blog", roles: R_MGMT },
+  { key: "site_settings", to: "/staff/site-settings", icon: Settings, label: "Configuration du site", roles: R_MGMT },
   { key: "leads", to: "/staff/leads", icon: Inbox, label: "Inbox & Leads", roles: R_MGMT },
   { key: "campaigns", to: "/staff/campaigns", icon: Megaphone, label: "Campagnes e-mail", roles: R_MGMT },
   { key: "feedback", to: "/staff/feedback", icon: MessageSquare, label: "Retour expérience", roles: R_MGMT },

@@ -21,7 +21,7 @@ const EVENT_TYPES = [
   "Autre projet corporate",
 ];
 
-export default function CorporateQuoteForm() {
+export default function CorporateQuoteForm({ contextType = "corporate" }) {
   const [form, setForm] = useState({
     name: "", surname: "", company: "", phone: "", email: "",
     event_type: EVENT_TYPES[0],

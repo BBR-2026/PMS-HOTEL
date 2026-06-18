@@ -12,17 +12,14 @@ export default function VitrineFooter() {
     <footer className="bg-[#FAF7F2] text-[#0A0A0A] pt-24 pb-10" data-testid="vitrine-footer">
       <div className="max-w-7xl mx-auto px-6">
 
-        {/* Top — brand + tagline */}
+        {/* Top — brand only (no tagline) */}
         <div className="text-center pb-16 border-b border-[#0A0A0A]/8">
           <img
             src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"
             alt="Boulay Beach Resort"
-            className="h-20 md:h-24 w-auto mx-auto logo-gold mb-3"
+            className="h-20 md:h-24 w-auto mx-auto logo-gold"
             data-testid="footer-logo"
           />
-          <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#0A0A0A]/55">
-            Boulay  ·  Beach  ·  Resort
-          </div>
         </div>
 
         {/* Middle — 4 columns */}
