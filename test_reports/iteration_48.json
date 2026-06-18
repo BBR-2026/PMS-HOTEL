@@ -1,0 +1,45 @@
+{
+  "summary": "Phase C · Vague 4 (Activation Bout-en-Bout) backend fully validated: 9/9 pytest pass covering Bloc A (booking ↔ revenue management promo + invalid promo + weekend surcharge via quote), Bloc B (OTA auto-sync config persistence + true/false toggles + booking-trigger logs + graceful fake-mapping push), Bloc C (Le Kaai pinasse QR generation with pax/qr_payload/qr_code/ticket_image). Frontend BookingTunnel /booking/pass_day compiles cleanly (verified — React hooks rule fix works: no compile error, no console error on load). All required data-testids exist in source: promo-block / promo-input / promo-apply / promo-error / promo-applied (BookingTunnel.jsx lines 1434–1461) and cfg-auto-sync / cfg-auto-sync-booking / cfg-default-limit (StaffOTA.jsx lines 308–331). Bloc D explicitly out of scope per problem statement.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "routers/ota.py:auto_push_all_mappings", "issue": "Function blanket-returns {'skipped':'disabled'} when auto_sync_enabled is False, even when called from trigger_sync_on_booking_change with reason='direct_booking'. This means setting auto_sync_on_booking=True alone (without auto_sync_enabled=True) silently does nothing — booking-trigger fires but produces no push and no log entry. Either (a) gate by source/reason inside auto_push_all_mappings, or (b) log a 'skipped:cron_disabled' entry so the user sees why nothing happened."},
+      {"endpoint": "POST /api/bookings (offer_type=pass_day, weekend date)", "issue": "Rate plan 'Surcharge week-end' is bound to offer_key=beach_club.pass_day, but pass_day is configured Mon–Fri only — so the weekend rate plan can never fire via a real booking. Booking creation returns 400 'Selected date is not available' before the revenue resolver is invoked. The rate plan still works via /api/revenue/quote (verified). Either remove the unreachable plan, or expand pass_day to weekends, or attach the weekend plan to an offer that actually allows weekend bookings (e.g. beach_club.brunch / sunset / le_kaai)."},
+      {"endpoint": "pay_booking pinasse QR generation (server.py:2983)", "issue": "When payment_method='cash' → styled_qr=False → pinasse QR is created but ticket_image is NEVER generated (the `if styled_qr:` block has no else branch, unlike the adult QR which falls back to make_cash_receipt_image). Pinasse cash bookings will scan fine (qr_code present) but lack the printable ticket. Consider adding an else branch with make_cash_receipt_image(offer_id='pinasse', ...)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration48_vague4.py",
+    "/app/test_reports/pytest/iter48.xml"
+  ],
+  "action_items": [
+    "(MINOR) routers/ota.py: rework auto_push_all_mappings/trigger_sync_on_booking_change so that auto_sync_on_booking=True alone is sufficient to trigger booking-driven pushes — currently both flags are required (undocumented coupling).",
+    "(MINOR) Either rebind 'Surcharge week-end' rate plan to an offer that allows weekend bookings, or remove it / change pass_day allowed_days, otherwise it can only ever be observed via /api/revenue/quote, never via /api/bookings.",
+    "(MINOR) Add make_cash_receipt_image fallback to the pinasse QR generation block in server.py:2983 to handle cash-paid Le Kaai bookings.",
+    "(OPTIONAL) Code review: server.py is now 11929 lines — Bloc D (refactor) deferred this session is increasingly urgent."
+  ],
+  "critical_code_review_comments": [
+    "Bloc A: rate_plan_applied is correctly persisted on booking docs (plan_id, name, type, promo_code, adjustment_kind, adjustment_value, base_total, discount). promo_code_used echoes the raw user input uppercased — even when the code is INVALID. That's by design per the test expectation but could mislead support staff into thinking a code was applied. Consider only persisting promo_code_used when rate_plan_applied is set.",
+    "Bloc A: routers/revenue_management.py /api/revenue/quote is GET-with-query-params (offer_key, base_price, when, promo) — not POST. UI must call it accordingly. Verified working: SUNNY10 weekday → final_price 9000 from base 10000; Saturday no promo → final_price 12000 (weekend +20%).",
+    "Bloc B: ConfigPayload update filter `{k:v for k,v in payload.model_dump().items() if v is not None}` correctly skips omitted fields, including booleans — so PUT {auto_sync_enabled:false} does persist False (False is not None). Verified end-to-end.",
+    "Bloc B: trigger_sync_on_booking_change is fire-and-forget via asyncio.create_task — does NOT block the /api/bookings response (verified ~3.7s total for the full test class incl. 2 booking creations and a 10s poll window).",
+    "Bloc C: pinasse QR is correctly appended AFTER the adult QR loop, with kind='pinasse', pax=adults+children, qr_payload JSON containing 'type:pinasse', and a ticket_image generated via make_ticket_image(offer_id='pinasse'). Verified with 2 adults + 1 child Le Kaai booking paid via mobile_money: 1 adult QR + 1 pinasse QR with pax=3. Note the cash-payment gap above.",
+    "Staff endpoints (/api/staff/bookings/{id}) strip qr_codes.qr_payload via MongoDB projection — tests must validate pinasse via the pay endpoint response (which returns the full booking) or via direct DB query, not via staff GET.",
+    "Server.py file size (11929 lines) — Bloc D deferral is understood but this is becoming an actively painful maintenance burden; split into routers/booking.py / routers/payment.py / routers/qr.py at minimum."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration48_vague4.py (new — 9 pytest cases, all passing)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "page loads cleanly (BookingTunnel + StaffOTA verified — all required data-testids present in source, no compile/console errors). Deep e2e click-flow not run due to calendar interaction complexity, but Bloc A's React hooks compliance fix is confirmed (no white-screen) and the testid surface is identical to spec."},
+  "test_credentials": "admin@boulay.ci / Admin@2026 (verified)",
+  "seed_data_creation": "Several bookings created during testing (pass_day weekday, le_kaai). One paid via mobile_money (pinasse test). Existing rate plans (SUNNY10, Surcharge week-end) preserved. OTA config left with auto_sync_enabled=false, auto_sync_on_booking=false at end of run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_iteration48_vague4.py (9 tests, ~4s wall). Use boat_time format '10H' / '12H' (NOT '10h00'). Auth route is /api/auth/staff/login. /api/revenue/quote is GET with params (offer_key, base_price, when, promo). For booking-trigger OTA sync to log anything, BOTH config flags must be True (auto_sync_enabled AND auto_sync_on_booking) — this is the bug flagged in action items. Pinasse ticket_image is only generated when styled_qr=True i.e. non-cash payment. For frontend e2e of the promo block, the BookingTunnel calendar uses non-standard date cell selectors (not data-testid^='day-') — use the rdrp calendar's button[name='Day-N'] or similar.",
+  "rca of the issue": "No blocking issues. The 3 minor backend issues identified are non-fatal: (1) the auto_sync_enabled coupling silently disables booking-triggered sync — workaround documented in test; (2) the weekend surcharge plan is unreachable via /api/bookings due to pass_day Mon-Fri restriction — verified via /api/revenue/quote instead; (3) pinasse cash bookings lack ticket_image — non-functional but missing artifact. Bloc D (server.py split) is deferred by user choice."
+}

@@ -57,6 +57,14 @@ export default function BookingTunnel() {
   const [charterEnabled, setCharterEnabled] = useState(false);
   const [charterBoatId, setCharterBoatId] = useState("");
   const [charterBoats, setCharterBoats] = useState([]);
+  // Revenue Management — promo code & dynamic pricing
+  const [promoInput, setPromoInput] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("promo") || ""; }
+    catch { return ""; }
+  });
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoQuote, setPromoQuote] = useState(null); // {final_price, discount, applied_plan}
+  const [promoError, setPromoError] = useState("");
 
   // Load list of boats available for private charter once.
   useEffect(() => {
@@ -376,6 +384,24 @@ export default function BookingTunnel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSpecialEvent, multiDayDates.length, usesPackages, step]);
 
+  // Reset promo when date or total changes (rates may differ).
+  useEffect(() => {
+    if (promoQuote) {
+      setPromoQuote(null);
+      setPromoError("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, total]);
+
+  // Auto-apply promo from URL once we have offer + date + total.
+  useEffect(() => {
+    if (promoInput && !promoQuote && offer && selectedDate && total > 0 && step === 4) {
+      // applyPromo is defined later; call it via a closure-safe wrapper.
+      void applyPromo();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, offer, selectedDate, total]);
+
   if (!offer) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center text-[#0A0A0A]/40 text-sm uppercase tracking-[0.3em]">
@@ -476,6 +502,7 @@ export default function BookingTunnel() {
         room_addon_rooms: roomAddonEnabled && roomAddonTier ? Math.max(1, roomAddonRooms) : null,
         multi_day_dates: (isSpecialEvent && multiDayDates.length > 1) ? multiDayDates : null,
         package_selections: packageSelections.length > 0 ? packageSelections : null,
+        promo_code: promoQuote?.applied_plan ? (promoQuote.applied_plan.type === "promo" ? promoInput.trim().toUpperCase() : null) : null,
       });
       // Clear the package-selection bridge once the booking is created
       if (isSpecialEvent && eventId) {
@@ -540,6 +567,49 @@ export default function BookingTunnel() {
   };
 
   const setC = (k) => (e) => setContact({ ...contact, [k]: e.target.value });
+
+  // Compute the rate-plan offer key matching the backend convention
+  // (universe.offer_id, e.g. "beach_club.pass_day").
+  const offerKey = (() => {
+    if (!offer) return null;
+    const pole = offer.pole || offer.universe;
+    const id = offer.id || offerId;
+    return pole ? `${pole}.${id}` : id;
+  })();
+
+  async function applyPromo() {
+    if (!offerKey || !selectedDate || total <= 0) {
+      setPromoError("Choisissez d'abord une date.");
+      return;
+    }
+    setPromoLoading(true);
+    setPromoError("");
+    try {
+      const when = format(selectedDate, "yyyy-MM-dd");
+      const url = new URL(`${process.env.REACT_APP_BACKEND_URL}/api/revenue/quote`);
+      url.searchParams.set("offer_key", offerKey);
+      url.searchParams.set("base_price", String(total));
+      url.searchParams.set("when", when);
+      if (promoInput.trim()) url.searchParams.set("promo", promoInput.trim().toUpperCase());
+      const r = await fetch(url);
+      const d = await r.json();
+      if (!r.ok) {
+        setPromoError(d.detail || "Code invalide");
+        setPromoQuote(null);
+      } else if (!d.applied_plan && promoInput.trim()) {
+        setPromoError("Code promo inconnu ou non applicable.");
+        setPromoQuote(null);
+      } else {
+        setPromoQuote(d);
+      }
+    } catch (e) {
+      setPromoError(String(e));
+      setPromoQuote(null);
+    }
+    setPromoLoading(false);
+  }
+
+  const finalTotal = promoQuote?.applied_plan ? Math.round(promoQuote.final_price) : total;
 
   return (
     <div data-testid="booking-tunnel" className="min-h-screen bg-white text-[#0A0A0A] pt-32 sm:pt-36 md:pt-44 pb-24 px-4 sm:px-6 md:px-12">
@@ -1359,13 +1429,63 @@ export default function BookingTunnel() {
                       })}
                     </div>
                   )}
-                  <div className="pt-5 border-t border-[#0A0A0A]/10 flex justify-between items-baseline">
-                    <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A]">
-                      {t.booking.total}
-                    </span>
-                    <span className="font-display-serif text-3xl text-[#B8922A]">
-                      {total > 0 ? formatXOF(total) : t.offers.reservationOnly}
-                    </span>
+                  <div className="pt-5 border-t border-[#0A0A0A]/10 space-y-3">
+                    {/* Promo code & dynamic pricing */}
+                    <div className="bg-white border border-[#0A0A0A]/10 p-3 sm:p-4" data-testid="promo-block">
+                      <div className="text-[0.62rem] uppercase tracking-[0.22em] text-[#B8922A] font-medium mb-2">
+                        Code promo / tarif spécial
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          value={promoInput}
+                          onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                          placeholder="SUNNY10"
+                          className="flex-1 border border-[#0A0A0A]/15 px-3 py-2 text-sm uppercase tracking-wider"
+                          data-testid="promo-input"
+                          disabled={promoLoading}
+                        />
+                        <button
+                          type="button"
+                          onClick={applyPromo}
+                          disabled={promoLoading || total <= 0}
+                          className="px-5 py-2 text-xs tracking-[0.25em] uppercase border border-[#0A0A0A]/20 hover:border-[#B8922A] hover:text-[#B8922A] disabled:opacity-50 whitespace-nowrap"
+                          data-testid="promo-apply"
+                        >
+                          {promoLoading ? "…" : "Vérifier"}
+                        </button>
+                      </div>
+                      {promoError && (
+                        <div className="text-xs text-red-600 mt-2" data-testid="promo-error">{promoError}</div>
+                      )}
+                      {promoQuote?.applied_plan && (
+                        <div className="mt-3 text-sm flex items-center justify-between bg-[#FBF8EF] border border-[#B8922A]/30 px-3 py-2" data-testid="promo-applied">
+                          <span className="text-[#0A0A0A]/85">
+                            <span className="font-medium text-[#B8922A]">✓ {promoQuote.applied_plan.name}</span>
+                            <span className="text-xs text-[#0A0A0A]/55 ml-2">
+                              ({promoQuote.applied_plan.type === "promo" ? "code" :
+                                promoQuote.applied_plan.type === "weekend" ? "tarif week-end" :
+                                promoQuote.applied_plan.type === "event" ? "tarif événement" : "tarif saisonnier"})
+                            </span>
+                          </span>
+                          <span className={`font-medium tabular-nums ${promoQuote.discount > 0 ? "text-[#15803D]" : promoQuote.discount < 0 ? "text-[#B45309]" : ""}`}>
+                            {promoQuote.discount > 0 ? "−" : promoQuote.discount < 0 ? "+" : ""}{formatXOF(Math.abs(Math.round(promoQuote.discount)))}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A]">
+                        {t.booking.total}
+                      </span>
+                      <span className="font-display-serif text-3xl text-[#B8922A] tabular-nums">
+                        {total > 0 ? formatXOF(finalTotal) : t.offers.reservationOnly}
+                      </span>
+                    </div>
+                    {promoQuote?.applied_plan && total !== finalTotal && (
+                      <div className="text-xs text-[#0A0A0A]/55 text-right -mt-2" data-testid="promo-prev-total">
+                        Prix initial : <span className="line-through">{formatXOF(total)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 

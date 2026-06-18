@@ -66,6 +66,9 @@ class ConfigPayload(BaseModel):
     webhook_username: str | None = None
     webhook_password: str | None = None
     mode:          str | None = Field(default=None, pattern="^(sandbox|production)$")
+    auto_sync_enabled: bool | None = None      # periodic 15min push
+    auto_sync_on_booking: bool | None = None   # immediate push after direct booking/cancel
+    auto_sync_default_limit: int | None = Field(default=None, ge=0, le=999)
 
 
 class MappingPayload(BaseModel):
@@ -104,6 +107,9 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
                 "webhook_username": "",
                 "webhook_password": "",
                 "mode": "sandbox",
+                "auto_sync_enabled": False,
+                "auto_sync_on_booking": False,
+                "auto_sync_default_limit": 5,
                 "created_at": _now(),
             }
             await db["ota_config"].insert_one(doc)
@@ -425,3 +431,85 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
         return Response(content=ack, media_type="text/xml; charset=utf-8")
 
     return router
+
+
+async def auto_push_all_mappings(db, *, source: str = "scheduler") -> dict:
+    """Push the next 30-day availability window for every enabled mapping.
+
+    Booking limit defaults to 5 — the real value should ideally come from a
+    PMS inventory query, but for sandbox / Phase 4 we just keep a flat
+    limit and let staff override per push from the UI.
+    """
+    from datetime import date as _date, timedelta as _td
+
+    cfg_doc = await db["ota_config"].find_one({"_id": "siteminder"}) or {}
+    if not cfg_doc.get("auto_sync_enabled"):
+        return {"skipped": "disabled"}
+
+    cfg = sm_mod.SMConfig(
+        base_url_rest=cfg_doc.get("base_url_rest", "https://tpi-pmsx.preprod.siteminderlabs.com"),
+        base_url_soap=cfg_doc.get("base_url_soap", "https://tpi-pmsx.preprod.siteminderlabs.com"),
+        pms_username=cfg_doc.get("pms_username", "PMSXTEST"),
+        pms_password=cfg_doc.get("pms_password", "PMSXTEST"),
+        pms_code=cfg_doc.get("pms_code", "PMSXTEST"),
+        hotel_code=cfg_doc.get("hotel_code", "PMSXTEST1"),
+        mode=cfg_doc.get("mode", "sandbox"),
+    )
+    client = sm_mod.SiteMinderClient(cfg)
+    today = _date.today()
+    end   = today + _td(days=30)
+    default_limit = int(cfg_doc.get("auto_sync_default_limit", 5))
+
+    updates: list[sm_mod.AvailabilityUpdate] = []
+    async for m in db["ota_room_mappings"].find({"enabled": True}):
+        updates.append(sm_mod.AvailabilityUpdate(
+            start_date=today.isoformat(),
+            end_date=end.isoformat(),
+            room_type_code=m["sm_room_type_code"],
+            booking_limit=default_limit,
+        ))
+
+    log_doc: dict[str, Any] = {
+        "_id": str(uuid4()),
+        "kind": "availability_push",
+        "started_at": _now(),
+        "hotel_code": cfg.hotel_code,
+        "mode": cfg.mode,
+        "user": f"auto:{source}",
+        "updates_count": len(updates),
+    }
+    if not updates:
+        log_doc.update({"ok": True, "finished_at": _now(), "skipped": "no_mappings"})
+        await db["ota_sync_logs"].insert_one(log_doc)
+        return {"ok": True, "skipped": "no_mappings"}
+
+    try:
+        res = await client.push_availability(updates)
+        log_doc.update({
+            "ok": res.get("ok", False),
+            "finished_at": _now(),
+            "http_status": res.get("http_status"),
+            "echo_token": res.get("echo_token"),
+            "errors": res.get("errors"),
+            "response_excerpt": (res.get("response") or "")[:2000],
+        })
+    except Exception as exc:  # noqa: BLE001
+        log_doc.update({"ok": False, "finished_at": _now(), "error": str(exc)[:500]})
+
+    await db["ota_sync_logs"].insert_one(log_doc)
+    return {"ok": log_doc.get("ok"), "updates": len(updates), "log_id": log_doc["_id"]}
+
+
+async def trigger_sync_on_booking_change(db, *, reason: str = "direct_booking") -> None:
+    """Fire-and-forget availability push triggered by a direct booking or
+    cancellation. Decoupled in its own helper so the booking endpoint can
+    call it without depending on the OTA router internals.
+    """
+    import asyncio
+    cfg_doc = await db["ota_config"].find_one({"_id": "siteminder"}) or {}
+    if not cfg_doc.get("auto_sync_on_booking"):
+        return
+    try:
+        await asyncio.shield(auto_push_all_mappings(db, source=reason))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("trigger_sync_on_booking_change failed: %s", exc)

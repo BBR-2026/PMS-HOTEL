@@ -214,6 +214,9 @@ function ConfigTab() {
         webhook_username: d.webhook_username || "",
         webhook_password: "",
         mode: d.mode,
+        auto_sync_enabled: !!d.auto_sync_enabled,
+        auto_sync_on_booking: !!d.auto_sync_on_booking,
+        auto_sync_default_limit: d.auto_sync_default_limit ?? 5,
       });
     }
   }
@@ -224,6 +227,9 @@ function ConfigTab() {
     const payload = { ...form };
     if (!payload.pms_password) delete payload.pms_password;
     if (!payload.webhook_password) delete payload.webhook_password;
+    // Booleans must be explicitly sent (false is meaningful).
+    payload.auto_sync_enabled = !!payload.auto_sync_enabled;
+    payload.auto_sync_on_booking = !!payload.auto_sync_on_booking;
     const r = await fetch(`${API}/staff/ota/config`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -287,6 +293,44 @@ function ConfigTab() {
         </Field>
         <Field label="Base URL SOAP" col2>
           <input value={form.base_url_soap} onChange={upd("base_url_soap")} className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm font-mono text-xs" />
+        </Field>
+
+        <div className="md:col-span-2 mt-2 border-t border-[#0A0A0A]/10 pt-4">
+          <div className="text-[0.55rem] uppercase tracking-[0.35em] text-[#B8922A]/85 mb-3">Auto-synchronisation</div>
+        </div>
+        <Field label="Sync périodique (15 min)" col2>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.auto_sync_enabled}
+              onChange={(e) => setForm({ ...form, auto_sync_enabled: e.target.checked })}
+              className="h-4 w-4"
+              data-testid="cfg-auto-sync"
+            />
+            Pousser automatiquement les disponibilités vers SiteMinder toutes les 15 minutes
+          </label>
+        </Field>
+        <Field label="Sync à chaque réservation directe" col2>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.auto_sync_on_booking}
+              onChange={(e) => setForm({ ...form, auto_sync_on_booking: e.target.checked })}
+              className="h-4 w-4"
+              data-testid="cfg-auto-sync-booking"
+            />
+            Décrémenter l'inventaire OTA dès qu'une réservation directe est créée (anti-overbooking)
+          </label>
+        </Field>
+        <Field label="Booking limit par défaut" col2>
+          <input
+            type="number" min="0" max="999"
+            value={form.auto_sync_default_limit}
+            onChange={(e) => setForm({ ...form, auto_sync_default_limit: Number(e.target.value) || 0 })}
+            className="w-32 border border-[#0A0A0A]/15 px-3 py-2 text-sm tabular-nums"
+            data-testid="cfg-default-limit"
+          />
+          <span className="text-[10px] text-[#0A0A0A]/55 ml-2">chambres disponibles communiquées aux OTA pour chaque mapping actif.</span>
         </Field>
 
         <div className="md:col-span-2 mt-2 border-t border-[#0A0A0A]/10 pt-4">

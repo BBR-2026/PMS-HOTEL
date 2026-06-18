@@ -448,6 +448,8 @@ class BookingCreate(BaseModel):
     room_addon_checkin: Optional[str] = None  # YYYY-MM-DD (defaults to body.date)
     room_addon_checkout: Optional[str] = None  # YYYY-MM-DD (defaults to checkin + 1 day)
     room_addon_rooms: Optional[int] = Field(default=None, ge=1, le=10)
+    # Phase C · Vague 4 — Revenue Management
+    promo_code: Optional[str] = Field(default=None, max_length=80)
 
 
 class PayBooking(BaseModel):
@@ -2678,6 +2680,33 @@ async def create_booking(body: BookingCreate):
         participants_docs = raw_participants
     # Primary contact = first adult (or first participant if none)
     primary = next((p for p in participants_docs if p["kind"] == "adult"), participants_docs[0])
+
+    # Phase C · Vague 4 — Revenue Management dynamic pricing.
+    # Apply the matching rate plan (promo > event > seasonal > weekend) on
+    # top of the computed offer total. Failures are silent — never block
+    # a booking because of a pricing-engine glitch.
+    base_total = total
+    rate_plan_applied: dict | None = None
+    try:
+        offer_key = f"{_pole_for_offer(body.offer_type)}.{body.offer_type}"
+        resolver = getattr(_revenue_router, "resolve_offer_price", None)
+        if resolver:
+            adjusted, plan = await resolver(offer_key, float(base_total), body.date, body.promo_code)
+            if plan:
+                total = int(round(adjusted))
+                rate_plan_applied = {
+                    "plan_id": plan["_id"],
+                    "name": plan.get("name"),
+                    "type": plan.get("type"),
+                    "promo_code": plan.get("promo_code"),
+                    "adjustment_kind": plan.get("adjustment_kind"),
+                    "adjustment_value": plan.get("adjustment_value"),
+                    "base_total": base_total,
+                    "discount": base_total - total,
+                }
+    except Exception as _exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("rate_plan_resolve_failed: %s", _exc)
+
     doc = {
         "id": bid,
         "reference_token": reference_token,
@@ -2707,6 +2736,8 @@ async def create_booking(body: BookingCreate):
         "companion_slots_total": max(0, int(body.adults) - 1),
         "companion_slots_used": 0,
         "total_amount": total,
+        "rate_plan_applied": rate_plan_applied,
+        "promo_code_used": (body.promo_code or "").upper() or None,
         "status": "pending",
         "qr_codes": [],
         "participants": participants_docs,
@@ -2735,6 +2766,13 @@ async def create_booking(body: BookingCreate):
         "paid_at": None,
     }
     await db.bookings.insert_one(doc)
+    # Phase C · Vague 4 — fire-and-forget OTA decrement push (best-effort).
+    try:
+        import asyncio as _aio
+        from routers.ota import trigger_sync_on_booking_change as _trig
+        _aio.create_task(_trig(db, reason="direct_booking"))
+    except Exception:
+        pass
     doc.pop("_id", None)
     return doc
 
@@ -2909,6 +2947,56 @@ async def pay_booking(booking_id: str, body: PayBooking):
                 dates_list=ticket_dates if is_passport else None,
             )
         qr_codes.append(entry)
+
+    # Phase C · Vague 4 — Le Kaai pinasse pass (separate QR for the boat crossing).
+    # Generated only when the booking includes the crossing fee. The pinasse
+    # crew scans this QR independently of the restaurant team.
+    crossing_fee_amount = int(booking.get("crossing_fee_amount") or 0)
+    if crossing_fee_amount > 0 and booking.get("offer_type") == "le_kaai":
+        pax = int(booking.get("adults") or 0) + int(booking.get("children") or 0)
+        pinasse_token = uuid.uuid4().hex
+        primary_part = adult_participants[0] if adult_participants else (participants[0] if participants else {})
+        owner = f"{primary_part.get('name','')} {primary_part.get('surname','')}".strip() or "Invité"
+        pinasse_payload = json.dumps({
+            "type": "pinasse",
+            "token": pinasse_token,
+            "ref": booking_id[:8].upper(),
+            "pax": pax,
+        }, ensure_ascii=False, separators=(",", ":"))
+        token_short = pinasse_token[:10].upper()
+        pinasse_entry = {
+            "label_fr": f"Pass Pinasse · {pax} passager{'s' if pax > 1 else ''}",
+            "label_en": f"Pinasse Pass · {pax} passenger{'s' if pax > 1 else ''}",
+            "kind": "pinasse",
+            "event_date": primary_date,
+            "valid_dates": ticket_dates,
+            "guest_name": primary_part.get("name", ""),
+            "guest_surname": primary_part.get("surname", ""),
+            "guest_email": primary_part.get("email", "") or booking.get("email", ""),
+            "guest_phone": primary_part.get("phone", "") or booking.get("phone", ""),
+            "pax": pax,
+            "qr_token": pinasse_token,
+            "qr_payload": pinasse_payload,
+            "qr_code": make_qr(pinasse_payload, styled=styled_qr),
+            "crossing_fee_xof": crossing_fee_amount,
+        }
+        if styled_qr:
+            try:
+                pinasse_entry["ticket_image"] = make_ticket_image(
+                    offer_id="pinasse",
+                    offer_name="Traversée pinasse — Le Kaai",
+                    date_iso=primary_date,
+                    boat_time=booking.get("boat_time", ""),
+                    owner_name=owner,
+                    qr_payload=pinasse_payload,
+                    ref_code=token_short,
+                    lang="fr",
+                    hero_url=offer.get("image_url") or None,
+                    party_size=pax,
+                )
+            except Exception:
+                pass
+        qr_codes.append(pinasse_entry)
 
     paid_at = now_iso()
 
@@ -9756,6 +9844,18 @@ async def start_scheduler():
     # Close at 00:01 UTC every day → flag yesterday's still-reserved as absent
     scheduler.add_job(_cantine_close_job, "cron", hour=0, minute=1,
                       id="cantine_close", replace_existing=True)
+
+    # Phase C · Vague 4 — OTA auto-sync every 15 minutes (no-op if disabled
+    # via /api/staff/ota/config → auto_sync_enabled).
+    async def _ota_auto_sync_job():
+        try:
+            from routers.ota import auto_push_all_mappings  # local import to avoid cycle at boot
+            await auto_push_all_mappings(db, source="cron_15min")
+        except Exception as ex:  # noqa: BLE001
+            logging.warning("OTA auto-sync job failed: %s", ex)
+    scheduler.add_job(_ota_auto_sync_job, "interval", minutes=15,
+                      id="ota_auto_sync", replace_existing=True)
+
     scheduler.start()
     logging.info("APScheduler started: J-1 @17:00 UTC, J+1 @10:00 UTC, campaigns_runner @1min, fineo_sweeper @30s")
 
