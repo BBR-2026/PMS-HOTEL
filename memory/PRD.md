@@ -2,6 +2,15 @@
 
 ## Latest update — 2026-06-18
 
+### Phase B Responsive Design Standardization (iteration 34)
+**Status: ✅ Frontend 98% (iteration_34.json) — 1 minor cosmetic fix applied**
+- Standardized main wrapper `p-4 md:p-8 lg:p-10 max-w-7xl mx-auto` on all 8 new Phase-B staff pages: Marketing, CRM, Memberships, Events Pipeline, Upsells, Blog, Leads, Site Settings.
+- Added `overflow-x-auto` to Blog table wrapper.
+- Added `flex-wrap` to filter/period chip rows on Marketing & Leads to prevent overflow on small mobile.
+- Added `flex-shrink-0` to Memberships LI right-column to prevent content clipping on 390px viewport.
+- Verified at 390px (mobile) and 1440px (desktop) — no body-level horizontal scroll, all KPI grids correctly switch between 2-col / 4-col, Kanban switches between 1-col / 2-col / 5-col, list/detail layouts stack on mobile.
+- No regressions on legacy pages (`/staff/clients`, `/staff/reservations`).
+
 ### Phase B Revenue Engine — Continuation (CRM + Memberships + Events + Upsell)
 **Status: ✅ Backend 23/23 pytest + Frontend 100% (iteration_33.json)**
 - 4 nouveaux modules livrés : CRM 360°, Memberships (BBR Cards), Pipeline événementiel, Upsell/Cross-sell.

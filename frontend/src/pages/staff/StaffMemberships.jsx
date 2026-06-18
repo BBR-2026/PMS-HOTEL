@@ -203,7 +203,7 @@ export default function StaffMemberships() {
                         <div className="text-xs text-[#0A0A0A]/55 truncate">{m.email}</div>
                         <div className="mt-1 text-xs text-[#B8922A] italic">{m.plan_name}</div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right flex-shrink-0">
                         <span
                           className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase tracking-wider"
                           style={{ color: meta.color, background: meta.bg }}
