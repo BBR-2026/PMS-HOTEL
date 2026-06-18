@@ -2,6 +2,15 @@
 
 ## Latest update — 2026-06-18
 
+### Phase C Revenue Engine — Vague 2 (iteration 46)
+**Status: ✅ Backend 11/11 pytest + Frontend e2e 100%**
+- **Moteur d'acquisition** : nouvelle page `/staff/marketing/acquisition` qui agrège les 15 offres (5 univers × 3 offres) avec leurs campagnes. Quick activate/pause par campagne. KPIs : offres totales, offres avec campagne, campagnes actives, budget engagé. Endpoint `/api/staff/marketing/acquisition`.
+- **Audiences sur campagnes** : ajout des champs `audience_targets` (liste) et `audience_notes` (brief créatif) dans le form Campaigns.
+- **Revenue Management** : nouvelle page `/staff/revenue/rate-plans` + router `revenue_management.py`. Plans tarifaires CRUD pour 4 types : seasonal / weekend / event / promo. Ajustement en % ou XOF absolu. Days-of-week sélectionnables. Codes promo en uppercase auto. Priorité de matching : promo (4) > event (3) > seasonal (2) > weekend (1).
+- **Quote endpoint public** : `GET /api/revenue/quote?offer_key=...&base_price=...&when=YYYY-MM-DD&promo=...` retourne le prix final + remise + plan appliqué. Prêt pour intégration au tunnel de réservation (Vague 3).
+- Sidebar : 2 nouvelles entrées (Moteur d'acquisition, Revenue Management).
+- Tests : suite pytest dédiée `/app/backend/tests/test_iteration46_revenue.py` (11 cas).
+
 ### Phase C Revenue Engine — Vague 1 (iteration 45)
 **Status: ✅ Backend 15/15 pytest + Frontend e2e self-tested**
 - **Module 1 — CRM Marketing** : CRUD complet des campagnes (`/api/staff/marketing/campaigns`) avec nom, univers (5), offre, budget total/quotidien, dates, objectif, statut (draft/active/paused/ended). Gestion créatifs (Meta 3 formats, Google 5 formats, YouTube 3 formats — total 11 slots avec dimensions affichées).
