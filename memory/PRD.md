@@ -490,3 +490,30 @@ See `/app/memory/test_credentials.md`.
   * **Fichiers modifiés (overwrite)** : `VitrineLanding.jsx`, `VitrineNav.jsx`, `VitrineFooter.jsx`, `UniversHero.jsx`, `UniversPage.jsx`, `tailwind.config.js`, `public/index.html`. Aucun fichier supprimé. Les routes restent identiques.
   * **À noter** : la page Événementiel n'a pas été refondue (formulaire devis encore sur fond noir) — peut être faite dans une prochaine itération si l'utilisateur le souhaite.
 
+
+- 2026-06-18: **Iteration 54 — Header premium + section Univers refondue (cartes image-overlay)** :
+  * Demande utilisateur structurée en 2 améliorations cahier-des-charges précis.
+  * **Amélioration 1 — Header refondu (`VitrineNav.jsx` overwrite)** :
+    - Layout en 3 colonnes : gauche vide / centre logo BBR / droite (SHOP + RÉSERVER + hamburger)
+    - Logo BBR centré perfectement : serif italique 3xl-4xl + sous-titre `BOULAY BEACH RESORT` tracking 0.5em
+    - SHOP : icône `ShoppingBag` + texte UPPERCASE tracking 0.3em, redirige vers `/boutique` (placeholder créé)
+    - RÉSERVER : bouton premium avec **bordure blanche sur hero / fond noir au scroll**, hover devient or — design conforme à la charte
+    - Hamburger : icône 3 traits à l'extrême droite, ouvre le menu fullscreen
+    - **Menu fullscreen premium** : 9 items (Accueil, Hôtel, Beach Club, Restaurant Le Kaai, Événements, Corporate, Boutique, Contact, Réservation), serif italique géant 3-5xl, animation stagger avec délais incrémentaux (60ms/item), item "Réservation" coloré en or `#B8922A` pour le mettre en avant, fond blanc + image hero en filigrane 8% opacity, lock du body scroll quand ouvert
+    - Transitions fluides : transparent sur hero → `bg-white/95 backdrop-blur` au scroll (>40px) ou menu ouvert
+  * **Amélioration 2 — Section "Nos Univers" refondue (`VitrineLanding.jsx` partial edit)** :
+    - Passage de 6 à **5 univers** (fusion Activités + Événementiel en "Activités & Events")
+    - 5 cartes **strictement identiques** : `aspect-[3/4]`, grid `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`
+    - **Suppression complète** des blocs blancs sous les visuels (suppression de la zone "kicker + name + subtitle" en dehors de l'image)
+    - **Texte intégré DIRECTEMENT sur l'image** : nom en serif italique 3-5xl blanc + description premium en italic 1 ligne + bouton `DÉCOUVRIR` en underline blanc
+    - **Dégradé sombre** : `bg-gradient-to-t from-black/90 via-black/55 to-transparent` sur les 60% du bas → contraste optimisé
+    - **Animations conformes** : `transition-transform duration-[2s] group-hover:scale-[1.06]` (zoom doux 2s), `group-hover:-translate-y-1` sur le titre, flèche `→` qui apparaît + translate-x-1 au hover, underline qui passe en or au hover
+    - **Mobile** : 1 carte par ligne grâce au `grid-cols-1`, grande hauteur conservée, CTA accessible
+    - Descriptions premium copiées intégralement du brief : "Une parenthèse exclusive entre lagune et océan." / "Des séjours raffinés..." / "Une expérience culinaire signée Boulay Beach Resort." / "Le lieu idéal pour vos événements professionnels." / "Des expériences uniques à vivre toute l'année."
+  * **Pages placeholder créées** pour rendre les liens hamburger fonctionnels :
+    - `/boutique` (`VitrineBoutique.jsx`) — "Bientôt en boutique" élégant
+    - `/contact` (`VitrineContact.jsx`) — Hero éditorial + adresse/téléphone/WhatsApp/email
+  * **App.js** mis à jour : import + 2 nouvelles routes
+  * **Validation** : 3 screenshots desktop (hero+header, univers grid 5 cartes, menu fullscreen 9 items vérifié), aucun lint error, frontend redémarré.
+  * **Note** : les images Unsplash placeholder restent non-représentatives sur certaines cartes (Corporate = couloir vide, Activités = nageur olympique) — à remplacer par les vraies photos BBr.
+

@@ -1,147 +1,178 @@
 /**
- * Vitrine — Minimal editorial navigation (Nikki Beach inspired).
+ * Vitrine — Premium header (refonte iteration 54).
  *
- * - Transparent over hero, switches to white on scroll.
- * - Centered logo · left/right links · subtle "Réserver" link.
- * - Mobile : hamburger → fullscreen drawer.
+ * Structure:
+ *  - Sticky, transparent on hero, slight opacity on scroll.
+ *  - LEFT  : empty (logo perfectly centered).
+ *  - CENTER: BBR logo (large, serif).
+ *  - RIGHT : SHOP · RÉSERVER (button) · Hamburger.
+ *  - Fullscreen overlay menu when hamburger is open.
  */
 import { useState, useEffect } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { Menu, X, ShoppingBag } from "lucide-react";
 
-const LINKS_LEFT = [
-  { to: "/univers/hebergement", label: "Hébergement" },
+const MENU_ITEMS = [
+  { to: "/", label: "Accueil" },
+  { to: "/univers/hebergement", label: "Hôtel" },
   { to: "/univers/beach-club", label: "Beach Club" },
-  { to: "/univers/activites", label: "Activités" },
-];
-const LINKS_RIGHT = [
-  { to: "/univers/evenementiel", label: "Événementiel" },
+  { to: "/le-kaai", label: "Restaurant Le Kaai" },
+  { to: "/univers/evenementiel", label: "Événements" },
   { to: "/univers/corporate", label: "Corporate" },
-  { to: "/le-kaai", label: "Le Kaai" },
+  { to: "/boutique", label: "Boutique" },
+  { to: "/contact", label: "Contact" },
+  { to: "/reserver", label: "Réservation", highlight: true },
 ];
 
 export default function VitrineNav() {
   const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const loc = useLocation();
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 60);
+    const onScroll = () => setScrolled(window.scrollY > 40);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  useEffect(() => { setOpen(false); }, [loc.pathname]);
+  useEffect(() => { setMenuOpen(false); }, [loc.pathname]);
 
-  const onHero = loc.pathname === "/" && !scrolled;
+  // Lock body scroll when fullscreen menu is open.
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [menuOpen]);
+
+  const onHero = loc.pathname === "/" && !scrolled && !menuOpen;
   const textColor = onHero ? "text-white" : "text-[#0A0A0A]";
-  const subColor = onHero ? "text-white/85 hover:text-white" : "text-[#0A0A0A]/70 hover:text-[#B8922A]";
 
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-        scrolled
-          ? "bg-white/95 backdrop-blur-md border-b border-[#0A0A0A]/8 py-4"
-          : "bg-transparent py-6"
-      }`}
-      data-testid="vitrine-nav"
-    >
-      <div className="max-w-7xl mx-auto px-6 grid grid-cols-3 items-center">
-        {/* Left links */}
-        <nav className="hidden lg:flex items-center gap-7 justify-start">
-          {LINKS_LEFT.map((l) => (
-            <NavLink
-              key={l.to}
-              to={l.to}
-              className={({ isActive }) =>
-                `text-[0.68rem] tracking-[0.28em] uppercase transition-colors ${
-                  isActive ? (onHero ? "text-white" : "text-[#B8922A]") : subColor
-                }`
-              }
-              data-testid={`vitrine-nav-${l.label.toLowerCase().replace(/\W/g, "-")}`}
-            >
-              {l.label}
-            </NavLink>
-          ))}
-        </nav>
+    <>
+      <header
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
+          scrolled || menuOpen
+            ? "bg-white/95 backdrop-blur-md border-b border-[#0A0A0A]/8"
+            : "bg-transparent"
+        }`}
+        data-testid="vitrine-nav"
+      >
+        <div className="max-w-7xl mx-auto px-5 md:px-8 h-20 md:h-24 grid grid-cols-3 items-center">
+          {/* LEFT (empty / mobile reserved CTA) */}
+          <div className="flex items-center">
+            {/* intentionally empty on desktop — logo is centered */}
+          </div>
 
-        {/* Center logo */}
-        <Link
-          to="/"
-          className="flex flex-col items-center justify-center"
-          data-testid="vitrine-logo"
-        >
-          <span className={`font-serif italic text-2xl md:text-3xl tracking-wide font-light ${textColor}`}>
-            BBR
-          </span>
-          <span className={`text-[0.55rem] tracking-[0.5em] uppercase mt-1 ${onHero ? "text-white/70" : "text-[#0A0A0A]/55"}`}>
-            Boulay Beach Resort
-          </span>
-        </Link>
-
-        {/* Right links + reserver */}
-        <nav className="hidden lg:flex items-center gap-7 justify-end">
-          {LINKS_RIGHT.map((l) => (
-            <NavLink
-              key={l.to}
-              to={l.to}
-              className={({ isActive }) =>
-                `text-[0.68rem] tracking-[0.28em] uppercase transition-colors ${
-                  isActive ? (onHero ? "text-white" : "text-[#B8922A]") : subColor
-                }`
-              }
-              data-testid={`vitrine-nav-${l.label.toLowerCase().replace(/\W/g, "-")}`}
-            >
-              {l.label}
-            </NavLink>
-          ))}
+          {/* CENTER : LOGO */}
           <Link
-            to="/reserver"
-            className={`text-[0.68rem] tracking-[0.28em] uppercase border-b pb-0.5 transition-colors ${
-              onHero
-                ? "text-white border-white/80 hover:text-[#D4B256] hover:border-[#D4B256]"
-                : "text-[#0A0A0A] border-[#0A0A0A] hover:text-[#B8922A] hover:border-[#B8922A]"
-            }`}
-            data-testid="vitrine-cta-reserver"
+            to="/"
+            className="flex flex-col items-center justify-center"
+            data-testid="vitrine-logo"
+            aria-label="Boulay Beach Resort — Accueil"
           >
-            Réserver
+            <span className={`font-serif italic text-3xl md:text-4xl tracking-wide font-light ${textColor}`}>
+              BBR
+            </span>
+            <span className={`text-[0.5rem] md:text-[0.55rem] tracking-[0.5em] uppercase mt-1 ${onHero ? "text-white/70" : "text-[#0A0A0A]/55"}`}>
+              Boulay Beach Resort
+            </span>
           </Link>
-        </nav>
 
-        {/* Mobile toggle */}
-        <button
-          onClick={() => setOpen(!open)}
-          className={`lg:hidden p-2 col-start-3 justify-self-end ${textColor}`}
-          aria-label="Menu"
-          data-testid="vitrine-mobile-toggle"
-        >
-          {open ? <X size={22} /> : <Menu size={22} />}
-        </button>
-      </div>
+          {/* RIGHT : SHOP · RÉSERVER · Hamburger */}
+          <div className="flex items-center justify-end gap-3 md:gap-5">
+            {/* SHOP */}
+            <Link
+              to="/boutique"
+              className={`hidden sm:inline-flex items-center gap-2 text-[0.65rem] md:text-[0.7rem] tracking-[0.3em] uppercase transition-colors ${
+                onHero ? "text-white/85 hover:text-white" : "text-[#0A0A0A]/75 hover:text-[#B8922A]"
+              }`}
+              data-testid="vitrine-shop"
+            >
+              <ShoppingBag size={14} strokeWidth={1.5} />
+              Shop
+            </Link>
 
-      {/* Mobile drawer */}
-      {open && (
-        <div className="lg:hidden fixed inset-0 top-[60px] bg-white z-40">
-          <div className="max-w-7xl mx-auto px-6 py-10 flex flex-col gap-1">
-            {[...LINKS_LEFT, ...LINKS_RIGHT].map((l) => (
-              <Link
-                key={l.to}
-                to={l.to}
-                className="py-4 font-serif italic text-2xl text-[#0A0A0A] border-b border-[#0A0A0A]/8"
-              >
-                {l.label}
-              </Link>
-            ))}
+            {/* RÉSERVER — premium button */}
             <Link
               to="/reserver"
-              className="mt-8 py-4 text-center text-[0.7rem] tracking-[0.3em] uppercase text-white bg-[#0A0A0A]"
+              className={`inline-flex items-center px-4 md:px-6 py-2 md:py-2.5 text-[0.6rem] md:text-[0.7rem] tracking-[0.3em] uppercase font-medium transition-all duration-300 border ${
+                onHero
+                  ? "text-white border-white hover:bg-white hover:text-[#0A0A0A]"
+                  : "text-white bg-[#0A0A0A] border-[#0A0A0A] hover:bg-[#B8922A] hover:border-[#B8922A]"
+              }`}
+              data-testid="vitrine-cta-reserver"
             >
               Réserver
             </Link>
+
+            {/* HAMBURGER */}
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className={`p-2 transition-colors ${textColor}`}
+              aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+              data-testid="vitrine-hamburger"
+            >
+              {menuOpen ? <X size={22} strokeWidth={1.5} /> : <Menu size={22} strokeWidth={1.5} />}
+            </button>
           </div>
         </div>
-      )}
-    </header>
+      </header>
+
+      {/* FULLSCREEN MENU OVERLAY */}
+      <div
+        className={`fixed inset-0 z-40 transition-all duration-700 ease-out ${
+          menuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        data-testid="vitrine-fullscreen-menu"
+      >
+        {/* Background */}
+        <div className="absolute inset-0 bg-white">
+          <div
+            className="absolute inset-0 bg-cover bg-center opacity-[0.08]"
+            style={{
+              backgroundImage:
+                "url(https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&w=2000&q=85)",
+            }}
+          />
+        </div>
+
+        {/* Content */}
+        <div className="relative h-full flex items-center justify-center pt-24 px-6">
+          <nav className="w-full max-w-2xl">
+            <ul className="space-y-3 md:space-y-4">
+              {MENU_ITEMS.map((item, idx) => (
+                <li
+                  key={item.to}
+                  className={`transition-all duration-700 ${
+                    menuOpen
+                      ? "opacity-100 translate-y-0"
+                      : "opacity-0 translate-y-6"
+                  }`}
+                  style={{ transitionDelay: menuOpen ? `${100 + idx * 60}ms` : "0ms" }}
+                >
+                  <Link
+                    to={item.to}
+                    className={`group flex items-baseline justify-between border-b border-[#0A0A0A]/10 py-4 md:py-5 transition-colors ${
+                      item.highlight ? "text-[#B8922A] hover:text-[#0A0A0A]" : "text-[#0A0A0A] hover:text-[#B8922A]"
+                    }`}
+                    data-testid={`menu-${item.label.toLowerCase().replace(/\W/g, "-")}`}
+                  >
+                    <span className="font-serif italic font-light text-3xl md:text-5xl leading-tight">
+                      {item.label}
+                    </span>
+                    <span className="text-[0.6rem] tracking-[0.4em] uppercase opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all">
+                      →
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-12 text-center text-[0.55rem] tracking-[0.55em] uppercase text-[#0A0A0A]/45">
+              Île Boulay  ·  Abidjan
+            </div>
+          </nav>
+        </div>
+      </div>
+    </>
   );
 }

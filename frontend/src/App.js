@@ -72,6 +72,8 @@ import UniversActivites from "./pages/vitrine/UniversActivites";
 import UniversEvenementiel from "./pages/vitrine/UniversEvenementiel";
 import UniversCorporate from "./pages/vitrine/UniversCorporate";
 import UniversLeKaai from "./pages/vitrine/UniversLeKaai";
+import VitrineBoutique from "./pages/vitrine/VitrineBoutique";
+import VitrineContact from "./pages/vitrine/VitrineContact";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
 // the same routing access as legacy manager (read access; writes are gated by
@@ -125,6 +127,8 @@ function App() {
               <Route path="/univers/evenementiel" element={<UniversEvenementiel />} />
               <Route path="/univers/corporate" element={<UniversCorporate />} />
               <Route path="/le-kaai" element={<UniversLeKaai />} />
+              <Route path="/boutique" element={<VitrineBoutique />} />
+              <Route path="/contact" element={<VitrineContact />} />
             </Route>
             <Route element={<PublicLayout />}>
               <Route path="/reserver" element={<LandingPage />} />
