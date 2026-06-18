@@ -21,9 +21,10 @@ const SECTION_LABELS = {
   contact: "Contact",
   footer: "Pied de page",
   instagram: "Instagram",
+  tracking: "Tracking (GTM)",
 };
 
-const SECTION_ORDER = ["hero", "univers", "offers", "contact", "footer", "instagram"];
+const SECTION_ORDER = ["hero", "univers", "offers", "contact", "footer", "instagram", "tracking"];
 
 export default function StaffSiteSettings() {
   const [sections, setSections] = useState({});
@@ -206,10 +207,51 @@ function SectionEditor({ section, value, onChange }) {
   if (section === "contact") return <ContactEditor v={value} on={onChange} />;
   if (section === "footer") return <FooterEditor v={value} on={onChange} />;
   if (section === "instagram") return <InstagramEditor v={value} on={onChange} />;
+  if (section === "tracking") return <TrackingEditor v={value} on={onChange} />;
   return null;
 }
 
 const set = (v, on, k, x) => on({ ...(v || {}), [k]: x });
+
+function TrackingEditor({ v, on }) {
+  return (
+    <div className="space-y-5" data-testid="tracking-editor">
+      <div className="bg-[#FAF7F2]/60 border border-[#B8922A]/20 px-4 py-3 text-xs text-[#0A0A0A]/75 leading-relaxed">
+        <strong className="text-[#B8922A]">Stratégie GTM unique :</strong>{" "}
+        un seul conteneur Google Tag Manager pilote tous vos pixels
+        (Meta Pixel, GA4, Google Ads Conversion, TikTok Pixel). Demandez à
+        votre agence l'ID du conteneur (format <code className="font-mono">GTM-XXXXXXX</code>),
+        collez-le ci-dessous, activez, et c'est tout.
+      </div>
+      <FInput
+        label="ID du conteneur GTM"
+        placeholder="GTM-XXXXXXX"
+        value={v.gtm_container_id || ""}
+        onChange={(x) => set(v, on, "gtm_container_id", x.trim())}
+        testid="tracking-gtm-id"
+      />
+      <label className="flex items-center gap-3 cursor-pointer" data-testid="tracking-gtm-enabled-row">
+        <input
+          type="checkbox"
+          checked={!!v.gtm_enabled}
+          onChange={(e) => set(v, on, "gtm_enabled", e.target.checked)}
+          className="h-4 w-4"
+          data-testid="tracking-gtm-enabled"
+        />
+        <span className="text-sm text-[#0A0A0A]">
+          Activer l'injection GTM sur la Vitrine
+        </span>
+      </label>
+      <FTextarea
+        label="Notes internes"
+        rows={3}
+        value={v.notes || ""}
+        onChange={(x) => set(v, on, "notes", x)}
+        testid="tracking-notes"
+      />
+    </div>
+  );
+}
 
 function HeroEditor({ v, on }) {
   return (

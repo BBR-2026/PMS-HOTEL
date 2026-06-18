@@ -11771,4 +11771,37 @@ app.include_router(
     )
 )
 
+# Phase C — Marketing Campaigns CRUD
+from routers import marketing_campaigns as _mkt_campaigns_mod  # noqa: E402
+
+app.include_router(
+    _mkt_campaigns_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
+# Phase C — Media Library (Emergent Object Storage)
+from routers import media_library as _media_lib_mod  # noqa: E402
+
+app.include_router(
+    _media_lib_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
+
+@app.on_event("startup")
+async def _init_object_storage():
+    """Best-effort init of Emergent Object Storage at boot."""
+    try:
+        _media_lib_mod._init_storage()
+        logging.getLogger(__name__).info("Emergent Object Storage initialized")
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("Object storage init deferred: %s", exc)
+
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

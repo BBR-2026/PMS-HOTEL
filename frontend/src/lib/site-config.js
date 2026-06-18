@@ -54,4 +54,5 @@ export const sel = {
   contact: (cfg) => cfg?.contact || {},
   footer: (cfg) => cfg?.footer || {},
   instagram: (cfg) => cfg?.instagram || { posts: [] },
+  tracking: (cfg) => cfg?.tracking || {},
 };

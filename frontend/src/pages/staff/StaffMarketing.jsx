@@ -42,15 +42,21 @@ const SOURCE_COLOR = {
 export default function StaffMarketing() {
   const [period, setPeriod] = useState("30d");
   const [data, setData] = useState(null);
+  const [topOffers, setTopOffers] = useState([]);
+  const [abandons, setAbandons] = useState(null);
   const [loading, setLoading] = useState(true);
 
   async function load() {
     setLoading(true);
     try {
-      const { data: payload } = await api.get(
-        `/staff/marketing/dashboard?period=${period}`
-      );
-      setData(payload);
+      const [dash, offers, ab] = await Promise.all([
+        api.get(`/staff/marketing/dashboard?period=${period}`),
+        api.get(`/staff/marketing/top-offers?period=${period}`),
+        api.get(`/staff/marketing/abandons?period=${period}`),
+      ]);
+      setData(dash.data);
+      setTopOffers(offers.data?.items || []);
+      setAbandons(ab.data || null);
     } catch (err) {
       console.error(err);
       toast.error("Impossible de charger les statistiques marketing");
@@ -298,6 +304,79 @@ export default function StaffMarketing() {
           </div>
         </Card>
       </div>
+
+      {/* Top Offers */}
+      <Card title="Top offres — vues, démarrages, conversions">
+        {topOffers.length === 0 ? (
+          <EmptyState text="Pas encore de données d'offres pour cette période." />
+        ) : (
+          <div className="overflow-x-auto" data-testid="top-offers-table">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-[0.25em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/10">
+                  <th className="py-2 pr-4">Offre</th>
+                  <th className="py-2 px-2 text-right">Vues</th>
+                  <th className="py-2 px-2 text-right">Démarrages</th>
+                  <th className="py-2 px-2 text-right">Achats</th>
+                  <th className="py-2 px-2 text-right">Vue → Démarrage</th>
+                  <th className="py-2 px-2 text-right">Vue → Achat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topOffers.slice(0, 12).map((o) => (
+                  <tr key={o.offer} className="border-b border-[#0A0A0A]/5 hover:bg-[#FAF7F2]/40">
+                    <td className="py-2 pr-4 truncate max-w-xs">{o.offer}</td>
+                    <td className="py-2 px-2 text-right tabular-nums">{o.views}</td>
+                    <td className="py-2 px-2 text-right tabular-nums">{o.starts}</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-[#15803D]">{o.purchases}</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-[#0A0A0A]/65">{o.view_to_start_pct}%</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-[#B8922A]">{o.view_to_purchase_pct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Abandons */}
+      {abandons && (
+        <Card title="Abandons de réservation">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5" data-testid="abandons-summary">
+            <Kpi icon={ShoppingCart} label="Démarrages" value={abandons.summary?.started_booking} loading={loading} testid="ab-starts" />
+            <Kpi icon={ShoppingCart} label="Achats" value={abandons.summary?.completed_purchase} loading={loading} testid="ab-purch" />
+            <Kpi icon={ArrowDownRight} label="Abandons" value={abandons.summary?.abandoned} loading={loading} testid="ab-abandon" />
+            <Kpi icon={Percent} label="Taux d'abandon" value={abandons.summary?.abandon_rate_pct} suffix="%" loading={loading} testid="ab-rate" />
+            <Kpi icon={MailCheck} label="Abandons avec lead" value={abandons.summary?.abandoned_with_lead} loading={loading} testid="ab-with-lead" />
+          </div>
+          {abandons.per_offer?.length > 0 ? (
+            <div className="overflow-x-auto" data-testid="abandons-table">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-[0.25em] text-[#0A0A0A]/55 border-b border-[#0A0A0A]/10">
+                    <th className="py-2 pr-4">Offre</th>
+                    <th className="py-2 px-2 text-right">Démarrages</th>
+                    <th className="py-2 px-2 text-right">Abandons</th>
+                    <th className="py-2 px-2 text-right">Taux</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {abandons.per_offer.map((o) => (
+                    <tr key={o.offer} className="border-b border-[#0A0A0A]/5 hover:bg-[#FAF7F2]/40">
+                      <td className="py-2 pr-4 truncate max-w-xs">{o.offer}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">{o.started}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-red-600">{o.abandoned}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">{o.abandon_rate_pct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-sm text-[#0A0A0A]/55">Pas d'abandons par offre identifiés.</div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

@@ -220,4 +220,144 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
             },
         }
 
+    # ── Top offers (most viewed / most converted) ─────────────────
+    @router.get("/top-offers")
+    async def top_offers(
+        period: str = Query(default="30d", pattern="^(7d|30d|90d|365d)$"),
+        user=Depends(get_current_staff),
+    ):
+        await require_role(user, ["admin", "manager", "manager_pole", "management_general"])
+        start_iso, end_iso = _period_bounds(period)
+        base = {"occurred_at": {"$gte": start_iso, "$lt": end_iso}}
+
+        # Aggregate offers across the funnel.
+        # We look for an offer slug/id in props.offer or props.offer_id or page (vitrine paths).
+        cursor = db["marketing_events"].aggregate([
+            {"$match": {**base, "event_type": {"$in": [
+                "view_offer", "start_booking", "purchase",
+            ]}}},
+            {"$addFields": {
+                "offer_key": {
+                    "$ifNull": [
+                        "$props.offer",
+                        {"$ifNull": ["$props.offer_id", "$page"]},
+                    ]
+                }
+            }},
+            {"$match": {"offer_key": {"$ne": None}}},
+            {"$group": {
+                "_id": {"offer": "$offer_key", "evt": "$event_type"},
+                "n": {"$sum": 1},
+                "visitors": {"$addToSet": "$visitor_id"},
+            }},
+        ])
+        agg: dict[str, dict[str, Any]] = {}
+        async for r in cursor:
+            offer = r["_id"]["offer"]
+            evt = r["_id"]["evt"]
+            agg.setdefault(offer, {"offer": offer, "view": 0, "start": 0, "purchase": 0, "visitors": set()})
+            if evt == "view_offer":
+                agg[offer]["view"] += r["n"]
+            elif evt == "start_booking":
+                agg[offer]["start"] += r["n"]
+            elif evt == "purchase":
+                agg[offer]["purchase"] += r["n"]
+            agg[offer]["visitors"].update(r["visitors"])
+
+        items = []
+        for v in agg.values():
+            view = v["view"]
+            purchase = v["purchase"]
+            start = v["start"]
+            unique = len(v["visitors"])
+            items.append({
+                "offer": v["offer"],
+                "views": view,
+                "starts": start,
+                "purchases": purchase,
+                "unique_visitors": unique,
+                "view_to_start_pct": round(start / view * 100, 1) if view else 0.0,
+                "start_to_purchase_pct": round(purchase / start * 100, 1) if start else 0.0,
+                "view_to_purchase_pct": round(purchase / view * 100, 1) if view else 0.0,
+            })
+        items.sort(key=lambda i: i["views"], reverse=True)
+        return {"period": period, "items": items[:30]}
+
+    # ── Abandon insights ─────────────────────────────────────────
+    @router.get("/abandons")
+    async def abandons(
+        period: str = Query(default="30d", pattern="^(7d|30d|90d|365d)$"),
+        user=Depends(get_current_staff),
+    ):
+        """Visitors who started booking but never purchased, with drop-off
+        by step. Returns step-level abandon rates plus a per-offer breakdown.
+        """
+        await require_role(user, ["admin", "manager", "manager_pole", "management_general"])
+        start_iso, end_iso = _period_bounds(period)
+        base = {"occurred_at": {"$gte": start_iso, "$lt": end_iso}}
+
+        # Visitor sets per step
+        started_visitors = set(
+            await db["marketing_events"].distinct(
+                "visitor_id", {**base, "event_type": "start_booking"}
+            )
+        )
+        lead_visitors = set(
+            await db["marketing_events"].distinct(
+                "visitor_id", {**base, "event_type": "submit_lead"}
+            )
+        )
+        purchased_visitors = set(
+            await db["marketing_events"].distinct(
+                "visitor_id", {**base, "event_type": "purchase"}
+            )
+        )
+
+        abandoned = started_visitors - purchased_visitors
+        abandoned_after_lead = (started_visitors & lead_visitors) - purchased_visitors
+
+        # Per-offer abandons (visitors who started_booking on offer X but never purchased)
+        per_offer_cursor = db["marketing_events"].aggregate([
+            {"$match": {**base, "event_type": "start_booking"}},
+            {"$addFields": {
+                "offer_key": {
+                    "$ifNull": [
+                        "$props.offer",
+                        {"$ifNull": ["$props.offer_id", "$page"]},
+                    ]
+                }
+            }},
+            {"$match": {"offer_key": {"$ne": None}}},
+            {"$group": {
+                "_id": "$offer_key",
+                "visitors": {"$addToSet": "$visitor_id"},
+            }},
+        ])
+        per_offer = []
+        async for r in per_offer_cursor:
+            vset = set(r["visitors"])
+            ab = vset - purchased_visitors
+            per_offer.append({
+                "offer": r["_id"],
+                "started": len(vset),
+                "abandoned": len(ab),
+                "abandon_rate_pct": round(len(ab) / len(vset) * 100, 1) if vset else 0.0,
+            })
+        per_offer.sort(key=lambda i: i["abandoned"], reverse=True)
+
+        return {
+            "period": period,
+            "summary": {
+                "started_booking": len(started_visitors),
+                "completed_purchase": len(purchased_visitors),
+                "abandoned": len(abandoned),
+                "abandon_rate_pct": (
+                    round(len(abandoned) / len(started_visitors) * 100, 1)
+                    if started_visitors else 0.0
+                ),
+                "abandoned_with_lead": len(abandoned_after_lead),
+            },
+            "per_offer": per_offer[:20],
+        }
+
     return router

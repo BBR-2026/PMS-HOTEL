@@ -140,6 +140,11 @@ DEFAULT_SECTIONS: dict[str, dict[str, Any]] = {
             {"src": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2hilix5p_BBR%20_SHOOT%202_29.jpg", "caption": "BBR Life"},
         ],
     },
+    "tracking": {
+        "gtm_container_id": "",
+        "gtm_enabled": False,
+        "notes": "Le conteneur Google Tag Manager pilote tous les pixels (Meta, GA4, Google Ads, TikTok). Format : GTM-XXXXXXX.",
+    },
 }
 
 

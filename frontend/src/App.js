@@ -52,6 +52,8 @@ import StaffMemberships from "./pages/staff/StaffMemberships";
 import StaffEventsPipeline from "./pages/staff/StaffEventsPipeline";
 import StaffUpsells from "./pages/staff/StaffUpsells";
 import StaffBlog from "./pages/staff/StaffBlog";
+import StaffMarketingCampaigns from "./pages/staff/StaffMarketingCampaigns";
+import StaffMediaLibrary from "./pages/staff/StaffMediaLibrary";
 import StaffSiteSettings from "./pages/staff/StaffSiteSettings";
 import BookingExtras from "./pages/BookingExtras";
 import PolePage from "./pages/PolePage";
@@ -88,6 +90,7 @@ import VitrineBlog from "./pages/vitrine/VitrineBlog";
 import VitrineBlogArticle from "./pages/vitrine/VitrineBlogArticle";
 import NotreHistoire from "./pages/vitrine/NotreHistoire";
 import VitrineDevis from "./pages/vitrine/VitrineDevis";
+import GTMLoader from "./components/GTMLoader";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
 // the same routing access as legacy manager (read access; writes are gated by
@@ -118,6 +121,7 @@ function App() {
     <BrowserRouter>
       <LanguageProvider>
         <StaffAuthProvider>
+          <GTMLoader />
           <Toaster
             theme="light"
             position="top-center"
@@ -192,6 +196,8 @@ function App() {
               <Route path="pole/:poleId" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPolePage /></RoleGuard>} />
               <Route path="paiements" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPayments /></RoleGuard>} />
               <Route path="marketing" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMarketing /></RoleGuard>} />
+              <Route path="marketing/campaigns" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMarketingCampaigns /></RoleGuard>} />
+              <Route path="marketing/media" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMediaLibrary /></RoleGuard>} />
               <Route path="leads" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLeads /></RoleGuard>} />
               <Route path="crm" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCRM /></RoleGuard>} />
               <Route path="memberships" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMemberships /></RoleGuard>} />
