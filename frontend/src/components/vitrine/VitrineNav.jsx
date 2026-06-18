@@ -20,6 +20,7 @@ const MENU_ITEMS = [
   { to: "/univers/evenementiel", label: "Événements" },
   { to: "/univers/corporate", label: "Corporate" },
   { to: "/boutique", label: "Boutique" },
+  { to: "/memberships", label: "Memberships" },
   { to: "/contact", label: "Contact" },
   { to: "/reserver", label: "Réservation", highlight: true },
 ];

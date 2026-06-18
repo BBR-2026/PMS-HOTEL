@@ -11659,4 +11659,37 @@ app.include_router(
     )
 )
 
+# Phase B Revenue Engine — CRM 360° (customers + segments + timeline)
+from routers import crm as _crm_mod  # noqa: E402
+
+app.include_router(
+    _crm_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
+# Phase B Revenue Engine — Memberships (Sunset / Beach / Royal cards)
+from routers import memberships as _memberships_mod  # noqa: E402
+
+app.include_router(
+    _memberships_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
+# Phase B Revenue Engine — Upsell / Cross-sell catalog
+from routers import upsells as _upsells_mod  # noqa: E402
+
+app.include_router(
+    _upsells_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

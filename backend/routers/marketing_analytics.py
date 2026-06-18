@@ -39,7 +39,7 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
         period: str = Query(default="30d", pattern="^(7d|30d|90d|365d)$"),
         user=Depends(get_current_staff),
     ):
-        require_role(user, ["admin", "manager", "manager_pole", "management_general"])
+        await require_role(user, ["admin", "manager", "manager_pole", "management_general"])
         start_iso, end_iso = _period_bounds(period)
         base = {"occurred_at": {"$gte": start_iso, "$lt": end_iso}}
 

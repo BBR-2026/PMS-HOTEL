@@ -175,7 +175,7 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
         limit: int = Query(default=100, ge=1, le=500),
         user=Depends(get_current_staff),
     ):
-        require_role(user, ["admin", "manager", "manager_pole", "management_general"])
+        await require_role(user, ["admin", "manager", "manager_pole", "management_general"])
         filt: dict[str, Any] = {}
         if status:
             filt["status"] = status
@@ -196,7 +196,7 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
         body: dict,
         user=Depends(get_current_staff),
     ):
-        require_role(user, ["admin", "manager", "manager_pole"])
+        await require_role(user, ["admin", "manager", "manager_pole"])
         allowed = {"status", "internal_notes"}
         updates = {k: v for k, v in body.items() if k in allowed}
         if not updates:
@@ -216,7 +216,7 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
         limit: int = Query(default=200, ge=1, le=1000),
         user=Depends(get_current_staff),
     ):
-        require_role(user, ["admin", "manager", "manager_pole", "management_general"])
+        await require_role(user, ["admin", "manager", "manager_pole", "management_general"])
         filt: dict[str, Any] = {}
         if status:
             filt["status"] = status
@@ -242,7 +242,7 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
 
     @router.get("/api/staff/newsletter-subscribers/export.csv")
     async def export_newsletter_csv(user=Depends(get_current_staff)):
-        require_role(user, ["admin", "manager", "manager_pole", "management_general"])
+        await require_role(user, ["admin", "manager", "manager_pole", "management_general"])
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow(["email", "first_name", "source", "status",

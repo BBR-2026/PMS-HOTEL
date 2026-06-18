@@ -34,6 +34,10 @@ import {
   ClipboardList,
   Inbox,
   BarChart3,
+  Crown,
+  CreditCard,
+  KanbanSquare,
+  ShoppingBag,
 } from "lucide-react";
 
 // Role-based visibility helper
@@ -68,6 +72,7 @@ const NAV = [
   { key: "reservations_en_attente", to: "/staff/reservations/en-attente", icon: AlertTriangle, label: "Réservations en attente", roles: R_RES },
   { key: "paiements", to: "/staff/paiements", icon: Wallet, label: "Paiements", roles: R_MGMT },
   { key: "clients", to: "/staff/clients", icon: Users, label: "Clients", roles: R_MGMT },
+  { key: "crm", to: "/staff/crm", icon: Crown, label: "CRM 360°", roles: R_MGMT },
   { key: "revenue", to: "/staff/revenue", icon: TrendingUp, label: "Chiffre d'affaires", roles: R_MGMT },
   { key: "rapports", to: "/staff/rapports", icon: FileBarChart, label: "Rapports personnalisés", roles: R_DASH },
   { key: "passagers", to: "/staff/passagers", icon: Users, label: "Passagers (registre)", roles: R_DASH },
@@ -81,6 +86,9 @@ const NAV = [
   { section: "Administration", roles: R_ADMIN },
   { key: "notifications", to: "/staff/notifications", icon: Bell, label: "Notifications SMS/WhatsApp", roles: R_MGMT },
   { key: "marketing", to: "/staff/marketing", icon: BarChart3, label: "Marketing & Acquisition", roles: R_MGMT },
+  { key: "memberships", to: "/staff/memberships", icon: CreditCard, label: "Memberships — BBR Cards", roles: R_MGMT },
+  { key: "events_pipeline", to: "/staff/events-pipeline", icon: KanbanSquare, label: "Pipeline événementiel", roles: R_MGMT },
+  { key: "upsells", to: "/staff/upsells", icon: ShoppingBag, label: "Upsells & Cross-sell", roles: R_MGMT },
   { key: "leads", to: "/staff/leads", icon: Inbox, label: "Inbox & Leads", roles: R_MGMT },
   { key: "campaigns", to: "/staff/campaigns", icon: Megaphone, label: "Campagnes e-mail", roles: R_MGMT },
   { key: "feedback", to: "/staff/feedback", icon: MessageSquare, label: "Retour expérience", roles: R_MGMT },
