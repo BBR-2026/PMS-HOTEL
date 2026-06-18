@@ -108,6 +108,17 @@ SEED_OFFERS = [
         "max_per_booking": 1,
         "active": True,
     },
+    {
+        "id": "boat_tour_sunset",
+        "name": "Croisière sunset privée",
+        "category": "experience",
+        "description": "Tour en pinasse au coucher de soleil, cocktails inclus.",
+        "price_xof": 120_000,
+        "image_url": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80",
+        "stock_per_day": 6,
+        "max_per_booking": 1,
+        "active": True,
+    },
 ]
 
 

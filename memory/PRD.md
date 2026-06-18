@@ -2,18 +2,24 @@
 
 ## Latest update — 2026-06-18
 
-### Phase B Revenue Engine (partial — Marketing + Inbox shipped)
-**Status: ✅ Backend 19/19 pytest + Frontend 100% (iteration_32.json)**
-- Public Vitrine completed : `/boutique` (waitlist signup) + `/contact` (working form).
-- New backend routers : `routers/leads.py` (contact + newsletter) and `routers/marketing_analytics.py` (dashboard).
-- New back-office pages : `/staff/marketing` (ROI cockpit) and `/staff/leads` (inbox + newsletter export).
-- 2 new Mongo collections: `contact_messages`, `newsletter_subscribers`.
-- Full changelog: `/app/memory/CHANGELOG.md`
+### Phase B Revenue Engine — Continuation (CRM + Memberships + Events + Upsell)
+**Status: ✅ Backend 23/23 pytest + Frontend 100% (iteration_33.json)**
+- 4 nouveaux modules livrés : CRM 360°, Memberships (BBR Cards), Pipeline événementiel, Upsell/Cross-sell.
+- 3 nouveaux backend routers : `crm.py`, `memberships.py`, `upsells.py`.
+- 5 nouvelles pages frontend : `StaffCRM`, `VitrineMemberships`, `StaffMemberships`, `StaffEventsPipeline`, `BookingExtras`, `StaffUpsells`.
+- 4 nouvelles collections Mongo : `membership_plans`, `memberships`, `upsell_offers`, `upsell_selections`.
+- Sidebar staff : 4 nouvelles entrées sous Administration (CRM, Memberships, Pipeline événementiel, Upsells).
+- Vitrine publique : Menu enrichi de l'entrée Memberships.
 
-### Pending (P0/P1)
-- **P0 — Phase B continuation** : CRM 360° client view (link `marketing_events.visitor_id` → `customers`), Memberships, Événementiel pipeline.
-- **P1 — Option C, Booking Engine Phase 2** : Upsell / Cross-sell, multi-gateway, unified availability.
-- **P2 — server.py modularization** (still 11 640 lines).
+### Phase B Revenue Engine (initial — iteration 32)
+- Public Vitrine completed : `/boutique` (waitlist signup) + `/contact` (working form).
+- Marketing analytics dashboard + Inbox & Leads back-office.
+- Voir `/app/memory/CHANGELOG.md` pour l'historique détaillé.
+
+### Pending (P1)
+- **Booking Engine Phase 2 (Option C)** : Multi-gateway (Stripe + PayPal), disponibilité unifiée, injection Upsell dans BookingTunnel.
+- **Phase C — Automation** : Meta CAPI, emails automatisés, retargeting.
+- **P2 — server.py modularization** (11 680 lignes).
 
 ---
 
