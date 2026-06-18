@@ -215,4 +215,148 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
             } if plan else None,
         }
 
+    # ── Revenue Forecast Simulator (P0 — Vague 4 enhancement) ──────
+    # Catalog: offer_key → (base_price_XOF, daily_capacity, universe).
+    # Capacities are rule-of-thumb defaults — staff can re-tune via the UI.
+    OFFER_CATALOG: dict[str, dict[str, Any]] = {
+        # Beach Club
+        "beach_club.pass_day": {"base_price": 25000, "capacity": 60, "universe": "beach_club", "label": "Day Pass"},
+        "beach_club.sunset":   {"base_price": 35000, "capacity": 40, "universe": "beach_club", "label": "Sunset Experience"},
+        "beach_club.brunch":   {"base_price": 30000, "capacity": 50, "universe": "beach_club", "label": "B Brunch"},
+        # Hébergement
+        "hebergement.chambre_exclusive": {"base_price": 120000, "capacity": 12, "universe": "hebergement", "label": "Chambre Exclusive"},
+        "hebergement.suite_jardin":      {"base_price": 180000, "capacity": 6,  "universe": "hebergement", "label": "Suite Jardin"},
+        "hebergement.suite_lagune":      {"base_price": 250000, "capacity": 4,  "universe": "hebergement", "label": "Suite Lagune"},
+        # Le Kaai
+        "le_kaai.dejeuner": {"base_price": 22000, "capacity": 40, "universe": "le_kaai", "label": "Déjeuner"},
+        "le_kaai.diner":    {"base_price": 35000, "capacity": 50, "universe": "le_kaai", "label": "Dîner"},
+        # Activités
+        "activites.jet_ski": {"base_price": 45000, "capacity": 8, "universe": "activites_events", "label": "Jet Ski"},
+        "activites.paddle":  {"base_price": 12000, "capacity": 12, "universe": "activites_events", "label": "Paddle"},
+        "activites.kayak":   {"base_price": 8000,  "capacity": 12, "universe": "activites_events", "label": "Kayak"},
+    }
+
+    @router.get("/api/staff/revenue/forecast")
+    async def revenue_forecast(
+        days: int = Query(default=30, ge=7, le=365),
+        occupation_pct: float = Query(default=60.0, ge=0, le=100,
+                                      description="Default occupation rate (overridable per offer)"),
+        campaign_lift_max_pct: float = Query(default=25.0, ge=0, le=100,
+                                             description="Cap on the campaign-driven uplift"),
+        budget_to_lift_ratio: float = Query(default=0.0001, ge=0,
+                                            description="Lift % per XOF of active daily budget — heuristic"),
+        # Optional staff overrides (JSON-encoded query strings would be ugly; we
+        # keep this endpoint stateless and let the UI POST tweaked numbers via
+        # the same query if needed in the future).
+        user=Depends(get_current_staff),
+    ):
+        from datetime import date as _date, timedelta as _td
+        await require_role(user, ["admin", "manager", "manager_pole", "management_general"])
+
+        today = _date.today()
+        end   = today + _td(days=days)
+
+        # 1) Cache rate plans for the period (filter by date overlap).
+        plans_by_offer: dict[str, list[dict]] = {}
+        async for p in db["rate_plans"].find({"active": True}):
+            plans_by_offer.setdefault(p["offer_key"], []).append(p)
+
+        # 2) Cache active campaigns per universe with their average daily budgets.
+        camp_by_universe: dict[str, float] = {}
+        camp_count_by_universe: dict[str, int] = {}
+        async for c in db["marketing_campaigns"].find({"status": "active"}):
+            uni = c.get("universe") or "unknown"
+            camp_by_universe[uni] = camp_by_universe.get(uni, 0.0) + float(c.get("budget_daily") or 0)
+            camp_count_by_universe[uni] = camp_count_by_universe.get(uni, 0) + 1
+
+        # 3) Walk through every offer and compute the projection.
+        offers_out: list[dict[str, Any]] = []
+        for offer_key, meta in OFFER_CATALOG.items():
+            base = float(meta["base_price"])
+            uni  = meta["universe"]
+            cap  = int(meta["capacity"])
+
+            # Average adjusted price across the date window
+            adj_sum = 0.0
+            promo_hits = 0
+            event_hits = 0
+            for i in range(days):
+                d = today + _td(days=i)
+                # Find matching non-promo plans (promo is customer-driven, not forecast)
+                best = None
+                for p in plans_by_offer.get(offer_key, []):
+                    if p.get("type") == "promo":
+                        promo_hits += 1
+                        continue
+                    if _matches(p, d.isoformat(), None):
+                        if best is None or TYPE_PRIORITY.get(p["type"], 0) > TYPE_PRIORITY.get(best["type"], 0):
+                            best = p
+                            if p.get("type") == "event":
+                                event_hits += 1
+                if best is None:
+                    adj_sum += base
+                else:
+                    adj_sum += _apply(best.get("adjustment_kind", "percent"), float(best.get("adjustment_value", 0)), base)
+            avg_price = adj_sum / days
+
+            # Volume & lift
+            occupation = occupation_pct / 100.0
+            daily_volume = cap * occupation
+            campaign_budget = camp_by_universe.get(uni, 0.0)
+            lift_pct = min(campaign_lift_max_pct, campaign_budget * budget_to_lift_ratio)
+            lift_factor = 1 + lift_pct / 100.0
+
+            gross = daily_volume * avg_price * days
+            projected_revenue = gross * lift_factor
+
+            offers_out.append({
+                "offer_key": offer_key,
+                "label": meta["label"],
+                "universe": uni,
+                "base_price": base,
+                "avg_adjusted_price": round(avg_price, 2),
+                "capacity_daily": cap,
+                "occupation_pct": occupation_pct,
+                "estimated_volume": round(daily_volume * days, 1),
+                "campaign_budget_daily": campaign_budget,
+                "campaign_lift_pct": round(lift_pct, 2),
+                "projected_revenue": round(projected_revenue, 2),
+                "gross_before_lift": round(gross, 2),
+                "active_campaigns": camp_count_by_universe.get(uni, 0),
+                "promo_days": promo_hits,
+                "event_days": event_hits,
+            })
+
+        # 4) Aggregate per universe.
+        by_universe: dict[str, dict[str, Any]] = {}
+        for o in offers_out:
+            u = o["universe"]
+            g = by_universe.setdefault(u, {
+                "universe": u, "revenue": 0.0, "volume": 0.0,
+                "active_campaigns": camp_count_by_universe.get(u, 0),
+                "campaign_budget_daily": camp_by_universe.get(u, 0.0),
+                "offer_count": 0,
+            })
+            g["revenue"] += o["projected_revenue"]
+            g["volume"]  += o["estimated_volume"]
+            g["offer_count"] += 1
+
+        return {
+            "period_days": days,
+            "horizon_start": today.isoformat(),
+            "horizon_end": end.isoformat(),
+            "assumptions": {
+                "occupation_pct": occupation_pct,
+                "campaign_lift_max_pct": campaign_lift_max_pct,
+                "budget_to_lift_ratio": budget_to_lift_ratio,
+            },
+            "total": {
+                "revenue": round(sum(o["projected_revenue"] for o in offers_out), 2),
+                "gross_before_lift": round(sum(o["gross_before_lift"] for o in offers_out), 2),
+                "volume": round(sum(o["estimated_volume"] for o in offers_out), 1),
+            },
+            "by_universe": sorted(by_universe.values(), key=lambda x: -x["revenue"]),
+            "offers": sorted(offers_out, key=lambda x: -x["projected_revenue"]),
+        }
+
     return router

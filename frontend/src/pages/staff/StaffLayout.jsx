@@ -91,6 +91,7 @@ const NAV = [
   { key: "marketing_campaigns", to: "/staff/marketing/campaigns", icon: Megaphone, label: "Campagnes Marketing", roles: R_MGMT },
   { key: "marketing_acquisition", to: "/staff/marketing/acquisition", icon: TrendingUp, label: "Moteur d'acquisition", roles: R_MGMT },
   { key: "revenue_rate_plans", to: "/staff/revenue/rate-plans", icon: TrendingUp, label: "Revenue Management", roles: R_MGMT },
+  { key: "revenue_forecast", to: "/staff/revenue/forecast", icon: TrendingUp, label: "Revenue Forecast", roles: R_MGMT },
   { key: "ota", to: "/staff/ota", icon: Globe, label: "OTA & Channel Manager", roles: R_MGMT },
   { key: "media_library", to: "/staff/marketing/media", icon: Camera, label: "Médiathèque", roles: R_MGMT },
   { key: "memberships", to: "/staff/memberships", icon: CreditCard, label: "Memberships — BBR Cards", roles: R_MGMT },

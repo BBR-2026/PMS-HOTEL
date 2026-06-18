@@ -56,6 +56,7 @@ import StaffMarketingCampaigns from "./pages/staff/StaffMarketingCampaigns";
 import StaffMediaLibrary from "./pages/staff/StaffMediaLibrary";
 import StaffAcquisitionEngine from "./pages/staff/StaffAcquisitionEngine";
 import StaffRatePlans from "./pages/staff/StaffRatePlans";
+import StaffRevenueForecast from "./pages/staff/StaffRevenueForecast";
 import StaffOTA from "./pages/staff/StaffOTA";
 import StaffSiteSettings from "./pages/staff/StaffSiteSettings";
 import BookingExtras from "./pages/BookingExtras";
@@ -203,6 +204,7 @@ function App() {
               <Route path="marketing/acquisition" element={<RoleGuard allowed={MANAGER_PLUS}><StaffAcquisitionEngine /></RoleGuard>} />
               <Route path="marketing/media" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMediaLibrary /></RoleGuard>} />
               <Route path="revenue/rate-plans" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRatePlans /></RoleGuard>} />
+              <Route path="revenue/forecast" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRevenueForecast /></RoleGuard>} />
               <Route path="ota" element={<RoleGuard allowed={MANAGER_PLUS}><StaffOTA /></RoleGuard>} />
               <Route path="leads" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLeads /></RoleGuard>} />
               <Route path="crm" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCRM /></RoleGuard>} />

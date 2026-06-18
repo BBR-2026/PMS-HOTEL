@@ -2,6 +2,15 @@
 
 ## Latest update — 2026-06-18
 
+### Phase C Revenue Engine — Vague 4 + Forecast Simulator (iteration 48 + enhancement)
+
+**Revenue Forecast Simulator** :
+- Endpoint `GET /api/staff/revenue/forecast?days=30&occupation_pct=60&campaign_lift_max_pct=25&budget_to_lift_ratio=0.0001`
+- Catalogue 11 offres (3 Beach Club + 3 Hébergement + 2 Le Kaai + 3 Activités) avec capacity_daily et base_price configurables côté backend (constante OFFER_CATALOG dans revenue_management.py).
+- Calcul : pour chaque offre × jour de l'horizon, applique le meilleur rate plan actif (event > seasonal > weekend, hors promo). Prix moyen × capacité × occupation × jours × (1 + lift campagne). Le lift = `budget_daily × budget_to_lift_ratio`, capé à `campaign_lift_max_pct`.
+- Frontend `/staff/revenue/forecast` : 5 chips période (7/30/60/90/365j), 3 sliders d'hypothèses temps réel, 4 KPI tiles (CA projeté, CA brut, volume, uplift %), graphique barres horizontales par univers, table détaillée 11 offres (prix base / prix ajusté / volume / lift / CA projeté).
+- Validé live : 202M XOF sur 30j @60% occupation, 606M XOF sur 90j (×3 cohérent), Day Pass voit +5.3% adj price (weekends +20%).
+
 ### Phase C Revenue Engine — Vague 4 (iteration 48) — Activation Bout-en-Bout
 **Status: ✅ Backend 9/9 pytest + Frontend compile clean (BookingTunnel + StaffOTA)**
 
