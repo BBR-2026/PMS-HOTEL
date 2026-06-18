@@ -433,17 +433,20 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
     return router
 
 
-async def auto_push_all_mappings(db, *, source: str = "scheduler") -> dict:
+async def auto_push_all_mappings(db, *, source: str = "scheduler", force: bool = False) -> dict:
     """Push the next 30-day availability window for every enabled mapping.
 
     Booking limit defaults to 5 — the real value should ideally come from a
     PMS inventory query, but for sandbox / Phase 4 we just keep a flat
     limit and let staff override per push from the UI.
+
+    When ``force=True`` the caller bypasses the ``auto_sync_enabled`` flag —
+    used by the on-booking trigger which is gated by its own flag.
     """
     from datetime import date as _date, timedelta as _td
 
     cfg_doc = await db["ota_config"].find_one({"_id": "siteminder"}) or {}
-    if not cfg_doc.get("auto_sync_enabled"):
+    if not force and not cfg_doc.get("auto_sync_enabled"):
         return {"skipped": "disabled"}
 
     cfg = sm_mod.SMConfig(
@@ -510,6 +513,6 @@ async def trigger_sync_on_booking_change(db, *, reason: str = "direct_booking") 
     if not cfg_doc.get("auto_sync_on_booking"):
         return
     try:
-        await asyncio.shield(auto_push_all_mappings(db, source=reason))
+        await asyncio.shield(auto_push_all_mappings(db, source=reason, force=True))
     except Exception as exc:  # noqa: BLE001
         log.warning("trigger_sync_on_booking_change failed: %s", exc)

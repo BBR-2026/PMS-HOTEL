@@ -2996,6 +2996,19 @@ async def pay_booking(booking_id: str, body: PayBooking):
                 )
             except Exception:
                 pass
+        else:
+            try:
+                pinasse_entry["ticket_image"] = make_cash_receipt_image(
+                    offer_id="pinasse",
+                    offer_name="Traversée pinasse — Le Kaai",
+                    date_iso=primary_date,
+                    boat_time=booking.get("boat_time", ""),
+                    owner_name=owner,
+                    ref_code=token_short,
+                    lang="fr",
+                )
+            except Exception:
+                pass
         qr_codes.append(pinasse_entry)
 
     paid_at = now_iso()

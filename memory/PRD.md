@@ -2,6 +2,31 @@
 
 ## Latest update — 2026-06-18
 
+### Phase C Revenue Engine — Vague 4 (iteration 48) — Activation Bout-en-Bout
+**Status: ✅ Backend 9/9 pytest + Frontend compile clean (BookingTunnel + StaffOTA)**
+
+**Bloc A — BookingTunnel ↔ Revenue Management** :
+- `BookingCreate` accepte `promo_code` (server.py). À la création, le booking résout le rate plan via `revenue_management.resolve_offer_price()` ; total_amount remplacé par le prix ajusté ; `rate_plan_applied` (plan_id, name, type, discount, base_total) + `promo_code_used` persistés.
+- BookingTunnel step 4 (récap) : nouvelle UI `data-testid="promo-block"` avec input `promo-input` + bouton `promo-apply`, pill verte "✓ Plan Name" `promo-applied`, erreur `promo-error`, prix initial barré `promo-prev-total`. Auto-application depuis `?promo=…` dans l'URL.
+- Quote endpoint `GET /api/revenue/quote` testé : SUNNY10 weekday → 9000 from base 10000, weekend +20% via quote.
+
+**Bloc B — Auto-sync OTA bidirectionnel** :
+- 3 nouveaux champs config : `auto_sync_enabled` (cron 15min), `auto_sync_on_booking` (anti-overbooking), `auto_sync_default_limit` (default 5).
+- APScheduler `_ota_auto_sync_job` lance `auto_push_all_mappings()` toutes les 15 min.
+- Hook `asyncio.create_task(trigger_sync_on_booking_change())` après `db.bookings.insert_one()` — déclenche une push immédiate gratée par `auto_sync_on_booking` (corrigé : `force=True` propagé pour découpler du flag cron).
+- UI Config OTA : 3 nouveaux contrôles `cfg-auto-sync`, `cfg-auto-sync-booking`, `cfg-default-limit` dans la section "Auto-synchronisation".
+
+**Bloc C — Le Kaai pinasse pass** :
+- Après la génération des QR adultes, un QR séparé de type `pinasse` est ajouté si `crossing_fee_amount > 0 AND offer_type='le_kaai'`. Payload JSON `{type:"pinasse",token,ref,pax}`, ticket_image généré via `make_ticket_image` (paiement carte) ou `make_cash_receipt_image` (cash — fallback ajouté post-feedback).
+- Restaurant et équipage pinasse peuvent scanner indépendamment leurs QR.
+
+**Bloc D — Refactor server.py** : DÉFÉRÉ explicitement (server.py = 11 929 lignes — extraction `routes/bookings.py` + `routes/payments.py` recommandée mais hors scope cette session pour préserver la qualité des blocs A/B/C).
+
+### Pending — Phase D (P1)
+- Activation production SiteMinder (sur credentials prod).
+- Refactor `server.py` (Bloc D — extraire bookings/payments/qr routers).
+- Multi-gateway paiements (Stripe + PayPal).
+
 ### Phase C Revenue Engine — Vague 3 (iteration 47)
 **Status: ✅ Backend 13/13 pytest + Frontend 100% (5 tabs + 4 regressions + mobile)**
 
