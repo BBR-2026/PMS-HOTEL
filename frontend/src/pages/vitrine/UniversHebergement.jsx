@@ -34,7 +34,7 @@ export default function UniversHebergement() {
           price: "75 000 XOF",
           priceSuffix: "/ nuit",
           image: "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "Réserver" },
+          cta: { to: "/booking/hebergement?room=chambre_exclusive", label: "Réserver cette chambre" },
         },
         {
           testId: "suite-jardin",
@@ -50,7 +50,7 @@ export default function UniversHebergement() {
           price: "135 000 XOF",
           priceSuffix: "/ nuit",
           image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "Réserver" },
+          cta: { to: "/booking/hebergement?room=suite_jardin", label: "Réserver cette suite" },
           badge: "Populaire",
         },
         {
@@ -67,7 +67,7 @@ export default function UniversHebergement() {
           price: "245 000 XOF",
           priceSuffix: "/ nuit",
           image: "https://images.unsplash.com/photo-1582610116397-edb318620f90?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/reserver", label: "Réserver" },
+          cta: { to: "/booking/hebergement?room=suite_lagune", label: "Réserver cette suite" },
           badge: "Signature",
         },
       ]}

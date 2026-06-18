@@ -85,6 +85,7 @@ import VitrineContact from "./pages/vitrine/VitrineContact";
 import VitrineMemberships from "./pages/vitrine/VitrineMemberships";
 import VitrineBlog from "./pages/vitrine/VitrineBlog";
 import VitrineBlogArticle from "./pages/vitrine/VitrineBlogArticle";
+import NotreHistoire from "./pages/vitrine/NotreHistoire";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
 // the same routing access as legacy manager (read access; writes are gated by
@@ -144,6 +145,7 @@ function App() {
               <Route path="/booking-extras/:ref" element={<BookingExtras />} />
               <Route path="/blog" element={<VitrineBlog />} />
               <Route path="/blog/:slug" element={<VitrineBlogArticle />} />
+              <Route path="/notre-histoire" element={<NotreHistoire />} />
               {/* iter-55 — Tunnel de réservation unifié sous la vitrine */}
               <Route path="/reserver" element={<VitrineLanding />} />
               <Route path="/pole/:poleId" element={<PolePage />} />

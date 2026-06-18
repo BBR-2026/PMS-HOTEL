@@ -1,8 +1,10 @@
 import UniversPage from "../../components/vitrine/UniversPage";
+import CorporateQuoteForm from "../../components/vitrine/CorporateQuoteForm";
 import { Briefcase, Users, Calendar } from "lucide-react";
 
 export default function UniversCorporate() {
   return (
+    <>
     <UniversPage
       testId="univers-corporate"
       hero={{
@@ -89,9 +91,11 @@ export default function UniversCorporate() {
         image: "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=2400&q=85",
         title: "Faites souffler vos équipes.",
         body: "Recevez un devis personnalisé sous 24h. Visite des espaces sur rendez-vous.",
-        to: "/univers/corporate#contact",
+        to: "#devis",
         label: "Demander un devis",
       }}
     />
+    <CorporateQuoteForm />
+    </>
   );
 }

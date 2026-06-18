@@ -14,7 +14,12 @@ export default function VitrineFooter() {
 
         {/* Top — brand + tagline */}
         <div className="text-center pb-16 border-b border-[#0A0A0A]/8">
-          <div className="font-serif text-4xl md:text-5xl font-light mb-3">BBR</div>
+          <img
+            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"
+            alt="Boulay Beach Resort"
+            className="h-20 md:h-24 w-auto mx-auto logo-gold mb-3"
+            data-testid="footer-logo"
+          />
           <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#0A0A0A]/55">
             Boulay  ·  Beach  ·  Resort
           </div>

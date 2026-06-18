@@ -44,6 +44,7 @@ const FULL_MENU_ITEMS = [
   { to: "/univers/evenementiel", label: "Événements" },
   { to: "/univers/corporate", label: "Corporate" },
   { to: "/univers/activites", label: "Activités" },
+  { to: "/notre-histoire", label: "Notre histoire" },
   { to: "/memberships", label: "Memberships" },
   { to: "/boutique", label: "Boutique" },
   { to: "/blog", label: "Journal" },
@@ -140,19 +141,40 @@ export default function VitrineNav() {
           {/* Spacer for mobile to balance the centered logo */}
           <div className="flex-1 lg:hidden" />
 
-          {/* RÉSERVER button — gold (right) */}
+          {/* RÉSERVER button — gold (right). On the landing it smoothly scrolls
+              to the #univers section (so guest can pick the offer first).
+              Anywhere else, it navigates to /reserver (which shows the Vitrine). */}
           <div className="flex items-center justify-end ml-auto lg:ml-0">
-            <Link
-              to="/reserver"
-              className={`inline-flex items-center px-4 md:px-5 lg:px-6 py-2 md:py-2.5 text-[0.62rem] md:text-[0.7rem] tracking-[0.3em] uppercase font-medium transition-all duration-300 border ${
-                onHero
-                  ? "text-white border-white hover:bg-[#B8922A] hover:border-[#B8922A]"
-                  : "text-white bg-[#B8922A] border-[#B8922A] hover:bg-[#D4AF37] hover:border-[#D4AF37]"
-              }`}
-              data-testid="vitrine-cta-reserver"
-            >
-              Réserver
-            </Link>
+            {loc.pathname === "/" ? (
+              <a
+                href="#univers"
+                onClick={(e) => {
+                  e.preventDefault();
+                  const el = document.getElementById("univers");
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className={`inline-flex items-center px-4 md:px-5 lg:px-6 py-2 md:py-2.5 text-[0.62rem] md:text-[0.7rem] tracking-[0.3em] uppercase font-medium transition-all duration-300 border ${
+                  onHero
+                    ? "text-white border-white hover:bg-[#B8922A] hover:border-[#B8922A]"
+                    : "text-white bg-[#B8922A] border-[#B8922A] hover:bg-[#D4AF37] hover:border-[#D4AF37]"
+                }`}
+                data-testid="vitrine-cta-reserver"
+              >
+                Réserver
+              </a>
+            ) : (
+              <Link
+                to="/#univers"
+                className={`inline-flex items-center px-4 md:px-5 lg:px-6 py-2 md:py-2.5 text-[0.62rem] md:text-[0.7rem] tracking-[0.3em] uppercase font-medium transition-all duration-300 border ${
+                  onHero
+                    ? "text-white border-white hover:bg-[#B8922A] hover:border-[#B8922A]"
+                    : "text-white bg-[#B8922A] border-[#B8922A] hover:bg-[#D4AF37] hover:border-[#D4AF37]"
+                }`}
+                data-testid="vitrine-cta-reserver"
+              >
+                Réserver
+              </Link>
+            )}
           </div>
         </div>
       </header>

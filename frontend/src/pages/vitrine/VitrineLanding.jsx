@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Instagram, ArrowRight } from "lucide-react";
+import { Instagram, ArrowRight, Check } from "lucide-react";
 import { trackEvent } from "../../lib/tracking";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
@@ -91,14 +91,26 @@ export default function VitrineLanding() {
     <div data-testid="vitrine-landing" className="bg-white text-[#0A0A0A]">
       {/* ─── HERO ───────────────────────────────────────── */}
       <section className="relative w-full h-screen min-h-[640px] overflow-hidden">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage:
-              "url(https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/0frg347a_BBR%20_SHOOT%202_139.jpg.jpeg)",
-          }}
-        />
-        <div className="absolute inset-0 bg-black/30" />
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          className="absolute inset-0 w-full h-full object-cover"
+          data-testid="hero-video"
+          poster="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/0frg347a_BBR%20_SHOOT%202_139.jpg.jpeg"
+        >
+          <source
+            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4d9005uu_IMG_4425.MOV"
+            type="video/quicktime"
+          />
+          <source
+            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4d9005uu_IMG_4425.MOV"
+            type="video/mp4"
+          />
+        </video>
+        <div className="absolute inset-0 bg-black/40" />
         <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6">
           <div className="text-[0.7rem] tracking-[0.55em] uppercase text-white/80 mb-10">
             Île Boulay  ·  Abidjan
@@ -126,7 +138,7 @@ export default function VitrineLanding() {
       </section>
 
       {/* ─── NOS UNIVERS — 2 per row vertical rectangles ─────── */}
-      <section className="py-28 md:py-40 bg-white">
+      <section id="univers" className="py-28 md:py-40 bg-white" data-testid="univers-section">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16 md:mb-20">
             <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-6">
@@ -364,6 +376,9 @@ export default function VitrineLanding() {
         </section>
       )}
 
+      {/* ─── NEWSLETTER ──────────────────────────────────── */}
+      <NewsletterSection />
+
       {/* ─── FINAL — RÉSERVATION ────────────────────────── */}
       <section className="relative py-32 md:py-44 overflow-hidden">
         <div
@@ -437,17 +452,104 @@ function UniversCard({ u }) {
             Découvrir
             <ArrowRight size={11} />
           </Link>
-          <Link
-            to={`/booking/${u.bookOfferId}`}
-            onClick={() => trackEvent("start_booking", { source: "univers_card", offer: u.bookOfferId })}
-            className="inline-flex items-center gap-2 text-[0.65rem] tracking-[0.35em] uppercase text-[#B8922A] hover:text-[#D4AF37] transition-colors"
-            data-testid={`univers-book-${u.to.split("/").pop()}`}
-          >
-            Réserver
-            <ArrowRight size={11} />
-          </Link>
         </div>
       </div>
     </article>
+  );
+}
+
+/* ─── Newsletter section ────────────────────────────────────── */
+function NewsletterSection() {
+  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${BACKEND}/api/newsletter-subscribers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          first_name: firstName.trim() || null,
+          source: "landing_newsletter",
+        }),
+      });
+      if (!res.ok) throw new Error("network");
+      trackEvent("submit_lead", { channel: "newsletter", source: "landing" });
+      setDone(true);
+    } catch {
+      setError("Impossible d'enregistrer votre email. Réessayez dans un instant.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="relative py-24 md:py-32 bg-[#FAF7F2]" data-testid="landing-newsletter">
+      <div className="max-w-2xl mx-auto px-6 text-center">
+        <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-5">
+          · Newsletter ·
+        </div>
+        <h2 className="font-serif font-light text-3xl md:text-5xl leading-[1.1] text-[#0A0A0A] mb-8">
+          Restez en lien avec l'île.
+        </h2>
+        <p className="text-base md:text-lg text-[#0A0A0A]/65 leading-relaxed font-light mb-12 max-w-xl mx-auto">
+          Nos prochaines soirées, les nouveautés du Kaai, les offres réservées
+          aux abonnés. Une fois par mois, rien de plus.
+        </p>
+
+        {done ? (
+          <div
+            className="inline-flex items-center gap-3 border border-[#B8922A] px-8 py-5 text-[#B8922A]"
+            data-testid="newsletter-success"
+          >
+            <Check size={18} strokeWidth={1.5} />
+            <span className="text-sm tracking-[0.2em] uppercase">
+              Merci, vous êtes inscrit.
+            </span>
+          </div>
+        ) : (
+          <form onSubmit={onSubmit} className="space-y-4 max-w-lg mx-auto" data-testid="newsletter-form">
+            <input
+              type="text"
+              placeholder="Prénom (facultatif)"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              className="w-full bg-transparent border-b border-[#0A0A0A]/25 py-4 px-1 text-[#0A0A0A] placeholder-[#0A0A0A]/40 focus:outline-none focus:border-[#B8922A] transition-colors text-center"
+              data-testid="newsletter-firstname"
+              maxLength={80}
+            />
+            <input
+              type="email"
+              required
+              placeholder="Adresse email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-transparent border-b border-[#0A0A0A]/25 py-4 px-1 text-[#0A0A0A] placeholder-[#0A0A0A]/40 focus:outline-none focus:border-[#B8922A] transition-colors text-center"
+              data-testid="newsletter-email"
+            />
+            {error && (
+              <p className="text-sm text-[#C24226] pt-2" data-testid="newsletter-error">{error}</p>
+            )}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="mt-6 inline-flex items-center gap-3 text-[0.7rem] tracking-[0.35em] uppercase text-[#0A0A0A] border-b border-[#0A0A0A] pb-2 hover:text-[#B8922A] hover:border-[#B8922A] transition-colors disabled:opacity-50"
+              data-testid="newsletter-submit"
+            >
+              {submitting ? "Envoi en cours…" : "M'inscrire"}
+              <ArrowRight size={14} strokeWidth={1.5} />
+            </button>
+          </form>
+        )}
+      </div>
+    </section>
   );
 }
