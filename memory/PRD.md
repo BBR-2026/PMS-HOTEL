@@ -2,6 +2,41 @@
 
 ## Latest update — 2026-06-18
 
+### Phase C Revenue Engine — Vague 3 (iteration 47)
+**Status: ✅ Backend 13/13 pytest + Frontend 100% (5 tabs + 4 regressions + mobile)**
+
+**OTA & Channel Manager — intégration SiteMinder pmsXchange complète :**
+- Backend adapter `channel_manager_siteminder.py` :
+  - SOAP envelope builder pour `OTA_HotelAvailNotifRQ` avec WS-Security UsernameToken (plaintext sur TLS)
+  - REST client Basic Auth pour fetch `room-rates`
+  - Parser SOAP `OTA_HotelResNotifRQ` (réservations entrantes) + ACK `OTA_HotelResNotifRS`
+- Router `ota.py` — 12 endpoints staff + 1 webhook public :
+  - `/api/staff/ota/config` (GET/PUT — passwords stripped des réponses)
+  - `/api/staff/ota/test-connection` (health check live)
+  - `/api/staff/ota/mappings` (CRUD chambre interne ↔ code SM)
+  - `/api/staff/ota/sync/availability` (push disponibilités)
+  - `/api/staff/ota/sync/room-rates` (fetch codes canoniques)
+  - `/api/staff/ota/sync-logs` (journal historique)
+  - `/api/staff/ota/reservations` (liste réservations OTA reçues)
+  - `/api/staff/ota/status` (KPIs : mappings actifs, par canal, dernier push/erreur)
+  - `/api/webhooks/siteminder/reservations` (public SOAP — WSSE-validé, normalise + persiste + ACK)
+- Frontend `/staff/ota` — 5 onglets :
+  - Tableau de bord (badge SANDBOX/PROD, KPIs, dernier push, par-canal)
+  - Configuration (credentials sandbox/prod, URL webhook à fournir à SiteMinder)
+  - Mapping chambres (CRUD + canaux activables Booking/Airbnb/Expedia/Hotels.com/Agoda)
+  - Synchronisation (Fetch room/rates, Push avail, journal logs)
+  - Réservations OTA (table filtrable par canal)
+- Sidebar : nouvelle entrée "OTA & Channel Manager" (Globe icon)
+- Sandbox-first : `PMSXTEST` / `PMSXTEST1` par défaut, override via UI pour la prod
+- Validations sécurité : passwords jamais reflétés en réponse, WSSE validation sur webhook si configurée, password fields ignorés à PUT si vides (préserve la valeur existante)
+- Tests : `/app/backend/tests/test_iteration47_ota.py` (13 cas, autouse teardown)
+- Dépendance ajoutée : `lxml==6.1.1` dans `requirements.txt`
+
+### Pending — Phase D (P1)
+- Intégration `/api/revenue/quote` dans `BookingTunnel.jsx` (afficher remises live)
+- Le Kaai Logistic Automation : QR pinasse séparé
+- Connexion réelle SiteMinder production (sur credentials fournis par l'agence)
+
 ### Phase C Revenue Engine — Vague 2 (iteration 46)
 **Status: ✅ Backend 11/11 pytest + Frontend e2e 100%**
 - **Moteur d'acquisition** : nouvelle page `/staff/marketing/acquisition` qui agrège les 15 offres (5 univers × 3 offres) avec leurs campagnes. Quick activate/pause par campagne. KPIs : offres totales, offres avec campagne, campagnes actives, budget engagé. Endpoint `/api/staff/marketing/acquisition`.

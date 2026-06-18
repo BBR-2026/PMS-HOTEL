@@ -633,7 +633,9 @@ function SyncTab() {
               <select value={selectedMappingId} onChange={(e) => setSelectedMappingId(e.target.value)} className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm" data-testid="sync-map-select">
                 {mappings.length === 0 && <option value="">Aucun mapping disponible</option>}
                 {mappings.filter((m) => m.enabled).map((m) => (
-                  <option key={m.id} value={m.id}>{m.label || m.internal_offer_id} ({m.sm_room_type_code})</option>
+                  <option key={m.id} value={m.id}>
+                    {(m.label || m.internal_offer_id) + " (" + m.sm_room_type_code + ")"}
+                  </option>
                 ))}
               </select>
             </Field>
