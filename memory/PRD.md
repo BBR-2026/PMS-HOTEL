@@ -517,3 +517,31 @@ See `/app/memory/test_credentials.md`.
   * **Validation** : 3 screenshots desktop (hero+header, univers grid 5 cartes, menu fullscreen 9 items vérifié), aucun lint error, frontend redémarré.
   * **Note** : les images Unsplash placeholder restent non-représentatives sur certaines cartes (Corporate = couloir vide, Activités = nageur olympique) — à remplacer par les vraies photos BBr.
 
+
+- 2026-06-18: **Iteration 55 — Améliorations 3 & 4 livrées (header optimisé + univers horizontal + unification booking)** :
+  * **Assets BBr récupérés via `get_assets_tool`** (94 artifacts trouvés !) :
+    - Logo officiel : `lhn37du4_LOGO BBr.png`
+    - 5 visuels d'univers officiels : `trz2j0jd_BEACH CLUB.png`, `7bcipz8w_HEBERGEMENT.png`, `v2f73qqm_KAAI.png`, `oy7zzngs_SEMINAIRE.png`, `ocqva33h_ACTIVITE.png`
+    - Photo hero : `0frg347a_BBR _SHOOT 2_139.jpg.jpeg` (shoot pro BBr — transats lagune)
+  * **Amélioration 4 partie 1 — Header optimisé** :
+    - Container `max-w-7xl` → `max-w-[1600px]`, padding `px-5 md:px-8` → `px-6 md:px-10 lg:px-14`
+    - Spacing entre SHOP / RÉSERVER / hamburger : `gap-3 md:gap-5` → `gap-6 md:gap-10 lg:gap-12`
+    - Logo "BBR text + small caps" remplacé par **image officielle** (h-12 md:h-16) — invert filter au scroll pour bascule blanc → noir
+    - Rendu plus aérien conforme aux grands sites de luxe
+  * **Amélioration 4 partie 2 — Univers en scroll horizontal** :
+    - Sur mobile (`md:hidden`) : grid stack vertical 1 col, 5 cartes empilées
+    - Sur desktop (`hidden md:block`) : `flex gap-6 overflow-x-auto snap-x snap-mandatory scroll-px-10 px-10 lg:px-16`
+    - Largeur des cartes : `w-[78vw] sm:w-[60vw] lg:w-[640px] xl:w-[720px]` — beaucoup plus grandes, immersives
+    - Indication "← Glissez pour explorer →" sous le scroll desktop
+    - Composant `UniversCard` extrait, prop `mobile` pour basculer entre stack et snap-flex
+    - Padding intérieur augmenté : `p-8 md:p-12 lg:p-14` au lieu de `p-7 md:p-9`
+    - Titre du card : `text-3xl sm:text-5xl md:text-6xl` au lieu de `text-3xl md:text-5xl`
+  * **Amélioration 3 — Unification booking workflow** :
+    - **Toutes les routes booking déplacées sous `<VitrineLayout>`** au lieu de `<PublicLayout>` :
+      - `/reserver`, `/booking/:offerId`, `/booking/special-event/:eventId`, `/payment/fineo/result`, `/event/:eventId`, `/events`, `/galerie/*`, `/pole/:poleId`
+    - **VitrineLayout enrichi** : détection "page hero" (loc.pathname === "/" OR commence par /univers/ OR /le-kaai) → pas de padding-top. Pour toutes les autres pages → `pt-20 md:pt-24` pour ne pas être masqué par le header fixed.
+    - **Résultat** : l'utilisateur ne quitte plus jamais le site — header + footer identiques du `/` au paiement final. Continuité visuelle totale.
+  * **Vérifié end-to-end** : 3 screenshots (hero avec vrais visuels, /reserver avec vitrine header en haut, console clean).
+  * **Fichiers modifiés** : `VitrineNav.jsx`, `VitrineLanding.jsx` (Univers section + UniversCard component + hero image), `VitrineLayout.jsx`, `App.js`
+  * **Note importante** : les routes restantes hors VitrineLayout (`/retour-experience`, `/pay/:token`, `/companion/:code`, `/cantine`, `/accueil/*`, `/staff/*`) ne sont volontairement pas wrappées — ce sont des flows internes (paiement direct, accueil tablette, dashboard staff) qui ont leur propre chrome.
+

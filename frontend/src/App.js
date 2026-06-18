@@ -129,8 +129,7 @@ function App() {
               <Route path="/le-kaai" element={<UniversLeKaai />} />
               <Route path="/boutique" element={<VitrineBoutique />} />
               <Route path="/contact" element={<VitrineContact />} />
-            </Route>
-            <Route element={<PublicLayout />}>
+              {/* iter-55 — Tunnel de réservation unifié sous la vitrine */}
               <Route path="/reserver" element={<LandingPage />} />
               <Route path="/pole/:poleId" element={<PolePage />} />
               <Route path="/booking/:offerId" element={<BookingTunnel />} />

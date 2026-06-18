@@ -14,35 +14,35 @@ const UNIVERS = [
     name: "Beach Club",
     description: "Une parenthèse exclusive entre lagune et océan.",
     image:
-      "https://images.unsplash.com/photo-1530541930197-ff16ac917b0e?auto=format&fit=crop&w=1800&q=85",
+      "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/trz2j0jd_BEACH%20CLUB.png",
   },
   {
     to: "/univers/hebergement",
     name: "Hébergement",
     description: "Des séjours raffinés dans un cadre exceptionnel.",
     image:
-      "https://images.unsplash.com/photo-1582610116397-edb318620f90?auto=format&fit=crop&w=1800&q=85",
+      "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/7bcipz8w_HEBERGEMENT.png",
   },
   {
     to: "/le-kaai",
     name: "Restaurant Le Kaai",
     description: "Une expérience culinaire signée Boulay Beach Resort.",
     image:
-      "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1800&q=85",
+      "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/v2f73qqm_KAAI.png",
   },
   {
     to: "/univers/corporate",
     name: "Corporate",
     description: "Le lieu idéal pour vos événements professionnels.",
     image:
-      "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1800&q=85",
+      "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/oy7zzngs_SEMINAIRE.png",
   },
   {
     to: "/univers/activites",
     name: "Activités & Events",
     description: "Des expériences uniques à vivre toute l'année.",
     image:
-      "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&w=1800&q=85",
+      "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ocqva33h_ACTIVITE.png",
   },
 ];
 
@@ -62,7 +62,7 @@ export default function VitrineLanding() {
           className="absolute inset-0 bg-cover bg-center"
           style={{
             backgroundImage:
-              "url(https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&w=2600&q=85)",
+              "url(https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/0frg347a_BBR%20_SHOOT%202_139.jpg.jpeg)",
           }}
         />
         <div className="absolute inset-0 bg-black/30" />
@@ -81,10 +81,10 @@ export default function VitrineLanding() {
         </div>
       </section>
 
-      {/* ─── NOS UNIVERS — image-overlay cards ────────── */}
-      <section className="py-24 md:py-32 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16 md:mb-20">
+      {/* ─── NOS UNIVERS — horizontal scroll cards (desktop) / stack (mobile) ── */}
+      <section className="py-24 md:py-32 bg-white overflow-hidden">
+        <div className="max-w-7xl mx-auto px-6 mb-16 md:mb-20">
+          <div className="text-center">
             <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-6">
               Nos univers
             </div>
@@ -92,43 +92,21 @@ export default function VitrineLanding() {
               Cinq expériences,<br />une seule destination d'exception.
             </h2>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
-            {UNIVERS.map((u) => (
-              <Link
-                key={u.to}
-                to={u.to}
-                onClick={() => trackEvent("view_offer", { offer: u.name })}
-                className="group relative block overflow-hidden aspect-[3/4] bg-[#0A0A0A]"
-                data-testid={`univers-card-${u.to.split("/").pop()}`}
-              >
-                {/* Image (zooms gently on hover) */}
-                <div
-                  className="absolute inset-0 bg-cover bg-center transition-transform duration-[2s] ease-out group-hover:scale-[1.06]"
-                  style={{ backgroundImage: `url(${u.image})` }}
-                />
-                {/* Bottom gradient for legibility */}
-                <div className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/90 via-black/55 to-transparent pointer-events-none" />
+        {/* Mobile : vertical stack */}
+        <div className="md:hidden px-6 space-y-5">
+          {UNIVERS.map((u) => <UniversCard key={u.to} u={u} mobile />)}
+        </div>
 
-                {/* Content overlay */}
-                <div className="absolute inset-0 flex flex-col justify-end p-7 md:p-9 text-white">
-                  <h3 className="font-serif italic font-light text-3xl sm:text-4xl md:text-5xl leading-[1.05] mb-3 md:mb-4 transition-transform duration-500 group-hover:-translate-y-1">
-                    {u.name}
-                  </h3>
-                  <p className="text-sm md:text-base text-white/85 leading-relaxed mb-6 md:mb-7 max-w-sm font-light">
-                    {u.description}
-                  </p>
-                  <div className="inline-flex items-center gap-2">
-                    <span className="text-[0.65rem] md:text-[0.7rem] tracking-[0.35em] uppercase border-b border-white pb-1 group-hover:text-[#D4B256] group-hover:border-[#D4B256] transition-colors">
-                      Découvrir
-                    </span>
-                    <span className="text-[0.65rem] tracking-[0.35em] uppercase opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300">
-                      →
-                    </span>
-                  </div>
-                </div>
-              </Link>
-            ))}
+        {/* Desktop : horizontal scroll */}
+        <div className="hidden md:block">
+          <div className="flex gap-6 overflow-x-auto snap-x snap-mandatory scroll-px-10 px-10 lg:px-16 pb-6 scrollbar-hide"
+               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            {UNIVERS.map((u) => <UniversCard key={u.to} u={u} />)}
+          </div>
+          <div className="text-center mt-8 text-[0.6rem] tracking-[0.4em] uppercase text-[#0A0A0A]/40">
+            ← Glissez pour explorer →
           </div>
         </div>
       </section>
@@ -273,5 +251,47 @@ export default function VitrineLanding() {
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * Single panoramic immersive card — large image, overlay text, CTA.
+ * Desktop : 600px wide, snap-aligned in horizontal scroll.
+ * Mobile  : full width when `mobile` prop is passed.
+ */
+function UniversCard({ u, mobile = false }) {
+  return (
+    <Link
+      to={u.to}
+      onClick={() => trackEvent("view_offer", { offer: u.name })}
+      className={`group relative block overflow-hidden bg-[#0A0A0A] ${
+        mobile
+          ? "w-full aspect-[3/4]"
+          : "snap-start flex-shrink-0 w-[78vw] sm:w-[60vw] lg:w-[640px] xl:w-[720px] aspect-[3/4]"
+      }`}
+      data-testid={`univers-card-${u.to.split("/").pop()}`}
+    >
+      <div
+        className="absolute inset-0 bg-cover bg-center transition-transform duration-[2.5s] ease-out group-hover:scale-[1.07]"
+        style={{ backgroundImage: `url(${u.image})` }}
+      />
+      <div className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/95 via-black/55 to-transparent pointer-events-none" />
+      <div className="absolute inset-0 flex flex-col justify-end p-8 md:p-12 lg:p-14 text-white">
+        <h3 className="font-serif italic font-light text-4xl sm:text-5xl md:text-6xl leading-[1.02] mb-4 md:mb-5 transition-transform duration-500 group-hover:-translate-y-1">
+          {u.name}
+        </h3>
+        <p className="text-base md:text-lg text-white/85 leading-relaxed mb-7 md:mb-8 max-w-md font-light">
+          {u.description}
+        </p>
+        <div className="inline-flex items-center gap-2">
+          <span className="text-[0.7rem] md:text-[0.75rem] tracking-[0.35em] uppercase border-b border-white pb-1 group-hover:text-[#D4B256] group-hover:border-[#D4B256] transition-colors">
+            Découvrir
+          </span>
+          <span className="text-[0.7rem] tracking-[0.35em] uppercase opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300">
+            →
+          </span>
+        </div>
+      </div>
+    </Link>
   );
 }

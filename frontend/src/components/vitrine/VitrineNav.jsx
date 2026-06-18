@@ -57,7 +57,7 @@ export default function VitrineNav() {
         }`}
         data-testid="vitrine-nav"
       >
-        <div className="max-w-7xl mx-auto px-5 md:px-8 h-20 md:h-24 grid grid-cols-3 items-center">
+        <div className="max-w-[1600px] mx-auto px-6 md:px-10 lg:px-14 h-20 md:h-24 grid grid-cols-3 items-center">
           {/* LEFT (empty / mobile reserved CTA) */}
           <div className="flex items-center">
             {/* intentionally empty on desktop — logo is centered */}
@@ -66,20 +66,23 @@ export default function VitrineNav() {
           {/* CENTER : LOGO */}
           <Link
             to="/"
-            className="flex flex-col items-center justify-center"
+            className="flex items-center justify-center"
             data-testid="vitrine-logo"
             aria-label="Boulay Beach Resort — Accueil"
           >
-            <span className={`font-serif italic text-3xl md:text-4xl tracking-wide font-light ${textColor}`}>
-              BBR
-            </span>
-            <span className={`text-[0.5rem] md:text-[0.55rem] tracking-[0.5em] uppercase mt-1 ${onHero ? "text-white/70" : "text-[#0A0A0A]/55"}`}>
-              Boulay Beach Resort
-            </span>
+            <img
+              src={onHero
+                ? "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"
+                : "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/lhn37du4_LOGO%20BBr.png"}
+              alt="BBR — Boulay Beach Resort"
+              className={`h-12 md:h-16 w-auto transition-all duration-500 ${
+                onHero ? "" : "invert"
+              }`}
+            />
           </Link>
 
-          {/* RIGHT : SHOP · RÉSERVER · Hamburger */}
-          <div className="flex items-center justify-end gap-3 md:gap-5">
+          {/* RIGHT : SHOP · RÉSERVER · Hamburger (more spacing, pushed to edge) */}
+          <div className="flex items-center justify-end gap-6 md:gap-10 lg:gap-12">
             {/* SHOP */}
             <Link
               to="/boutique"
