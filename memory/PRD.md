@@ -461,3 +461,32 @@ See `/app/memory/test_credentials.md`.
     - Remplacer les photos Unsplash par les vraies photos BBr quand l'utilisateur les fournit
   * **Phase B à venir** (back-office des 5 modules) : Lead Inbox événementiel + CRM 360° + Memberships + Marketing dashboard + Analytics funnels.
 
+
+- 2026-06-18: **Iteration 53 — Refonte vitrine inspirée Nikki Beach (style éditorial luxe)** :
+  * Demande utilisateur : "Le site ne me convient pas. Inspire toi de https://nikkibeach.com/fr/" — analyse du site Nikki Beach faite via crawl_tool.
+  * **Principes Nikki Beach captés et appliqués** :
+    1. Typographie serif italique large (Cormorant Garamond ajoutée via Google Fonts) pour tous les H1/H2 — "italique éditorial luxe"
+    2. Fond dominant blanc + cream `#FAF7F2` (au lieu du noir partout de la v1)
+    3. Photos pleine page sans overlay sombre forcé, photos "parlent" plus que le texte
+    4. Kickers en uppercase tracking large (0.45-0.55em) — petits, fins, élégants
+    5. Storytelling éditorial (sections "Notre Beach Club", "Le Kaai", "Notre histoire") au lieu de "sales-y CTA cards"
+    6. Suppression des KPI cards ("5★ Resort"), suppression des testimonials cards — n'existent pas chez Nikki Beach
+    7. CTAs minimalistes : <u>texte underline</u> au lieu de gros boutons dorés tonitruants
+    8. Nav centrée avec logo BBR au milieu (serif italique), 6 liens symétriques gauche/droite
+  * **Composants refondus** :
+    - `VitrineLanding` réécrite intégralement : hero éditorial (cabanes lagune coucher de soleil, "Le luxe pieds nus, sur une île privée"), grid univers (Hébergement en feature 16/9, 5 autres en 4/3 photo-puis-texte-centré-en-dessous), section éditoriale Beach Club (texte/image 50/50), section éditoriale Le Kaai (image/texte inversé), strip lifestyle 4 photos carrées, section "Notre histoire" centrée, final CTA minimal
+    - `VitrineNav` : transparent sur hero → blanc/95% backdrop-blur au scroll, logo BBR centré (serif italique 2-3xl + sous-titre tracking 0.5em), 3 liens à gauche, 3 + Réserver à droite, hamburger mobile avec drawer fullscreen
+    - `VitrineFooter` : passage du noir au cream, 4 colonnes (Univers / Réservation / Contact / Suivez-nous), brand "BBR" en serif italique 4-5xl en haut, mentions légales en bas
+    - `UniversHero` : version éditoriale (titre centré serif italique, kicker tracking 0.5em, pas de bouton CTA sur le hero)
+    - `UniversPage` (template générique des univers) : suppression du bloc "highlights 3 colonnes", ajout d'un bloc `editorial` optionnel (image|texte), offers grid en aspect-[4/5] photo puis titre serif italique centré dessous, prix en uppercase tracking, CTAs underline
+  * **Tailwind** : ajout famille `font-serif` mappée sur Cormorant Garamond
+  * **`public/index.html`** : Google Fonts mis à jour pour charger Cormorant Garamond (italic + 4 graisses) + Inter (5 graisses)
+  * **Validation visuelle** :
+    - Hero desktop : 9/10 — typographie spectaculaire, image sublime, kicker discret
+    - Grid univers desktop : 9/10 — exact pattern Nikki Beach
+    - Page univers Beach Club : titre serif italique sur image, kicker `UNIVERS · BEACH CLUB`
+    - Mobile responsive 390×844 : impeccable, BBR centré en haut, hamburger, hero qui scale
+  * **Important — photos placeholder Unsplash conservées** : 2-3 images ne correspondent pas exactement au style BBR (campfire, piscine olympique) — devront être remplacées par les vraies photos de BBr quand disponibles.
+  * **Fichiers modifiés (overwrite)** : `VitrineLanding.jsx`, `VitrineNav.jsx`, `VitrineFooter.jsx`, `UniversHero.jsx`, `UniversPage.jsx`, `tailwind.config.js`, `public/index.html`. Aucun fichier supprimé. Les routes restent identiques.
+  * **À noter** : la page Événementiel n'a pas été refondue (formulaire devis encore sur fond noir) — peut être faite dans une prochaine itération si l'utilisateur le souhaite.
+
