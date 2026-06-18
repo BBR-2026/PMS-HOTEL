@@ -2568,6 +2568,29 @@ async def create_booking(body: BookingCreate):
         charter_amount = int(charter_boat["charter_price"])
         total += charter_amount
 
+    # Le Kaai — Traversée obligatoire facturée par personne. Le montant est
+    # configurable via le CMS (site_settings.offers.le_kaai.crossing_fee_xof,
+    # défaut 10 000 XOF). Le paiement est requis pour valider la réservation.
+    crossing_fee_amount = 0
+    crossing_fee_meta: Optional[dict] = None
+    if body.offer_type == "le_kaai":
+        try:
+            cms = await db["site_settings"].find_one({"_id": "offers"})
+            cms_offers = (cms or {}).get("data", {}) or {}
+            cf_per_pax = int(((cms_offers.get("le_kaai") or {}).get("crossing_fee_xof")) or 10000)
+        except Exception:  # noqa: BLE001
+            cf_per_pax = 10000
+        pax = int(body.adults or 0) + int(children_paid_n or 0)
+        crossing_fee_amount = cf_per_pax * pax
+        total += crossing_fee_amount
+        crossing_fee_meta = {
+            "amount_xof": crossing_fee_amount,
+            "per_person_xof": cf_per_pax,
+            "pax": pax,
+            "label": "Traversée aller-retour vers l'île Boulay",
+            "mandatory": True,
+        }
+
     # Beach Club VIP spaces (numbered transats / balinés). Unique per date.
     vip_spaces_resolved: List[dict] = []
     vip_spaces_amount = 0
@@ -2696,6 +2719,9 @@ async def create_booking(body: BookingCreate):
         "charter_boat_id": charter_boat["id"] if charter_boat else None,
         "charter_boat_name": charter_boat["name"] if charter_boat else None,
         "charter_amount": charter_amount,
+        # Le Kaai mandatory crossing fee (configurable via CMS)
+        "crossing_fee_amount": crossing_fee_amount,
+        "crossing_fee_meta": crossing_fee_meta,
         # Beach Club numbered VIP spaces (transats / balinés)
         "vip_space_ids": [v["id"] for v in vip_spaces_resolved] or None,
         "vip_spaces": vip_spaces_resolved or None,
@@ -8820,16 +8846,47 @@ _OVERRIDE_SCALAR_FIELDS = (
 
 
 async def _apply_overrides(offer: dict) -> dict:
-    """Merge any stored overrides on top of the static OFFERS dict."""
-    override = await db.offer_overrides.find_one({"offer_id": offer["id"]}, {"_id": 0})
-    if not override:
-        return offer
+    """Merge any stored overrides on top of the static OFFERS dict.
+
+    Two override sources, applied in order :
+      1. ``offer_overrides`` (legacy admin config screen — wins if present).
+      2. ``site_settings.offers.*`` (new CMS portal). The CMS is hierarchical
+         (group → offer_id → {price_xof, name, description}). When a matching
+         entry is found, its ``price_xof`` becomes ``price_adult`` on the
+         booking offer, and ``description`` overrides ``tagline_fr``.
+    """
     merged = dict(offer)
-    for k in _OVERRIDE_SCALAR_FIELDS:
-        if override.get(k) is not None:
-            merged[k] = override[k]
-    if override.get("room_tiers"):
-        merged["room_tiers"] = override["room_tiers"]
+
+    # Layer 1 — legacy offer_overrides (priority — wins)
+    override = await db.offer_overrides.find_one({"offer_id": offer["id"]}, {"_id": 0})
+    if override:
+        for k in _OVERRIDE_SCALAR_FIELDS:
+            if override.get(k) is not None:
+                merged[k] = override[k]
+        if override.get("room_tiers"):
+            merged["room_tiers"] = override["room_tiers"]
+        return merged
+
+    # Layer 2 — CMS overrides (site_settings.offers)
+    try:
+        cms_doc = await db["site_settings"].find_one({"_id": "offers"})
+        cms_offers = (cms_doc or {}).get("data") or {}
+        # Walk the 2-level hierarchy : look for the offer id in every group.
+        for group_data in cms_offers.values():
+            if not isinstance(group_data, dict):
+                continue
+            entry = group_data.get(offer["id"])
+            if isinstance(entry, dict):
+                if entry.get("price_xof") is not None:
+                    merged["price_adult"] = int(entry["price_xof"])
+                if entry.get("description"):
+                    merged["tagline_fr"] = entry["description"]
+                if entry.get("name"):
+                    merged["title"] = entry["name"]
+                break
+    except Exception:  # noqa: BLE001
+        pass
+
     return merged
 
 

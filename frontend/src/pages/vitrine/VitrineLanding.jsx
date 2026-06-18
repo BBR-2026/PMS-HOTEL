@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Instagram, ArrowRight, Check } from "lucide-react";
 import { trackEvent } from "../../lib/tracking";
+import { useSiteConfig, sel } from "../../lib/site-config";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
@@ -79,6 +80,29 @@ const LIFESTYLE = [
 
 export default function VitrineLanding() {
   const [blogArticles, setBlogArticles] = useState([]);
+  const cfg = useSiteConfig();
+  const hero = sel.hero(cfg);
+  const universCfg = sel.univers(cfg);
+  const instagramCfg = sel.instagram(cfg);
+
+  // Merge CMS univers list with the hardcoded routing map (bookOfferId).
+  const universList = (universCfg.items && universCfg.items.length > 0
+    ? universCfg.items.map((cmsItem) => {
+        const fallback = UNIVERS.find((u) => u.to === cmsItem.to) || {};
+        return {
+          to: cmsItem.to || fallback.to,
+          bookOfferId: fallback.bookOfferId,
+          name: cmsItem.name || fallback.name,
+          description: cmsItem.description || fallback.description,
+          image: cmsItem.image || fallback.image,
+        };
+      })
+    : UNIVERS);
+
+  const instagramPosts = (instagramCfg.posts && instagramCfg.posts.length > 0)
+    ? instagramCfg.posts
+    : INSTAGRAM_POSTS;
+  const instagramHandle = instagramCfg.handle || "@boulaybeachresort";
 
   useEffect(() => {
     fetch(`${BACKEND}/api/blog/articles?limit=3`)
@@ -99,36 +123,34 @@ export default function VitrineLanding() {
           preload="auto"
           className="absolute inset-0 w-full h-full object-cover"
           data-testid="hero-video"
-          poster="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/0frg347a_BBR%20_SHOOT%202_139.jpg.jpeg"
+          poster={hero.poster_url || "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/0frg347a_BBR%20_SHOOT%202_139.jpg.jpeg"}
         >
           <source
-            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4d9005uu_IMG_4425.MOV"
+            src={hero.video_url || "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4d9005uu_IMG_4425.MOV"}
             type="video/quicktime"
           />
           <source
-            src="https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4d9005uu_IMG_4425.MOV"
+            src={hero.video_url || "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4d9005uu_IMG_4425.MOV"}
             type="video/mp4"
           />
         </video>
         <div className="absolute inset-0 bg-black/40" />
         <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6">
           <div className="text-[0.7rem] tracking-[0.55em] uppercase text-white/80 mb-10">
-            Île Boulay  ·  Abidjan
+            {hero.kicker || "Île Boulay  ·  Abidjan"}
           </div>
           <h1
             className="font-serif text-white leading-[0.95] text-7xl sm:text-[5.5rem] md:text-[7.5rem] lg:text-[9rem] xl:text-[10.5rem] max-w-6xl"
             style={{ fontWeight: 400, letterSpacing: "0.04em" }}
             data-testid="vitrine-hero-title"
           >
-            LIFE IS HERE
+            {hero.title || "LIFE IS HERE"}
           </h1>
           <p
             className="mt-10 text-xl sm:text-2xl md:text-3xl text-white/90 max-w-3xl leading-relaxed font-light"
             data-testid="vitrine-hero-subtitle"
           >
-            Une île privée, à quelques minutes d'Abidjan.
-            Un autre rythme. Une autre énergie.
-            Des expériences premium inoubliables.
+            {hero.subtitle || "Une île privée, à quelques minutes d'Abidjan. Un autre rythme. Une autre énergie. Des expériences premium inoubliables."}
           </p>
           <div className="mt-12 w-px h-12 bg-white/60" />
           <div className="mt-6 text-[0.65rem] tracking-[0.4em] uppercase text-white/70">
@@ -270,7 +292,7 @@ export default function VitrineLanding() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12 md:mb-16">
             <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-5 inline-flex items-center justify-center gap-2">
-              <Instagram size={13} strokeWidth={1.5} /> · @boulaybeachresort ·
+              <Instagram size={13} strokeWidth={1.5} /> · {instagramHandle} ·
             </div>
             <h2 className="font-serif font-light text-3xl sm:text-4xl md:text-5xl leading-[1.15] text-[#0A0A0A]">
               L'instant BBR.
@@ -278,7 +300,7 @@ export default function VitrineLanding() {
             <div className="w-12 h-px bg-[#B8922A] mx-auto mt-8" />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
-            {INSTAGRAM_POSTS.map((p, i) => (
+            {instagramPosts.map((p, i) => (
               <a
                 key={i}
                 href="https://www.instagram.com/boulaybeachresort"

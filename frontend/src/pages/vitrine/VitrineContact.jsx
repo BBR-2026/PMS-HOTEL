@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { Phone, Mail, MapPin, MessageCircle, ArrowRight, Check } from "lucide-react";
 import { trackEvent, getAttribution } from "../../lib/tracking";
+import { useSiteConfig, sel } from "../../lib/site-config";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
@@ -20,6 +21,15 @@ const SUBJECTS = [
 ];
 
 export default function VitrineContact() {
+  const cfg = useSiteConfig();
+  const contact = sel.contact(cfg);
+  const phone = contact.phone || "+225 07 04 60 06 00";
+  const phoneTel = phone.replace(/\s+/g, "");
+  const whatsapp = contact.whatsapp || phone;
+  const whatsappLink = `https://wa.me/${whatsapp.replace(/\D+/g, "")}`;
+  const email = contact.email || "reservations@boulaybeachresort.com";
+  const addr1 = contact.address_line_1 || "Île Boulay";
+  const addr2 = contact.address_line_2 || "Abidjan, Côte d'Ivoire";
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -104,35 +114,35 @@ export default function VitrineContact() {
 
             <div className="space-y-8">
               <Item icon={<MapPin size={18} strokeWidth={1.5} />} title="Adresse">
-                Île Boulay<br />Abidjan, Côte d'Ivoire
+                {addr1}<br />{addr2}
               </Item>
               <Item icon={<Phone size={18} strokeWidth={1.5} />} title="Téléphone">
                 <a
-                  href="tel:+2250704600600"
+                  href={`tel:${phoneTel}`}
                   className="hover:text-[#B8922A] transition-colors"
                   data-testid="contact-phone"
                 >
-                  +225 07 04 60 06 00
+                  {phone}
                 </a>
               </Item>
               <Item icon={<MessageCircle size={18} strokeWidth={1.5} />} title="WhatsApp">
                 <a
-                  href="https://wa.me/2250704600600"
+                  href={whatsappLink}
                   target="_blank"
                   rel="noreferrer"
                   className="hover:text-[#B8922A] transition-colors"
                   data-testid="contact-whatsapp"
                 >
-                  +225 07 04 60 06 00
+                  {whatsapp}
                 </a>
               </Item>
               <Item icon={<Mail size={18} strokeWidth={1.5} />} title="Email">
                 <a
-                  href="mailto:reservations@boulaybeachresort.com"
+                  href={`mailto:${email}`}
                   className="hover:text-[#B8922A] transition-colors"
                   data-testid="contact-email"
                 >
-                  reservations@boulaybeachresort.com
+                  {email}
                 </a>
               </Item>
             </div>
