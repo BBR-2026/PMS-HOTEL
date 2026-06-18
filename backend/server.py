@@ -11632,4 +11632,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Iteration 52 — Marketing & analytics event sink (vitrine tracking).
+from routers import marketing as _marketing_mod  # noqa: E402
+
+app.include_router(_marketing_mod.router)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

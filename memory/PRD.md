@@ -423,3 +423,41 @@ See `/app/memory/test_credentials.md`.
     4. `/BBR_Booking_Engine.pdf` (29p) — spec Booking Engine (PROMPT 2)
   * **Prochain prompt attendu** : PROMPT 3 (probablement design détaillé site vitrine, channel manager OTA, ou Marketing/Analytics — selon vision utilisateur).
 
+
+- 2026-06-18: **Iteration 52 — Site vitrine premium BBR + infrastructure tracking (Phase A — IMPLÉMENTATION CODE)** :
+  * **Premier livrable en code** après les 4 documents PDF (decision utilisateur : "Je ne veux pas seulement des documents pdf. Je veux qu'on commence à développer le logiciel").
+  * **Routes publiques ajoutées** (toutes branchées sous `VitrineLayout` dans `App.js`) :
+    - `/` → `VitrineLanding` (homepage immersive : hero plein écran avec lagune coucher de soleil, 6 cards univers asymétriques, KPI strip, 3 témoignages, final CTA)
+    - `/univers/hebergement`, `/univers/beach-club`, `/univers/activites`, `/univers/corporate`, `/le-kaai` (utilisent le composant générique `UniversPage`)
+    - `/univers/evenementiel` (page dédiée avec formulaire devis intégré → 4 types : mariage, anniversaire, soirée privée, concert)
+    - `/reserver` → ancien `LandingPage` (l'app de réservation existante, préservée intacte)
+  * **Tracking infrastructure** :
+    - `frontend/src/lib/tracking.js` — librairie unifiée Meta Pixel + Google Analytics 4 + UTM capture + visitor_id/session_id + sendBeacon
+    - Variables d'env optionnelles : `REACT_APP_META_PIXEL_ID`, `REACT_APP_GA4_ID` (si vides, pixels silencieusement désactivés)
+    - UTM persistées en localStorage (60 jours), `bbr_attribution` consultable par n'importe quelle page
+  * **Backend marketing API** (`backend/routers/marketing.py`) :
+    - `POST /api/marketing/events` — ingestion append-only en MongoDB collection `marketing_events`
+    - `GET /api/marketing/stats/today` — KPI agrégés (unique visitors + breakdown par event_type)
+    - Indexes MongoDB créés sur `occurred_at`, `event_type+occurred_at`, `attribution.utm_campaign`
+  * **Composants vitrine** :
+    - `VitrineLayout` (nav + footer + scroll-top + page_view auto)
+    - `VitrineNav` (transparent over hero, solid au scroll, hamburger mobile)
+    - `VitrineFooter` (4 colonnes : brand+social, univers, contact, CTA réservation)
+    - `UniversHero` (full-bleed image, kicker, title XL, tagline, CTA)
+    - `UniversPage` (template générique pour 5 univers : intro + offers grid + highlights + final CTA)
+  * **Validation E2E** :
+    - Hero affiché avec typographie audacieuse ("L'élégance d'une **île privée** à Abidjan")
+    - Mobile responsive (390×844) parfait, hamburger menu fonctionnel
+    - Beach Club univers complète (3 offres avec badges, prix, features)
+    - Devis Événementiel : form soumis → backend → MongoDB → écran de succès
+    - 15 events captés dans MongoDB (page_view + submit_lead), tous champs du devis enregistrés
+  * **Charte visuelle** : noir `#0A0A0A` + or `#B8922A` + cream `#FAF7F2`, cohérente avec le back-office staff
+  * **Photos placeholder Unsplash** (l'utilisateur a choisi option `b` — Unsplash curated, à remplacer par vraies photos plus tard)
+  * **Fichiers ajoutés** : `frontend/src/lib/tracking.js`, `frontend/src/components/vitrine/{VitrineLayout,VitrineNav,VitrineFooter,UniversHero,UniversPage}.jsx`, `frontend/src/pages/vitrine/{VitrineLanding,UniversHebergement,UniversBeachClub,UniversActivites,UniversEvenementiel,UniversCorporate,UniversLeKaai}.jsx`, `backend/routers/marketing.py`
+  * **Fichiers modifiés** : `frontend/src/App.js` (routes vitrine + LandingPage déplacée à `/reserver`), `backend/server.py` (mount marketing router)
+  * **Prochaines étapes Phase A** (à confirmer avec utilisateur avant de continuer) :
+    - Brancher les vrais IDs Meta Pixel + GA4 dès que disponibles
+    - Optionnel : améliorer l'animation de scroll (entrée des sections), ajouter une galerie photos par univers
+    - Remplacer les photos Unsplash par les vraies photos BBr quand l'utilisateur les fournit
+  * **Phase B à venir** (back-office des 5 modules) : Lead Inbox événementiel + CRM 360° + Memberships + Marketing dashboard + Analytics funnels.
+

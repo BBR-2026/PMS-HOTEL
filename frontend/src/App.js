@@ -63,6 +63,16 @@ import StaffCantinePointage from "./pages/staff/StaffCantinePointage";
 import StaffPendingBookings from "./pages/staff/StaffPendingBookings";
 import StaffPlanning from "./pages/staff/StaffPlanning";
 
+// iter-52 — Vitrine (site internet premium)
+import VitrineLayout from "./components/vitrine/VitrineLayout";
+import VitrineLanding from "./pages/vitrine/VitrineLanding";
+import UniversHebergement from "./pages/vitrine/UniversHebergement";
+import UniversBeachClub from "./pages/vitrine/UniversBeachClub";
+import UniversActivites from "./pages/vitrine/UniversActivites";
+import UniversEvenementiel from "./pages/vitrine/UniversEvenementiel";
+import UniversCorporate from "./pages/vitrine/UniversCorporate";
+import UniversLeKaai from "./pages/vitrine/UniversLeKaai";
+
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
 // the same routing access as legacy manager (read access; writes are gated by
 // the backend middleware for management_general).
@@ -106,8 +116,18 @@ function App() {
           />
           <Routes>
             <Route path="/welcome" element={<WelcomeLanding />} />
+            {/* iter-52 — VITRINE (site premium public) */}
+            <Route element={<VitrineLayout />}>
+              <Route path="/" element={<VitrineLanding />} />
+              <Route path="/univers/hebergement" element={<UniversHebergement />} />
+              <Route path="/univers/beach-club" element={<UniversBeachClub />} />
+              <Route path="/univers/activites" element={<UniversActivites />} />
+              <Route path="/univers/evenementiel" element={<UniversEvenementiel />} />
+              <Route path="/univers/corporate" element={<UniversCorporate />} />
+              <Route path="/le-kaai" element={<UniversLeKaai />} />
+            </Route>
             <Route element={<PublicLayout />}>
-              <Route path="/" element={<LandingPage />} />
+              <Route path="/reserver" element={<LandingPage />} />
               <Route path="/pole/:poleId" element={<PolePage />} />
               <Route path="/booking/:offerId" element={<BookingTunnel />} />
               <Route path="/payment/fineo/result" element={<FineoResult />} />
