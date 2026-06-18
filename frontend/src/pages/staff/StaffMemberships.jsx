@@ -105,7 +105,7 @@ export default function StaffMemberships() {
   }
 
   return (
-    <div className="space-y-6" data-testid="staff-memberships">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-6" data-testid="staff-memberships">
       <header>
         <div className="text-[0.6rem] tracking-[0.4em] uppercase text-[#0A0A0A]/55 mb-2">
           Revenue Engine · Phase B

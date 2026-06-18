@@ -54,7 +54,7 @@ export default function StaffLeads() {
   const [tab, setTab] = useState("messages"); // messages | newsletter
 
   return (
-    <div className="space-y-6" data-testid="staff-leads">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-6" data-testid="staff-leads">
       <header>
         <div className="text-[0.6rem] tracking-[0.4em] uppercase text-[#0A0A0A]/55 mb-2">
           Revenue Engine · Phase B
@@ -157,7 +157,7 @@ function MessagesPane() {
     <div className="space-y-5">
       {/* Filters */}
       <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {STATUS_TABS.map((s) => (
             <button
               key={s.id || "all"}
@@ -419,7 +419,7 @@ function NewsletterPane() {
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1 flex items-center gap-2 border border-[#0A0A0A]/15 px-3 bg-white max-w-sm">
           <Search size={14} className="text-[#0A0A0A]/40" />
           <input

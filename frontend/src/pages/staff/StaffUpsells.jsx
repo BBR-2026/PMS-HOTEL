@@ -106,7 +106,7 @@ export default function StaffUpsells() {
   }
 
   return (
-    <div className="space-y-6" data-testid="staff-upsells">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-6" data-testid="staff-upsells">
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <div className="text-[0.6rem] tracking-[0.4em] uppercase text-[#0A0A0A]/55 mb-2">

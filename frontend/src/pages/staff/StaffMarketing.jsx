@@ -75,7 +75,7 @@ export default function StaffMarketing() {
   );
 
   return (
-    <div className="space-y-8" data-testid="staff-marketing">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8" data-testid="staff-marketing">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
@@ -90,7 +90,7 @@ export default function StaffMarketing() {
             entonnoir de conversion et pipeline de leads.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {PERIODS.map((p) => (
             <button
               key={p.id}

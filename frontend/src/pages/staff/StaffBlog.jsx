@@ -125,7 +125,7 @@ export default function StaffBlog() {
   }
 
   return (
-    <div className="space-y-6" data-testid="staff-blog">
+    <div className="p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-6" data-testid="staff-blog">
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <div className="text-[0.6rem] tracking-[0.4em] uppercase text-[#0A0A0A]/55 mb-2">
@@ -187,7 +187,7 @@ export default function StaffBlog() {
         </button>
       </div>
 
-      <div className="bg-white border border-[#0A0A0A]/10" data-testid="blog-list">
+      <div className="bg-white border border-[#0A0A0A]/10 overflow-x-auto" data-testid="blog-list">
         {loading ? (
           <div className="py-16 text-center text-sm text-[#0A0A0A]/45">Chargement…</div>
         ) : items.length === 0 ? (

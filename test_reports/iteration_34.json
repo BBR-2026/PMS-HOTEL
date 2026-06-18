@@ -1,0 +1,36 @@
+{
+  "summary": "Responsive layout regression check on 8 Phase-B Staff dashboard pages (mobile 390px + desktop 1440px). All 8 pages now use the standardized wrapper `p-4 md:p-8 lg:p-10 max-w-7xl mx-auto` and render without body-level horizontal scroll. Login worked with admin@boulay.ci. No console errors on any page. All required responsive behaviors verified (chip wrap, KPI grid breakpoints, table overflow-x-auto, list/detail stacking, kanban single-col on mobile, tabs wrap). Legacy pages /staff/clients and /staff/reservations also render correctly (no regressions). ONE minor cosmetic clipping found on /staff/memberships mobile only (membership LI right-column content clipped by ~12px because MAIN's overflow-x-hidden silently hides the overflow). This is not a body-level scroll bug but a content visibility issue.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "StaffMemberships.jsx (membership list LI items, lines ~192-225)",
+        "issue": "On mobile 390px, the membership LI cards have inner content (status badge + price column) that reaches scrollWidth=402px while the wrapper content area is only 358px. The badge label 'DEMANDÉ' and the '350 000 XOF' text on the right column are clipped by MAIN's `overflow-x-hidden` (no scrollbar visible to user but right edge text is cut). Root cause: inside the `<div className=\"flex items-start justify-between gap-3\">`, the right `<div className=\"text-right\">` container has no max-width nor flex shrink constraint, while the left `flex-1 min-w-0` correctly truncates. The CSS-grid parent (grid lg:grid-cols-5) on mobile (default 1-col) uses min-content track sizing which propagates the wide LI children up.",
+        "selector": "[data-testid=\"staff-memberships\"] [data-testid^=\"membership-item-\"]",
+        "priority": "LOW (cosmetic — body does not horizontally scroll; clipped content readable except for last ~12px on far right)"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Optional, low priority) Fix Memberships LI right-column clipping on mobile: add `flex-shrink-0` to the `text-right` div at line ~206 of StaffMemberships.jsx, or shorten the badge spacing on small viewports (e.g. hide the price under the badge and show it on a new line on mobile)."
+  ],
+  "critical_code_review_comments": [
+    "All 8 Phase-B pages correctly applied the standard `p-4 md:p-8 lg:p-10 max-w-7xl mx-auto` wrapper — consistent with StaffClients.jsx reference.",
+    "Blog page correctly uses `overflow-x-auto` around its table (TD cells overflow but inside the scrollable container — expected behavior).",
+    "EventsPipeline kanban correctly stacks to 1-col on mobile (no overflow), 2-col on md.",
+    "All KPI grids correctly use `grid-cols-2 md:grid-cols-4`.",
+    "CRM and Leads correctly stack list/detail columns on mobile.",
+    "Suggestion: Memberships could use the same `overflow-x-auto` wrapper around its list, OR enforce `min-w-0` on grid children, to prevent silent content clipping by parent's overflow-x-hidden."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "skipped", "frontend": "98% (1 minor cosmetic issue on Memberships LI clipping)" },
+  "test_credentials": "admin@boulay.ci / Admin@2026 (worked on second attempt — first auto-fill flaky, then succeeded)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 34 covered responsive regression check only at 390px + 1440px on /staff/{marketing,crm,memberships,events-pipeline,upsells,blog,leads,site-settings} plus legacy /staff/clients and /staff/reservations. No body-level horizontal scroll on any. Login works admin@boulay.ci/Admin@2026. Only one cosmetic issue on Memberships list items right-column clipping (~12px). For future passes, also verify the tablet breakpoint (md=768px) explicitly if requested.",
+  "rca of the issue": "Memberships LI clipping: the inner row at StaffMemberships.jsx ~line 200 uses `<div className=\"flex items-start justify-between gap-3\">` with a left `flex-1 min-w-0` and a right `<div className=\"text-right\">` (no min-w-0, no flex-shrink, no max-w). The right column contains a status badge `<span className=\"inline-flex ... tracking-wider whitespace-nowrap\">` plus a price line `<div className=\"... tabular-nums\">`. These elements have intrinsic widths >100px. When the LI is in a CSS-grid track (`grid lg:grid-cols-5`) without explicit `grid-cols-1` for mobile, the track gets `minmax(auto, 1fr)` sizing which uses min-content from children — so the wide right column forces the LI to exceed the parent's 358px content area. The parent MAIN has `overflow-x-hidden` which silently clips it. Mitigation: add `min-w-0` to the LI's flex container OR `flex-shrink` to the right column OR explicit `grid-cols-1` on the grid for mobile, OR wrap the list in `overflow-x-auto`."
+}
