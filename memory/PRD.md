@@ -1,5 +1,22 @@
 # Boulay Beach Resort (BBr) — Product Requirements Document
 
+## Latest update — 2026-06-18
+
+### Phase B Revenue Engine (partial — Marketing + Inbox shipped)
+**Status: ✅ Backend 19/19 pytest + Frontend 100% (iteration_32.json)**
+- Public Vitrine completed : `/boutique` (waitlist signup) + `/contact` (working form).
+- New backend routers : `routers/leads.py` (contact + newsletter) and `routers/marketing_analytics.py` (dashboard).
+- New back-office pages : `/staff/marketing` (ROI cockpit) and `/staff/leads` (inbox + newsletter export).
+- 2 new Mongo collections: `contact_messages`, `newsletter_subscribers`.
+- Full changelog: `/app/memory/CHANGELOG.md`
+
+### Pending (P0/P1)
+- **P0 — Phase B continuation** : CRM 360° client view (link `marketing_events.visitor_id` → `customers`), Memberships, Événementiel pipeline.
+- **P1 — Option C, Booking Engine Phase 2** : Upsell / Cross-sell, multi-gateway, unified availability.
+- **P2 — server.py modularization** (still 11 640 lines).
+
+---
+
 ## Original Problem Statement
 Luxury full-stack reservation web application for "Boulay Beach Resort" (BBr) — 5★ beach resort
 in Abidjan, Côte d'Ivoire, accessible **only by boat**. Manages **Day Visit reservations + Hôtel
