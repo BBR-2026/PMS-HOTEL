@@ -51,6 +51,7 @@ import StaffCRM from "./pages/staff/StaffCRM";
 import StaffMemberships from "./pages/staff/StaffMemberships";
 import StaffEventsPipeline from "./pages/staff/StaffEventsPipeline";
 import StaffUpsells from "./pages/staff/StaffUpsells";
+import StaffBlog from "./pages/staff/StaffBlog";
 import BookingExtras from "./pages/BookingExtras";
 import PolePage from "./pages/PolePage";
 import Gallery from "./pages/Gallery";
@@ -82,6 +83,8 @@ import UniversLeKaai from "./pages/vitrine/UniversLeKaai";
 import VitrineBoutique from "./pages/vitrine/VitrineBoutique";
 import VitrineContact from "./pages/vitrine/VitrineContact";
 import VitrineMemberships from "./pages/vitrine/VitrineMemberships";
+import VitrineBlog from "./pages/vitrine/VitrineBlog";
+import VitrineBlogArticle from "./pages/vitrine/VitrineBlogArticle";
 
 // Role catalogs — extend MANAGER_PLUS to include the new roles so they get
 // the same routing access as legacy manager (read access; writes are gated by
@@ -139,6 +142,8 @@ function App() {
               <Route path="/contact" element={<VitrineContact />} />
               <Route path="/memberships" element={<VitrineMemberships />} />
               <Route path="/booking-extras/:ref" element={<BookingExtras />} />
+              <Route path="/blog" element={<VitrineBlog />} />
+              <Route path="/blog/:slug" element={<VitrineBlogArticle />} />
               {/* iter-55 — Tunnel de réservation unifié sous la vitrine */}
               <Route path="/reserver" element={<LandingPage />} />
               <Route path="/pole/:poleId" element={<PolePage />} />
@@ -187,6 +192,7 @@ function App() {
               <Route path="memberships" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMemberships /></RoleGuard>} />
               <Route path="events-pipeline" element={<RoleGuard allowed={MANAGER_PLUS}><StaffEventsPipeline /></RoleGuard>} />
               <Route path="upsells" element={<RoleGuard allowed={MANAGER_PLUS}><StaffUpsells /></RoleGuard>} />
+              <Route path="blog" element={<RoleGuard allowed={MANAGER_PLUS}><StaffBlog /></RoleGuard>} />
               <Route path="hebergement" element={<RoleGuard allowed={MANAGER_PLUS}><StaffHebergement /></RoleGuard>} />
               <Route path="clients" element={<RoleGuard allowed={MANAGER_PLUS}><StaffClients /></RoleGuard>} />
               <Route path="loisirs" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLoisirs /></RoleGuard>} />

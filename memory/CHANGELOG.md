@@ -1,36 +1,53 @@
 # BBR Revenue Engine — CHANGELOG
 
-## 2026-06-18 (3) — UI Refresh : Logo XL, Logo doré au scroll, Optima partout
+## 2026-06-18 (4) — UI Premium luxury + Blog/Journal
 
-### Changements visuels
-- **Logo +100%** : passé de `h-20/h-28` à `h-36/h-52` (de ~80px à ~208px). Header agrandi en conséquence (`h-40 md:h-56`).
-- **Logo doré au scroll** : nouvelle classe CSS `.logo-gold` (filter sepia + invert + hue-rotate calibré pour matcher `#B8922A`). En haut de page sur la landing, le logo reste blanc (sur fond image). Dès qu'on scroll, le header devient blanc et le logo passe en doré BBR. **Le logo noir n'est plus utilisé.**
-- **Bouton RÉSERVER doré** : couleur de fond passée du noir au doré BBR `#B8922A`, hover `#D4AF37`. Le lien SHOP passe également en doré au scroll.
-- **Police Optima partout** : `body`, `font-serif`, `font-display-serif` et `font-body` pointent désormais tous sur la stack Optima (les fichiers locaux `.woff2` existent déjà dans `/src/assets/fonts/`). Plus de Poppins ni de Playfair sur la vitrine.
+### Header (refonte luxury hotel)
+- **Logo -75%** : de `h-36 md:h-52` à `h-10 md:h-12 lg:h-14` (compact luxury hotel).
+- **Header desktop** : barre horizontale `h-16 md:h-20`. **Logo à gauche**, nav inline centrée (Hôtel · Beach Club · Le Kaai · Corporate · Activités · Memberships · Boutique · Journal · Contact), **bouton RÉSERVER doré** à droite. Active link souligné en doré.
+- **Header mobile** : hamburger gauche + logo centré + RÉSERVER doré droite. Le menu fullscreen reste accessible.
+- Logo doré au scroll conservé (filtre `.logo-gold`).
 
-### Contenu
-- **Hero accueil** :
-  - Titre : `LIDE IS HERE`
-  - Sous-titre : « Une île privée, à quelques minutes d'Abidjan. Un autre rythme. Une autre énergie. Des expériences premium inoubliables. »
-- **Descriptions des 5 univers** : remplacées par les taglines longues issues du workflow de réservation (`OFFER_TYPES.tagline_fr` côté backend) pour cohérence éditoriale entre la Vitrine et le tunnel de réservation.
+### Hero accueil
+- ✅ Typo corrigé : **`LIFE IS HERE`** (au lieu de `LIDE`).
+- ✅ Titre +50% (de `lg:text-[6rem]` à `lg:text-[9rem] xl:text-[10.5rem]`).
+- ✅ Sous-titre +75% (de `text-base/lg/xl` à `text-xl sm:text-2xl md:text-3xl`).
 
-### Fichiers modifiés
-- `/app/frontend/src/components/vitrine/VitrineNav.jsx`
-- `/app/frontend/src/components/vitrine/VitrineLayout.jsx` (padding top ajusté à `pt-40 md:pt-56`)
-- `/app/frontend/src/pages/vitrine/VitrineLanding.jsx`
-- `/app/frontend/src/index.css`
+### Section UNIVERS (redesign luxury)
+- Plus de horizontal scroll grand format. Nouvelle grille raffinée 5 cartes (3 sur la 1ère ligne, 2 centrées sur la 2ème ligne).
+- Cartes en format portrait 3:4 avec hover zoom subtil, titre en serif italique **sous** l'image, description 3 lignes (`line-clamp-3`), lien "Découvrir" hairline doré.
+- Headers : tag `· Nos univers ·` en doré + filet doré sous le titre.
+
+### Module Blog / Journal (nouveau)
+- **Backend** : `routers/blog.py` — collection `blog_articles` avec slugs auto-générés uniques (`_slugify`), CRUD complet, workflow draft/published, endpoint public listant + lecture par slug + 3 articles "À lire aussi".
+- **Frontend public** :
+  - `/blog` — page liste avec featured article (premier) + grille des suivants en 3 colonnes.
+  - `/blog/:slug` — article complet (hero image + corps HTML stylé via `prose` Tailwind + 3 articles related).
+- **Frontend staff** : `/staff/blog` — tableau CRUD (titre, catégorie, slug, status), bouton "Publier/Dépublier" rapide, modal d'édition complète (titre/excerpt/cover/auteur/catégorie/tags/temps lecture/body HTML), preview lien externe pour articles publiés.
+- **Seed** : 2 articles éditoriaux pré-créés (« L'Île Boulay, secret le mieux gardé d'Abidjan » et « Le Kaai — Carnet de cuisine d'inspiration africaine »).
+- Nav publique : entrée **Journal** ajoutée entre Boutique et Contact.
+- Sidebar staff : entrée **Journal — Blog** ajoutée sous Administration.
+
+### Fichiers modifiés / créés
+- `VitrineNav.jsx` — refonte complète layout horizontal desktop.
+- `VitrineLayout.jsx` — padding réduit (`pt-16 md:pt-20`).
+- `VitrineLanding.jsx` — hero + section UNIVERS + UniversCard refonte.
+- `routers/blog.py` (nouveau).
+- `pages/vitrine/VitrineBlog.jsx`, `VitrineBlogArticle.jsx` (nouveaux).
+- `pages/staff/StaffBlog.jsx` (nouveau).
+- `App.js` + `StaffLayout.jsx` — routes et sidebar wiring.
+
+### Mongo collections ajoutées
+- `blog_articles` — `{_id, slug (unique), title, excerpt, body, cover_image_url, author_name, category, tags[], read_minutes, status: draft|published, published_at, created_at, updated_at, created_by, updated_by}`.
 
 ---
 
-## 2026-06-18 (2) — Phase B (continued) — CRM 360° + Memberships + Événementiel + Upsell
+## Entrées précédentes (résumées)
 
-(Voir l'entrée précédente du changelog pour les détails complets — `iteration_33.json`)
+- 2026-06-18 (3) — Logo XL doré au scroll + Optima partout (iteration 54 — désormais remplacée par la refonte luxury).
+- 2026-06-18 (2) — CRM 360° + Memberships + Événementiel + Upsell (`iteration_33.json` — 23/23).
+- 2026-06-18 (1) — Marketing Dashboard + Inbox + Vitrine pages (`iteration_32.json`).
 
----
-
-## 2026-06-18 (1) — Phase B — Marketing Dashboard + Inbox + Vitrine pages
-
-(`iteration_32.json` — 100% green)
 
 ### Validation
 - **23/23 backend pytest passing** (`/app/backend/tests/test_iteration33_phaseB_modules.py`).

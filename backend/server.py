@@ -11692,4 +11692,15 @@ app.include_router(
     )
 )
 
+# Phase B Revenue Engine — Editorial Blog / Journal
+from routers import blog as _blog_mod  # noqa: E402
+
+app.include_router(
+    _blog_mod.build_router(
+        db=db,
+        get_current_staff=get_current_staff,
+        require_role=_require_role,
+    )
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

@@ -76,14 +76,14 @@ export default function VitrineLanding() {
             Île Boulay  ·  Abidjan
           </div>
           <h1
-            className="font-serif text-white leading-[0.95] text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[7rem] max-w-5xl"
+            className="font-serif text-white leading-[0.95] text-7xl sm:text-[5.5rem] md:text-[7.5rem] lg:text-[9rem] xl:text-[10.5rem] max-w-6xl"
             style={{ fontWeight: 400, letterSpacing: "0.04em" }}
             data-testid="vitrine-hero-title"
           >
-            LIDE IS HERE
+            LIFE IS HERE
           </h1>
           <p
-            className="mt-8 text-base sm:text-lg md:text-xl text-white/85 max-w-2xl leading-relaxed font-light"
+            className="mt-10 text-xl sm:text-2xl md:text-3xl text-white/90 max-w-3xl leading-relaxed font-light"
             data-testid="vitrine-hero-subtitle"
           >
             Une île privée, à quelques minutes d'Abidjan.
@@ -97,32 +97,30 @@ export default function VitrineLanding() {
         </div>
       </section>
 
-      {/* ─── NOS UNIVERS — horizontal scroll cards (desktop) / stack (mobile) ── */}
-      <section className="py-24 md:py-32 bg-white overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6 mb-16 md:mb-20">
-          <div className="text-center">
-            <div className="text-[0.65rem] tracking-[0.45em] uppercase text-[#0A0A0A]/55 mb-6">
-              Nos univers
+      {/* ─── NOS UNIVERS — refined luxury hotel grid ──────── */}
+      <section className="py-28 md:py-40 bg-white">
+        <div className="max-w-7xl mx-auto px-6">
+          {/* Section header */}
+          <div className="text-center mb-16 md:mb-20">
+            <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-6">
+              · Nos univers ·
             </div>
-            <h2 className="font-serif italic font-light text-4xl sm:text-5xl md:text-6xl leading-[1.05] text-[#0A0A0A] max-w-3xl mx-auto">
+            <h2 className="font-serif italic font-light text-3xl sm:text-4xl md:text-5xl leading-[1.15] text-[#0A0A0A] max-w-2xl mx-auto">
               Cinq expériences,<br />une seule destination d'exception.
             </h2>
+            <div className="w-12 h-px bg-[#B8922A] mx-auto mt-10" />
           </div>
-        </div>
 
-        {/* Mobile : vertical stack */}
-        <div className="md:hidden px-6 space-y-5">
-          {UNIVERS.map((u) => <UniversCard key={u.to} u={u} mobile />)}
-        </div>
-
-        {/* Desktop : horizontal scroll */}
-        <div className="hidden md:block">
-          <div className="flex gap-6 overflow-x-auto snap-x snap-mandatory scroll-px-10 px-10 lg:px-16 pb-6 scrollbar-hide"
-               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-            {UNIVERS.map((u) => <UniversCard key={u.to} u={u} />)}
-          </div>
-          <div className="text-center mt-8 text-[0.6rem] tracking-[0.4em] uppercase text-[#0A0A0A]/40">
-            ← Glissez pour explorer →
+          {/* Editorial 5-card grid : 3 on top row, 2 on bottom row, centered */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-x-6 gap-y-10 md:gap-y-14">
+            {UNIVERS.slice(0, 3).map((u) => (
+              <UniversCard key={u.to} u={u} className="lg:col-span-2" />
+            ))}
+            <div className="hidden lg:block lg:col-span-1" />
+            {UNIVERS.slice(3, 5).map((u) => (
+              <UniversCard key={u.to} u={u} className="lg:col-span-2" />
+            ))}
+            <div className="hidden lg:block lg:col-span-1" />
           </div>
         </div>
       </section>
@@ -271,41 +269,38 @@ export default function VitrineLanding() {
 }
 
 /**
- * Single panoramic immersive card — large image, overlay text, CTA.
- * Desktop : 600px wide, snap-aligned in horizontal scroll.
- * Mobile  : full width when `mobile` prop is passed.
+ * Single refined universe card — luxury hotel aesthetic.
+ *
+ * - Portrait image (aspect 3/4) with subtle hover zoom.
+ * - Title in italic serif under the image.
+ * - 3-line description with ellipsis (line-clamp-3) for visual rhythm.
+ * - Gold hairline + "Découvrir" link on hover.
  */
-function UniversCard({ u, mobile = false }) {
+function UniversCard({ u, className = "" }) {
   return (
     <Link
       to={u.to}
       onClick={() => trackEvent("view_offer", { offer: u.name })}
-      className={`group relative block overflow-hidden bg-[#0A0A0A] ${
-        mobile
-          ? "w-full aspect-[3/4]"
-          : "snap-start flex-shrink-0 w-[78vw] sm:w-[60vw] lg:w-[640px] xl:w-[720px] aspect-[3/4]"
-      }`}
+      className={`group block ${className}`}
       data-testid={`univers-card-${u.to.split("/").pop()}`}
     >
-      <div
-        className="absolute inset-0 bg-cover bg-center transition-transform duration-[2.5s] ease-out group-hover:scale-[1.07]"
-        style={{ backgroundImage: `url(${u.image})` }}
-      />
-      <div className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/95 via-black/55 to-transparent pointer-events-none" />
-      <div className="absolute inset-0 flex flex-col justify-end p-8 md:p-12 lg:p-14 text-white">
-        <h3 className="font-serif italic font-light text-4xl sm:text-5xl md:text-6xl leading-[1.02] mb-4 md:mb-5 transition-transform duration-500 group-hover:-translate-y-1">
+      <div className="relative aspect-[3/4] overflow-hidden bg-[#FAF7F2]">
+        <div
+          className="absolute inset-0 bg-cover bg-center transition-transform duration-[1.8s] ease-out group-hover:scale-[1.05]"
+          style={{ backgroundImage: `url(${u.image})` }}
+        />
+        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/55 to-transparent" />
+      </div>
+      <div className="pt-6 px-1">
+        <h3 className="font-serif italic font-light text-2xl md:text-[1.65rem] leading-tight text-[#0A0A0A] mb-3">
           {u.name}
         </h3>
-        <p className="text-base md:text-lg text-white/85 leading-relaxed mb-7 md:mb-8 max-w-md font-light">
+        <p className="text-sm md:text-[0.95rem] text-[#0A0A0A]/65 leading-relaxed line-clamp-3 font-light mb-5">
           {u.description}
         </p>
-        <div className="inline-flex items-center gap-2">
-          <span className="text-[0.7rem] md:text-[0.75rem] tracking-[0.35em] uppercase border-b border-white pb-1 group-hover:text-[#D4B256] group-hover:border-[#D4B256] transition-colors">
-            Découvrir
-          </span>
-          <span className="text-[0.7rem] tracking-[0.35em] uppercase opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300">
-            →
-          </span>
+        <div className="inline-flex items-center gap-2 text-[0.6rem] tracking-[0.4em] uppercase text-[#B8922A] border-b border-[#B8922A]/40 pb-1 group-hover:border-[#B8922A] transition-colors">
+          Découvrir
+          <span className="inline-block transition-transform group-hover:translate-x-1">→</span>
         </div>
       </div>
     </Link>
