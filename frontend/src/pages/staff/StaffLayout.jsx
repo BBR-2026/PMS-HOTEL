@@ -88,6 +88,8 @@ const NAV = [
   { key: "notifications", to: "/staff/notifications", icon: Bell, label: "Notifications SMS/WhatsApp", roles: R_MGMT },
   { key: "marketing", to: "/staff/marketing", icon: BarChart3, label: "Marketing & Acquisition", roles: R_MGMT },
   { key: "marketing_campaigns", to: "/staff/marketing/campaigns", icon: Megaphone, label: "Campagnes Marketing", roles: R_MGMT },
+  { key: "marketing_acquisition", to: "/staff/marketing/acquisition", icon: TrendingUp, label: "Moteur d'acquisition", roles: R_MGMT },
+  { key: "revenue_rate_plans", to: "/staff/revenue/rate-plans", icon: TrendingUp, label: "Revenue Management", roles: R_MGMT },
   { key: "media_library", to: "/staff/marketing/media", icon: Camera, label: "Médiathèque", roles: R_MGMT },
   { key: "memberships", to: "/staff/memberships", icon: CreditCard, label: "Memberships — BBR Cards", roles: R_MGMT },
   { key: "events_pipeline", to: "/staff/events-pipeline", icon: KanbanSquare, label: "Pipeline événementiel", roles: R_MGMT },

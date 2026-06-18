@@ -255,6 +255,10 @@ function CampaignForm({ initial, meta, onClose, onSave }) {
   const [objective, setObjective] = useState(initial.objective || "reservations");
   const [status, setStatus] = useState(initial.status || "draft");
   const [notes, setNotes] = useState(initial.notes || "");
+  const [audienceTargets, setAudienceTargets] = useState(
+    Array.isArray(initial.audience_targets) ? initial.audience_targets.join(", ") : ""
+  );
+  const [audienceNotes, setAudienceNotes] = useState(initial.audience_notes || "");
 
   const offerOptions = meta?.universes?.[universe] || [];
 
@@ -273,6 +277,11 @@ function CampaignForm({ initial, meta, onClose, onSave }) {
       objective,
       status,
       notes: notes.trim() || null,
+      audience_targets: audienceTargets
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+      audience_notes: audienceNotes.trim() || null,
     });
   }
 
@@ -331,6 +340,25 @@ function CampaignForm({ initial, meta, onClose, onSave }) {
           </Field>
           <Field label="Notes" testid="cf-notes" col2>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm resize-y" />
+          </Field>
+          <Field label="Audiences cibles (séparées par virgules)" testid="cf-audiences" col2>
+            <input
+              value={audienceTargets}
+              onChange={(e) => setAudienceTargets(e.target.value)}
+              placeholder="ex: Cadres Abidjan 25-45, Expats CI, Lookalike acheteurs J60"
+              className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm"
+              data-testid="cf-audiences-input"
+            />
+          </Field>
+          <Field label="Détail audiences / brief créatif" testid="cf-audience-notes" col2>
+            <textarea
+              value={audienceNotes}
+              onChange={(e) => setAudienceNotes(e.target.value)}
+              rows={3}
+              placeholder="Géolocalisation, intérêts, exclusions, etc."
+              className="w-full border border-[#0A0A0A]/15 px-3 py-2 text-sm resize-y"
+              data-testid="cf-audience-notes-input"
+            />
           </Field>
         </div>
         <div className="flex items-center justify-end gap-3 p-5 border-t border-[#0A0A0A]/10">

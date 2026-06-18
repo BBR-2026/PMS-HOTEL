@@ -11793,6 +11793,16 @@ app.include_router(
     )
 )
 
+# Phase C — Vague 2 — Revenue Management (rate plans + promo codes)
+from routers import revenue_management as _revenue_mod  # noqa: E402
+
+_revenue_router = _revenue_mod.build_router(
+    db=db,
+    get_current_staff=get_current_staff,
+    require_role=_require_role,
+)
+app.include_router(_revenue_router)
+
 
 @app.on_event("startup")
 async def _init_object_storage():

@@ -73,6 +73,8 @@ class CampaignIn(BaseModel):
     objective: str
     status: str = "draft"
     notes: str | None = Field(default=None, max_length=2000)
+    audience_targets: list[str] | None = Field(default=None, max_length=20)
+    audience_notes: str | None = Field(default=None, max_length=2000)
 
 
 class CreativeIn(BaseModel):
@@ -157,7 +159,8 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
     async def update_campaign(cid: str, body: dict, user=Depends(get_current_staff)):
         await require_role(user, ["admin", "manager", "manager_pole"])
         allowed = {"name", "universe", "offer", "start_date", "end_date",
-                   "budget_total", "budget_daily", "objective", "status", "notes"}
+                   "budget_total", "budget_daily", "objective", "status", "notes",
+                   "audience_targets", "audience_notes"}
         updates = {k: v for k, v in body.items() if k in allowed}
         if "universe" in updates and updates["universe"] not in UNIVERSES:
             raise HTTPException(status_code=400, detail="invalid_universe")
@@ -217,5 +220,57 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
         if r.matched_count == 0:
             raise HTTPException(status_code=404, detail="not_found")
         return {"ok": True}
+
+    # ── Acquisition Engine: offers ←→ campaigns grouping ──────────
+    @router.get("/acquisition")
+    async def acquisition_overview(user=Depends(get_current_staff)):
+        """Aggregate all campaigns grouped by offer key (universe + offer).
+        Returns one entry per offer with its active/paused/draft counts and
+        total committed budgets. Useful for the 'one offer = one permanent
+        campaign' dashboard view.
+        """
+        await require_role(user, ["admin", "manager", "manager_pole", "management_general"])
+        groups: dict[str, dict[str, Any]] = {}
+        async for c in db["marketing_campaigns"].find({}):
+            key = f"{c.get('universe')}::{c.get('offer')}"
+            g = groups.setdefault(key, {
+                "universe": c.get("universe"),
+                "offer": c.get("offer"),
+                "campaigns": [],
+                "active": 0, "paused": 0, "draft": 0, "ended": 0,
+                "budget_total": 0.0, "budget_daily": 0.0,
+                "creatives_count": 0,
+            })
+            g["campaigns"].append({
+                "id": c["_id"],
+                "name": c.get("name"),
+                "status": c.get("status"),
+                "start_date": c.get("start_date"),
+                "end_date": c.get("end_date"),
+                "budget_total": c.get("budget_total", 0),
+                "budget_daily": c.get("budget_daily", 0),
+                "objective": c.get("objective"),
+                "creatives": len(c.get("creatives") or []),
+            })
+            st = c.get("status", "draft")
+            if st in g:
+                g[st] += 1
+            g["budget_total"] += float(c.get("budget_total") or 0)
+            g["budget_daily"] += float(c.get("budget_daily") or 0)
+            g["creatives_count"] += len(c.get("creatives") or [])
+        # Inject offers that have NO campaign yet (so staff sees the universe-offer matrix)
+        for uni, offers in UNIVERSES.items():
+            for off in offers:
+                key = f"{uni}::{off}"
+                if key not in groups:
+                    groups[key] = {
+                        "universe": uni, "offer": off, "campaigns": [],
+                        "active": 0, "paused": 0, "draft": 0, "ended": 0,
+                        "budget_total": 0.0, "budget_daily": 0.0,
+                        "creatives_count": 0,
+                    }
+        items = list(groups.values())
+        items.sort(key=lambda i: (i["universe"], -i["active"], i["offer"]))
+        return {"items": items}
 
     return router

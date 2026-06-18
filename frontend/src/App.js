@@ -54,6 +54,8 @@ import StaffUpsells from "./pages/staff/StaffUpsells";
 import StaffBlog from "./pages/staff/StaffBlog";
 import StaffMarketingCampaigns from "./pages/staff/StaffMarketingCampaigns";
 import StaffMediaLibrary from "./pages/staff/StaffMediaLibrary";
+import StaffAcquisitionEngine from "./pages/staff/StaffAcquisitionEngine";
+import StaffRatePlans from "./pages/staff/StaffRatePlans";
 import StaffSiteSettings from "./pages/staff/StaffSiteSettings";
 import BookingExtras from "./pages/BookingExtras";
 import PolePage from "./pages/PolePage";
@@ -197,7 +199,9 @@ function App() {
               <Route path="paiements" element={<RoleGuard allowed={MANAGER_PLUS}><StaffPayments /></RoleGuard>} />
               <Route path="marketing" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMarketing /></RoleGuard>} />
               <Route path="marketing/campaigns" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMarketingCampaigns /></RoleGuard>} />
+              <Route path="marketing/acquisition" element={<RoleGuard allowed={MANAGER_PLUS}><StaffAcquisitionEngine /></RoleGuard>} />
               <Route path="marketing/media" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMediaLibrary /></RoleGuard>} />
+              <Route path="revenue/rate-plans" element={<RoleGuard allowed={MANAGER_PLUS}><StaffRatePlans /></RoleGuard>} />
               <Route path="leads" element={<RoleGuard allowed={MANAGER_PLUS}><StaffLeads /></RoleGuard>} />
               <Route path="crm" element={<RoleGuard allowed={MANAGER_PLUS}><StaffCRM /></RoleGuard>} />
               <Route path="memberships" element={<RoleGuard allowed={MANAGER_PLUS}><StaffMemberships /></RoleGuard>} />

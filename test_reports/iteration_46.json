@@ -1,0 +1,31 @@
+{
+  "summary": "Phase C Vague 2 (Acquisition Engine + Revenue Management) fully validated. Backend: 11/11 pytest pass covering acquisition aggregation (15 items, 5 universes), campaign audience fields (POST + PATCH persistence), rate-plan CRUD with all validations (promo_code_required / invalid_type / invalid_adjustment_kind), filter by offer_key+type, weekend +20% pricing (35000 -> 42000 on 2026-06-20 Sat), weekday no-plan returns base, promo SUNNY10 -10% on weekday, promo>weekend priority on Saturday with promo. Frontend: all UI flows verified — 15 offer cards on /staff/marketing/acquisition with universe filter (beach_club shows 3 / hebergement hidden), 1 existing campaign toggle visible, /staff/revenue/rate-plans shows the 2 seeded plans (Promo SUNNY10, Surcharge week-end), 'Nouveau plan' modal creates a seasonal -15% plan that appears in the list, toggle active works, audience fields render in campaign form modal (Audiences cibles + Détail audiences/Brief créatif), mobile 390px has no horizontal overflow on either page, and 4 legacy pages still load without errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration46_revenue.py",
+    "/app/test_reports/pytest/iter46.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "revenue_management.py _resolve(): when both promo and weekend match on the same date, priority sort works as designed (promo:4 > weekend:1) — verified end-to-end at /api/revenue/quote.",
+    "revenue_management.py POST validates promo_code only via `(promo_code or '').strip()` — Pydantic field already trims via max_length but a stripped empty string still bypasses the model. Current check correctly raises 400 in that case (verified).",
+    "marketing_campaigns.py /acquisition endpoint correctly injects missing universe×offer pairs (zero counters) so the 15-card matrix is guaranteed even on an empty DB.",
+    "Frontend StaffRatePlans.jsx — OFFER_KEYS hardcoded list duplicates the universe.offer naming convention from the CMS. Consider exposing a /api/staff/revenue/offer-keys meta endpoint later to avoid drift.",
+    "Console log noise: a benign 404 (likely a sidebar /unread badge probe) prints repeatedly on every page navigation — not blocking but worth tracking down."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration46_revenue.py (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100%"},
+  "test_credentials": "admin@boulay.ci / Admin@2026 (verified)",
+  "seed_data_creation": "Created (and cleaned up) TEST_ rate plans for weekend/promo + a UI-created 'UI_TEST_seasonal_summer' plan removed via API after the run. Test campaign 'TEST_audience_camp' was created and remains (used as PATCH target).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest suite for Vague 2 lives at /app/backend/tests/test_iteration46_revenue.py (11 tests, autouse teardown). For UI, use page.wait_for_function(\"() => !location.pathname.endsWith('/staff/login')\") after login — wait_for_url('**/staff/dashboard**') does NOT work because post-login URL is /staff (not /staff/dashboard). Sidebar order verified: Marketing → Campagnes Marketing → Moteur d'acquisition → Revenue Management → Médiathèque. BookingTunnel integration with /api/revenue/quote is INTENTIONALLY out of scope (per main agent note).",
+  "rca of the issue": "No issues found. All 5 new endpoints + 2 new frontend pages + extended campaign form behave per spec."
+}
