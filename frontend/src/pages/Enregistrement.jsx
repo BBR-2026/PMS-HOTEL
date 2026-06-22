@@ -85,7 +85,11 @@ export default function Enregistrement() {
       if (form.company.trim()) payload.company = form.company.trim();
       const { data } = await api.post("/registrations", payload);
       setSuccess(data);
-      toast.success("Enregistrement validé ! Votre pass a été envoyé par email.");
+      toast.success(
+        data.email
+          ? "Enregistrement validé ! Votre pass a été envoyé par email."
+          : "Enregistrement validé ! Téléchargez votre pass."
+      );
     } catch (err) {
       toast.error(err.response?.data?.detail || "Échec de l'enregistrement");
     } finally {
@@ -104,7 +108,9 @@ export default function Enregistrement() {
             Merci {success.first_name} !
           </h1>
           <p className="text-[#0A0A0A]/70 text-sm sm:text-base mb-2 leading-relaxed">
-            Vous venez de recevoir votre pass d'embarquement par email.
+            {success.email
+              ? "Vous venez de recevoir votre pass d'embarquement par email."
+              : "Votre pass d'embarquement est prêt — téléchargez-le ci-dessous."}
           </p>
           <p className="text-[#0A0A0A]/55 text-sm mb-8">
             Référence : <span className="font-mono text-[#0A0A0A]">{success.ref}</span><br/>
@@ -204,12 +210,16 @@ export default function Enregistrement() {
               <Field label="Prénom" required value={form.first_name}
                 onChange={(v) => update("first_name", v)} testid="field-first-name" />
             </div>
-            <Field label="Email" type="email" value={form.email}
-              onChange={(v) => update("email", v)} testid="field-email"
-              placeholder="Optionnel pour personnel, prestataires…" />
             <Field label="Numéro" type="tel" required value={form.phone}
               placeholder="+225 07 ..."
               onChange={(v) => update("phone", v)} testid="field-phone" />
+            {/* iter-50c: email kept ONLY for clients (they receive the pass by email).
+                Personnel / prestataires / invités / etc. → enregistrement express. */}
+            {kind === "client" && (
+              <Field label="Email" type="email" value={form.email}
+                onChange={(v) => update("email", v)} testid="field-email"
+                placeholder="Pour recevoir votre pass" />
+            )}
 
             {kind === "client" && (
               <div>

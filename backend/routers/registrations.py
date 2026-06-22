@@ -381,6 +381,7 @@ def build_router(*, db, offers_catalog: dict, require_role, get_current_staff,
             "kind": reg["kind"],
             "offer_label": reg["offer_label"],
             "ref": reg["id"][:8].upper(),
+            "email": reg.get("email") or None,
         }
 
     @router.get("/registrations/{reg_id}/pass.pdf")
