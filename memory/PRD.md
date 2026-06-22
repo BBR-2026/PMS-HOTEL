@@ -2,7 +2,28 @@
 
 ## Latest update — 2026-06-22
 
-### Prompt 1 — CMS Complet (iteration 49) — TERMINÉ
+### Prompt 2 — Booking engine prix-driven uniforme (iteration 49) — TERMINÉ
+
+**Règle métier** : si `total_amount <= 0` à la création de réservation → auto-confirmation immédiate (skip paiement, QR + email + WhatsApp générés instantanément). Si `total_amount > 0` → flow paiement classique (FineoPay) inchangé.
+
+**Backend (server.py:2768-2799)** :
+- Dans `create_booking()`, après `db.bookings.insert_one(doc)` : si `int(total) <= 0`, appel interne `pay_booking(doc['id'], PayBooking(reference_token, payment_method='card'))` puis re-fetch du booking et retour avec `free_flow=True`
+- Idempotent : 2e appel à `/pay` retourne 400 "Booking already processed"
+- Tolérance aux erreurs : si pay_booking échoue, fallback sur le doc original (no 500)
+
+**Frontend (BookingTunnel.jsx:514-516, 1544)** :
+- Toast "Réservation confirmée — votre pass est prêt !" sur `data.free_flow || (status==='confirmed' && total_amount===0)`
+- Step 5 route déjà sur ConfirmationView quand `status==='confirmed'` (logique préexistante, validée)
+
+**Tests** : `/app/backend/tests/test_iteration49_free_flow.py` (9 cas, 100%) — couvre pass_day/sunset/brunch en free, paid flow regression, idempotency, cash fallback, error handling.
+
+**Limites documentées** :
+- `crossing_fee_amount` (Le Kaai) et `room_tiers` (Hébergement) n'utilisent pas `price_adult/price_child` → un PATCH simple ne rend pas Le Kaai/Hôtel gratuit. Logique correcte (la décision est sur le total résolu) mais nécessite extension de `OfferPriceOverride` pour exposer ces champs si besoin futur.
+
+### Pending — Prompt 3 (P0)
+- **Prompt 3** : Cantine fermeture automatique 23h59 J-1 + dashboard enrichi (export Excel/PDF, capacité max, liste d'attente)
+
+### Prompt 1 — CMS Complet (iteration 49 — précédent)
 
 **Backend (site_settings.py)** :
 - `offers` schema enrichi : chaque offre a maintenant `name, subtitle, price_xof, old_price_xof, description, description_long, conditions_reservation, conditions_annulation, places_available, date_start, date_end, image_url, gallery (array), video_url, badge`
