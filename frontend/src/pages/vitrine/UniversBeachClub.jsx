@@ -10,7 +10,7 @@ export default function UniversBeachClub() {
         kicker: "Univers · Beach Club",
         title: "Trois expériences, une plage privée.",
         tagline:
-          "Day Pass, Sunset Experience, Brunch dominical. Toute l'année, sept jours sur sept.",
+          "Day Pass, Sunset Experience, BiBrunch. Toute l'année, sept jours sur sept.",
         cta: { to: "/reserver", label: "Choisir mon expérience" },
       }}
       intro={{
@@ -31,7 +31,7 @@ export default function UniversBeachClub() {
             "Vestiaires & douches privés",
             "30% de réduction au restaurant",
           ],
-          price: "20 000 XOF",
+          price: "50 000 XOF",
           priceSuffix: "/ adulte",
           image: "https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=1200&q=80",
           cta: { to: "/booking/pass_day", label: "Réserver mon Day Pass" },
@@ -47,7 +47,7 @@ export default function UniversBeachClub() {
             "DJ live & ambiance",
             "Foodtruck gourmand",
           ],
-          price: "15 000 XOF",
+          price: "60 000 XOF",
           priceSuffix: "/ adulte",
           image: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80",
           cta: { to: "/booking/sunset", label: "Réserver mon Sunset" },
@@ -55,7 +55,7 @@ export default function UniversBeachClub() {
         },
         {
           testId: "brunch",
-          title: "Brunch dominical",
+          title: "BiBrunch",
           description:
             "Le brunch attendu de tout Abidjan. Vue panoramique et buffet d'exception.",
           features: [
@@ -64,10 +64,10 @@ export default function UniversBeachClub() {
             "Animation musicale live",
             "Accès plage tout l'après-midi",
           ],
-          price: "22 000 XOF",
+          price: "80 000 XOF",
           priceSuffix: "/ adulte",
           image: "https://images.unsplash.com/photo-1551782450-a2132b4ba21d?auto=format&fit=crop&w=1200&q=80",
-          cta: { to: "/booking/brunch", label: "Réserver mon Brunch" },
+          cta: { to: "/booking/brunch", label: "Réserver mon BiBrunch" },
         },
       ]}
       highlights={[

@@ -64,7 +64,7 @@ DEFAULT_SECTIONS: dict[str, dict[str, Any]] = {
                 "id": "hebergement",
                 "to": "/univers/hebergement",
                 "name": "Hébergement",
-                "description": "Une nuit en suspens entre lagune et océan, dans nos suites signature. Chambres Supérieures et Suites côté jardin ou côté lagune, soins Spa & Wellness signature au bord de l'eau.",
+                "description": "Une nuit en suspens entre lagune et océan, dans nos suites signature. Chambres Exclusives et Suites Jardin ou Suites Lagune, soins Spa & Wellness signature au bord de l'eau.",
                 "image": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/7bcipz8w_HEBERGEMENT.png",
             },
             {
@@ -179,8 +179,8 @@ DEFAULT_SECTIONS: dict[str, dict[str, Any]] = {
                 "image_url": "", "gallery": [], "video_url": "", "badge": "",
             },
             "brunch": {
-                "name": "B Brunch", "subtitle": "Dimanche gourmand",
-                "price_xof": 45000, "old_price_xof": 0,
+                "name": "BiBrunch", "subtitle": "Dimanche gourmand",
+                "price_xof": 80000, "old_price_xof": 0,
                 "description": "Brunch dominical signature.",
                 "description_long": "", "conditions_reservation": "", "conditions_annulation": "",
                 "places_available": 50, "date_start": "", "date_end": "",
@@ -235,7 +235,7 @@ DEFAULT_SECTIONS: dict[str, dict[str, Any]] = {
         "posts": [
             {"src": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/4kr4z5g1_DAY%20PASS.jpeg", "caption": "Day Pass"},
             {"src": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/3g3onmkg_THE%20SUNSET.jpeg", "caption": "The Sunset"},
-            {"src": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/1txrnqdp_B%20BRUNCH.jpeg", "caption": "B Brunch"},
+            {"src": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/1txrnqdp_B%20BRUNCH.jpeg", "caption": "BiBrunch"},
             {"src": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/kgqk46mw_LE%20KAAI.jpeg", "caption": "Le Kaai"},
             {"src": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/ivhtbefz_BBR%20_SHOOT%202_15.jpg", "caption": "Île Boulay"},
             {"src": "https://customer-assets.emergentagent.com/job_reserve-bbr/artifacts/2hilix5p_BBR%20_SHOOT%202_29.jpg", "caption": "BBR Life"},
@@ -259,7 +259,7 @@ DEFAULT_SECTIONS: dict[str, dict[str, Any]] = {
         "items": [
             {"author": "Aïcha K.", "role": "Cliente Day Pass", "quote": "Une vraie parenthèse à 15 min d'Abidjan. L'accueil, le cadre, les cocktails — tout est impeccable.", "rating": 5, "image": ""},
             {"author": "Jean-Marc P.", "role": "Séminaire Corporate", "quote": "Nous avons privatisé le site pour un séminaire de 80 personnes. Logistique parfaite, équipe au top.", "rating": 5, "image": ""},
-            {"author": "Lina B.", "role": "Brunch dominical", "quote": "Le B Brunch est devenu notre rituel du dimanche. Service attentionné, vue magnifique.", "rating": 5, "image": ""},
+            {"author": "Lina B.", "role": "Brunch dominical", "quote": "Le BiBrunch est devenu notre rituel du dimanche. Service attentionné, vue magnifique.", "rating": 5, "image": ""},
         ],
     },
     "mentions_legales": {

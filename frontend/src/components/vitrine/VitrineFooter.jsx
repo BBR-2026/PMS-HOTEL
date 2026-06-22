@@ -84,7 +84,7 @@ export default function VitrineFooter() {
               <li><Link to="/reserver" className="hover:text-[#B8922A]">Réserver un séjour</Link></li>
               <li><Link to="/booking/pass_day" className="hover:text-[#B8922A]">Day Pass</Link></li>
               <li><Link to="/booking/sunset" className="hover:text-[#B8922A]">Sunset Experience</Link></li>
-              <li><Link to="/booking/brunch" className="hover:text-[#B8922A]">Brunch dominical</Link></li>
+              <li><Link to="/booking/brunch" className="hover:text-[#B8922A]">BiBrunch</Link></li>
               <li><Link to="/univers/evenementiel#devis" className="hover:text-[#B8922A]">Demander un devis</Link></li>
             </ul>
           </div>

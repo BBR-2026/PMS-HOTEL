@@ -222,7 +222,7 @@ def build_router(*, db, get_current_staff, require_role) -> APIRouter:
         # Beach Club
         "beach_club.pass_day": {"base_price": 25000, "capacity": 60, "universe": "beach_club", "label": "Day Pass"},
         "beach_club.sunset":   {"base_price": 35000, "capacity": 40, "universe": "beach_club", "label": "Sunset Experience"},
-        "beach_club.brunch":   {"base_price": 30000, "capacity": 50, "universe": "beach_club", "label": "B Brunch"},
+        "beach_club.brunch":   {"base_price": 80000, "capacity": 50, "universe": "beach_club", "label": "BiBrunch"},
         # Hébergement
         "hebergement.chambre_exclusive": {"base_price": 120000, "capacity": 12, "universe": "hebergement", "label": "Chambre Exclusive"},
         "hebergement.suite_jardin":      {"base_price": 180000, "capacity": 6,  "universe": "hebergement", "label": "Suite Jardin"},

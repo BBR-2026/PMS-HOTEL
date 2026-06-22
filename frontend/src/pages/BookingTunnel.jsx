@@ -197,6 +197,18 @@ export default function BookingTunnel() {
   const isOvernight = !!offer?.is_overnight;
   const roomTiers = offer?.room_tiers || [];
   const hasTiers = roomTiers.length > 0;
+  // iter-50e: when the client lands from /univers/hebergement, the tier is
+  // pre-selected via ?tier=<id>. We bypass the in-tunnel "Room Type" step
+  // entirely so the funnel becomes: Offer → Dates → Guests → Payment.
+  const presetTier = useMemo(() => {
+    try { return new URLSearchParams(window.location.search).get("tier") || ""; }
+    catch { return ""; }
+  }, []);
+  const tierLockedFromUrl = hasTiers && !!presetTier && !!roomTiers.find((t) => t.id === presetTier);
+  // Auto-select the preset tier as soon as the offer (and its tiers) load.
+  useEffect(() => {
+    if (tierLockedFromUrl && !roomTier) setRoomTier(presetTier);
+  }, [tierLockedFromUrl, presetTier, roomTier]);
   const selectedTier = hasTiers ? roomTiers.find((t) => t.id === roomTier) : null;
   const nights = useMemo(() => {
     if (!isOvernight || !selectedDate || !checkoutDate) return 0;
@@ -784,7 +796,27 @@ export default function BookingTunnel() {
                 </h2>
                 <div className="gold-divider mb-8" />
 
-                {hasTiers && (
+                {hasTiers && tierLockedFromUrl && selectedTier && (
+                  <div
+                    className="mb-10 border border-[#B8922A]/40 bg-[#B8922A]/5 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                    data-testid="locked-tier-chip"
+                  >
+                    <div>
+                      <div className="text-[0.6rem] uppercase tracking-[0.28em] text-[#B8922A] mb-1">
+                        {t.booking.roomType}
+                      </div>
+                      <div className="font-display-serif text-lg text-[#0A0A0A] leading-tight">
+                        {lang === "fr" ? selectedTier.name_fr : selectedTier.name_en}
+                      </div>
+                    </div>
+                    <div className="text-[#B8922A] font-medium text-sm">
+                      {formatXOF(selectedTier.price)}
+                      <span className="text-[0.7rem] text-[#0A0A0A]/50 ml-1">{t.offers.perNight}</span>
+                    </div>
+                  </div>
+                )}
+
+                {hasTiers && !tierLockedFromUrl && (
                   <div className="mb-10" data-testid="room-tier-selector">
                     <div className="text-[0.7rem] uppercase tracking-[0.28em] text-[#B8922A] mb-4">
                       {t.booking.roomType}

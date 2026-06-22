@@ -6,7 +6,7 @@ import api from "../../lib/api";
 const OFFER_TYPES = [
   { id: "pass_day", label: "Day Pass (Beach Club)" },
   { id: "sunset", label: "The Sunset Experience" },
-  { id: "brunch", label: "B Brunch" },
+  { id: "brunch", label: "BiBrunch" },
   { id: "le_kaai", label: "Le Kaaï (restaurant)" },
   { id: "hebergement", label: "Hébergement" },
   { id: "spa_wellness", label: "Spa & Wellness" },

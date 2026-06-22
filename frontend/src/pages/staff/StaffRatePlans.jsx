@@ -8,7 +8,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const OFFER_KEYS = [
   { key: "beach_club.pass_day",      label: "Beach Club · Day Pass" },
   { key: "beach_club.sunset",        label: "Beach Club · The Sunset" },
-  { key: "beach_club.brunch",        label: "Beach Club · B Brunch" },
+  { key: "beach_club.brunch",        label: "Beach Club · BiBrunch" },
   { key: "hebergement.chambre_exclusive", label: "Hébergement · Chambre Exclusive" },
   { key: "hebergement.suite_jardin",      label: "Hébergement · Suite Jardin" },
   { key: "hebergement.suite_lagune",      label: "Hébergement · Suite Lagune" },
