@@ -2773,6 +2773,30 @@ async def create_booking(body: BookingCreate):
         _aio.create_task(_trig(db, reason="direct_booking"))
     except Exception:
         pass
+
+    # Prompt 2 — Price-driven uniform flow.
+    # When the resolved total is 0 XOF, the booking should bypass the
+    # payment tunnel entirely : auto-confirm + generate QRs + send the
+    # confirmation notifications, then return the fully-confirmed booking.
+    # Works uniformly across all offers / universes.
+    if int(total) <= 0:
+        try:
+            await pay_booking(
+                doc["id"],
+                PayBooking(
+                    reference_token=doc["reference_token"],
+                    payment_method="card",  # treated as completed (skips cash hold)
+                ),
+            )
+            confirmed = await db.bookings.find_one({"id": doc["id"]}, {"_id": 0})
+            if confirmed:
+                confirmed["free_flow"] = True
+                return confirmed
+        except Exception as _exc:  # noqa: BLE001
+            logging.getLogger(__name__).exception(
+                "free-flow auto-confirm failed for %s: %s", doc["id"], _exc
+            )
+
     doc.pop("_id", None)
     return doc
 

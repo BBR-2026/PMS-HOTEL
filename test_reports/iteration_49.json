@@ -1,0 +1,42 @@
+{
+  "summary": "Prompt 2 (Booking engine prix-driven uniforme) backend fully validated: 9/9 pytest pass. Free-flow auto-confirm fires when total<=0 (status=confirmed, free_flow=true, payment_method=card, paid_at set, qr_codes>=1) and the paid flow remains unchanged when total>0 (status=pending, no QR, no paid_at). Idempotency confirmed: replaying /pay on a free-confirmed booking returns 400 'Booking already processed'. Cash regression on paid bookings verified. Frontend BookingTunnel /booking/pass_day loads cleanly with no console errors; source review of BookingTunnel.jsx confirms (a) step 5 branches on bookingResp.status==='confirmed' to render ConfirmationView (line 1544), (b) free-flow toast 'Réservation confirmée — votre pass est prêt !' fires when data.free_flow || (status==='confirmed' && total_amount===0) (lines 514-516).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "create_booking (server.py:2782) — free-flow trigger scope", "issue": "The free-flow trigger uses int(total) <= 0 — works perfectly for pass_day/sunset/brunch (priced via price_adult/price_child). For le_kaai the mandatory crossing_fee_amount (~30 000 XOF) is added INDEPENDENTLY of price_adult/price_child, so PATCH price_adult=0/price_child=0 still produces total=30000 and the booking stays pending. For hebergement the room_tier price drives the total, not price_adult. This is correct behaviour (the check is on the resolved total, not on adult/child price), but the problem statement implied a single PATCH could make any offer free. If the intent is 'admin sets ANY offer to free', the admin must also be able to zero crossing_fee_amount and room_tiers — currently neither is exposed in OfferPriceOverride."},
+      {"endpoint": "Problem-statement boat_time spec vs implementation", "issue": "The review request stated 'sunset → 18H/19H/20H, brunch → 11H/12H, le_kaai → 12H/13H/19H/20H/21H' but the live implementation uses BOAT_TIMES_BY_OFFER[sunset]=BOAT_TIMES_WEEKEND=[10H..20H], brunch=same, le_kaai/hebergement via _boat_times_for_date returning WEEKDAY=[10/12/14/16/18/20] or WEEKEND=[10..20]. So 10H is accepted for sunset and 20H for brunch (verified). Either the documentation/PRD is stale, or these BOAT_TIMES_* lists need to be tightened per the new business rule. Not a regression introduced by Prompt 2."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration49_free_flow.py",
+    "/app/test_reports/pytest/iter49.xml"
+  ],
+  "action_items": [
+    "(MINOR) Consider exposing crossing_fee_amount / room_tiers price overrides via OfferPriceOverride so the admin can truly zero ANY offer for free events. Today only pass_day/sunset/brunch can reach total=0 via a single PATCH.",
+    "(MINOR) Reconcile BOAT_TIMES_BY_OFFER / BOAT_TIMES_WEEKEND with the latest business spec (sunset/brunch ranges in particular). The current accept-list is much wider than the problem statement suggested.",
+    "(NICE-TO-HAVE) Server.py is now 11966 lines — the Bloc D / Prompt-N refactor (split into routers/booking.py, routers/payment.py, routers/qr.py) keeps getting deferred and would unlock faster reviews."
+  ],
+  "critical_code_review_comments": [
+    "server.py:2782-2798 — the free-flow auto-confirm correctly: (a) gates on int(total) <= 0, (b) re-fetches the booking after pay_booking to capture qr_codes/paid_at/status mutations, (c) returns free_flow=True on the response for the frontend signal, (d) wraps pay_booking() in try/except so any pay failure does not 500 the booking POST — verified (the original pending doc is returned via the fallthrough at line 2800-2801). Sound implementation.",
+    "Note however that on pay_booking failure inside the free-flow path, the returned booking will NOT carry free_flow=True (correct) and clients will see status='pending' with total_amount=0 — UI will route to PaymentView with a 0 XOF total. The FineoPay button on a 0 XOF total is a degraded UX. Consider also catching here and returning an explicit free_flow=false + a soft-warning field, or returning a 502 in that case.",
+    "BookingTunnel.jsx:514-516 — toast fires on (free_flow || (status==='confirmed' && total_amount===0)). The OR guard is defensive and good — even if the backend forgets the free_flow flag, the UI still recognises the case via status+total.",
+    "BookingTunnel.jsx:1544 — step 5 renders ConfirmationView for status in ('confirmed','pending_cash_payment'), else PaymentView. Correct for both Prompt 2 free flow and the existing cash-deferred flow.",
+    "Idempotency: pay_booking() checks `if booking['status'] != 'pending': raise 400` (line 2819) — verified by test_replay_pay_on_free_booking_fails. So the same booking cannot be re-paid even if a client retries — solid.",
+    "qr_codes / wallet_qr are populated correctly for free bookings — the test asserts len(qr_codes) >= 1 and it passes (1 QR per adult, 2 adults → 2 QRs). payment_method='card' on free bookings is fine (it short-circuits FineoPay redirect AND avoids the cash 'EN ATTENTE' state)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration49_free_flow.py (new — 9 pytest cases, all passing in ~17s)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "Page loads cleanly, source-verified — deep e2e click-flow not run due to calendar interaction complexity (previously documented)"},
+  "test_credentials": "admin@boulay.ci / Admin@2026 (verified)",
+  "seed_data_creation": "Several test bookings created during the run: 1 free pass_day (confirmed), 2 paid pass_day (pending — one paid by cash to pending_cash_payment), 1 free sunset, 1 free brunch. Prices were PATCHED to 0 and RESTORED to defaults (pass_day 50000/25000, sunset 25000/15000, brunch 45000/20000) within each test's finally block — verified no residual price=0 overrides remain.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Tests live at /app/backend/tests/test_iteration49_free_flow.py (9 tests, ~17s wall). Free-flow only triggers when the RESOLVED total reaches 0 — for pass_day/sunset/brunch this happens when price_adult=price_child=0, but le_kaai has a separate crossing_fee_amount and hebergement is priced via room_tiers, so PATCHing adult/child to 0 is insufficient for them (intentional / documented in test comments). The boat_time accept-list is wider than the problem statement suggested — use BOAT_TIMES_WEEKDAY=[10/12/14/16/18/20] / WEEKEND=[10H..20H] for accuracy. _future_date_for_offer() helper picks valid weekdays per offer (sunset→Sat, brunch→Sun, pass_day→Mon-Fri).",
+  "rca of the issue": "No blocking issues. The 2 minor backend observations are non-fatal documentation/scope items: (1) crossing_fee/room_tier are not part of OfferPriceOverride so 'free le_kaai/hebergement' requires a richer admin mechanism — Prompt 2 itself is correct, the trigger condition `int(total) <= 0` is the right semantic; (2) the documented boat_time accept-list in the spec differs from the implementation — pre-existing, unrelated to Prompt 2."
+}

@@ -510,6 +510,10 @@ export default function BookingTunnel() {
       }
       setBookingResp(data);
       setStep(5);
+      // Prompt 2 — Free-flow toast confirmation
+      if (data?.free_flow || (data?.status === "confirmed" && (data?.total_amount ?? 0) === 0)) {
+        toast.success("Réservation confirmée — votre pass est prêt !");
+      }
     } catch (e) {
       toast.error(e.response?.data?.detail || "Booking failed");
     } finally {
