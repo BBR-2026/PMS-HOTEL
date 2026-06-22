@@ -206,7 +206,44 @@ export default function StaffCantine() {
           <h3 className="font-display-serif text-lg text-[#0A0A0A]">
             Liste — {scope === "tomorrow" ? "Demain" : "Aujourd'hui"} ({reservations.length})
           </h3>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={async () => {
+                const date = scope === "tomorrow"
+                  ? new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+                  : new Date().toISOString().slice(0, 10);
+                if (!window.confirm(`Clôturer définitivement les inscriptions du ${date} ?`)) return;
+                try {
+                  await api.post(`/staff/cantine/manual-close/${date}`);
+                  toast.success(`Inscriptions du ${date} clôturées`);
+                  load({ silent: true });
+                } catch (e) {
+                  toast.error(e.response?.data?.detail || "Échec");
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-300 hover:border-red-500 text-[0.7rem] uppercase tracking-[0.18em] text-red-600 hover:text-red-700"
+              data-testid="cantine-manual-close"
+            >
+              Clôturer
+            </button>
+            <button
+              onClick={async () => {
+                const date = scope === "tomorrow"
+                  ? new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+                  : new Date().toISOString().slice(0, 10);
+                try {
+                  await api.post(`/staff/cantine/manual-reopen/${date}`);
+                  toast.success(`Inscriptions du ${date} rouvertes`);
+                  load({ silent: true });
+                } catch (e) {
+                  toast.error(e.response?.data?.detail || "Échec");
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#15803D]/40 hover:border-[#15803D] text-[0.7rem] uppercase tracking-[0.18em] text-[#15803D] hover:text-[#15803D]"
+              data-testid="cantine-manual-reopen"
+            >
+              Rouvrir
+            </button>
             <button
               onClick={() => downloadFile("xlsx")}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#0A0A0A]/15 hover:border-[#B8922A] text-[0.7rem] uppercase tracking-[0.18em] text-[#0A0A0A]/70 hover:text-[#B8922A]"
@@ -340,6 +377,8 @@ function SettingsModal({ onClose }) {
       default_credits_personnel: data.default_credits_personnel ?? 22,
       default_credits_prestataire: data.default_credits_prestataire ?? 0,
       auto_renew_enabled: data.auto_renew_enabled !== false,
+      max_capacity_per_day: data.max_capacity_per_day ?? 100,
+      waitlist_enabled: data.waitlist_enabled !== false,
     })).catch(() => toast.error("Impossible de charger les paramètres"));
   }, []);
 
@@ -489,6 +528,42 @@ function SettingsModal({ onClose }) {
                 Renouvellement automatique le 1<sup>er</sup> de chaque mois
               </span>
             </label>
+          </div>
+
+          {/* Prompt 3 — Capacity & waitlist */}
+          <div className="border border-[#0A0A0A]/10 p-4 mb-4">
+            <div className="text-[0.7rem] uppercase tracking-[0.22em] text-[#B8922A] mb-3 font-medium">
+              Capacité & liste d&apos;attente
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1">
+                  Capacité max / jour
+                </label>
+                <input
+                  type="number" min="0" max="10000"
+                  value={form.max_capacity_per_day}
+                  onChange={(e) => setForm((f) => ({ ...f, max_capacity_per_day: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-[#0A0A0A]/15 focus:border-[#B8922A] focus:outline-none text-sm bg-white"
+                  data-testid="settings-max-capacity"
+                />
+                <p className="text-[10px] text-[#0A0A0A]/45 mt-1">0 = illimité</p>
+              </div>
+              <div className="flex items-center pt-5">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.waitlist_enabled}
+                    onChange={(e) => setForm((f) => ({ ...f, waitlist_enabled: e.target.checked }))}
+                    className="w-4 h-4 accent-[#B8922A]"
+                    data-testid="settings-waitlist-enabled"
+                  />
+                  <span className="text-sm text-[#0A0A0A]/75">
+                    Liste d&apos;attente si capacité atteinte
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-2 mt-6">

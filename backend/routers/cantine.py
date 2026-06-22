@@ -107,6 +107,11 @@ class CanteenSettingsUpdate(BaseModel):
     reservation_close_hhmm: Optional[str] = Field(default=None,
         pattern=r"^([0-1]\d|2[0-3]):[0-5]\d$",
         description="Heure de clôture des inscriptions")
+    # Prompt 3 — capacity + waitlist
+    max_capacity_per_day: Optional[int] = Field(default=None, ge=0, le=10000,
+        description="Capacité maximale de repas par jour (0 = illimité)")
+    waitlist_enabled: Optional[bool] = Field(default=None,
+        description="Si capacité atteinte, basculer en liste d'attente")
 
 
 class CanteenServiceUpsert(BaseModel):
@@ -172,6 +177,11 @@ async def _get_settings(db) -> dict:
             "meal_offset_days": 1,            # 0=today, 1=tomorrow
             "reservation_open_hhmm": "00:00", # opens at this HH:MM (Abidjan UTC+0)
             "reservation_close_hhmm": "23:59",
+            # Prompt 3 — Cantine fermeture auto & gestion capacité
+            "max_capacity_per_day": 100,       # 0 = illimité
+            "waitlist_enabled": True,
+            "manual_closures": [],             # list of YYYY-MM-DD dates manually closed
+            "manual_openings": [],             # list of YYYY-MM-DD dates manually re-opened
         }
         await db.canteen_settings.update_one(
             {"_id": "global"}, {"$set": s}, upsert=True,
@@ -185,6 +195,15 @@ async def _get_settings(db) -> dict:
             upd["reservation_open_hhmm"] = "00:00"
         if "reservation_close_hhmm" not in s:
             upd["reservation_close_hhmm"] = "23:59"
+        # Prompt 3 — backfill capacity/closure fields
+        if "max_capacity_per_day" not in s:
+            upd["max_capacity_per_day"] = 100
+        if "waitlist_enabled" not in s:
+            upd["waitlist_enabled"] = True
+        if "manual_closures" not in s:
+            upd["manual_closures"] = []
+        if "manual_openings" not in s:
+            upd["manual_openings"] = []
         if upd:
             await db.canteen_settings.update_one(
                 {"_id": "global"}, {"$set": upd},
@@ -383,6 +402,14 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         offset = int(settings.get("meal_offset_days", 1) or 0)
         meal_date = (_today_abidjan() + timedelta(days=max(0, offset))).isoformat()
 
+        # Prompt 3 — manual closure override (closes that specific date even
+        # if the daily window would otherwise be open).
+        if meal_date in (settings.get("manual_closures") or []):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Les inscriptions du {meal_date} ont été clôturées manuellement par l'administration.",
+            )
+
         user = await db.canteen_users.find_one(
             {"code": code, "active": True}, {"_id": 0},
         )
@@ -407,6 +434,29 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
                 detail=f"Vous êtes déjà inscrit(e) au repas du {meal_date}.",
             )
 
+        # Prompt 3 — capacity & waitlist
+        capacity = int(settings.get("max_capacity_per_day") or 0)
+        reservation_status = "reserved"
+        position_in_waitlist = None
+        if capacity > 0:
+            current_count = await db.canteen_reservations.count_documents({
+                "meal_date": meal_date,
+                "status": {"$in": ["reserved"]},
+            })
+            if current_count >= capacity:
+                if not settings.get("waitlist_enabled", True):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"La capacité maximum ({capacity} repas) est atteinte pour le {meal_date}.",
+                    )
+                # Add to waitlist
+                wl_count = await db.canteen_reservations.count_documents({
+                    "meal_date": meal_date,
+                    "status": "waitlisted",
+                })
+                reservation_status = "waitlisted"
+                position_in_waitlist = wl_count + 1
+
         reservation = {
             "id": str(uuid.uuid4()),
             "user_id": user["id"],
@@ -417,7 +467,8 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             "position": user["position"],
             "type": user["type"],
             "meal_date": meal_date,
-            "status": "reserved",
+            "status": reservation_status,
+            "waitlist_position": position_in_waitlist,
             "reserved_at": _now_iso(),
             "consumed_at": None,
             "consumed_by_staff_id": None,
@@ -426,17 +477,24 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         }
         await db.canteen_reservations.insert_one(reservation)
 
-        await db.canteen_users.update_one(
-            {"id": user["id"]},
-            {"$inc": {"credits_consumed": 1},
-             "$set": {"updated_at": _now_iso()}},
-        )
+        # Prompt 3 — only consume a credit when actually reserved (waitlist
+        # entries don't consume until they get promoted).
+        if reservation_status == "reserved":
+            await db.canteen_users.update_one(
+                {"id": user["id"]},
+                {"$inc": {"credits_consumed": 1},
+                 "$set": {"updated_at": _now_iso()}},
+            )
+            new_remaining = remaining - 1
+        else:
+            new_remaining = remaining
 
-        new_remaining = remaining - 1
         return {
             "ok": True,
             "meal_date": meal_date,
             "reservation_id": reservation["id"],
+            "status": reservation_status,
+            "waitlist_position": position_in_waitlist,
             "credits_remaining": new_remaining,
             "guest_name": f"{user['first_name']} {user['last_name']}",
         }
@@ -447,13 +505,30 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
         settings = await _get_settings(db)
         offset = int(settings.get("meal_offset_days", 1) or 0)
         meal_date = (_today_abidjan() + timedelta(days=max(0, offset))).isoformat()
+        manual_closures = settings.get("manual_closures") or []
+        manually_closed = meal_date in manual_closures
+        is_open_window = _within_window(
+            settings.get("reservation_open_hhmm", "00:00"),
+            settings.get("reservation_close_hhmm", "23:59"),
+        )
+        capacity = int(settings.get("max_capacity_per_day") or 0)
+        reserved_count = await db.canteen_reservations.count_documents({
+            "meal_date": meal_date, "status": "reserved",
+        })
+        waitlist_count = await db.canteen_reservations.count_documents({
+            "meal_date": meal_date, "status": "waitlisted",
+        })
+        capacity_reached = capacity > 0 and reserved_count >= capacity
         return {
             "open_hhmm": settings.get("reservation_open_hhmm", "00:00"),
             "close_hhmm": settings.get("reservation_close_hhmm", "23:59"),
-            "is_open": _within_window(
-                settings.get("reservation_open_hhmm", "00:00"),
-                settings.get("reservation_close_hhmm", "23:59"),
-            ),
+            "is_open": is_open_window and not manually_closed,
+            "manually_closed": manually_closed,
+            "capacity_reached": capacity_reached,
+            "waitlist_enabled": settings.get("waitlist_enabled", True),
+            "reserved_count": reserved_count,
+            "waitlist_count": waitlist_count,
+            "max_capacity": capacity,
             "meal_date": meal_date,
             "meal_offset_days": offset,
         }
@@ -934,6 +1009,72 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             media_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
+
+    # ── Prompt 3 — Manual closure / opening + waitlist promotion ─────────
+    @r.post("/staff/cantine/manual-close/{date_iso}")
+    async def manual_close(date_iso: str, staff=Depends(get_current_staff)):
+        """Clôture manuelle d'une journée précise (override la fenêtre auto)."""
+        await require_role(staff, CANTINE_ADMIN_ROLES)
+        if not date_iso or len(date_iso) != 10:
+            raise HTTPException(status_code=400, detail="invalid_date")
+        await db.canteen_settings.update_one(
+            {"_id": "global"},
+            {"$addToSet": {"manual_closures": date_iso},
+             "$pull":    {"manual_openings": date_iso},
+             "$set":     {"updated_at": _now_iso()}},
+            upsert=True,
+        )
+        return {"ok": True, "date": date_iso, "action": "closed"}
+
+    @r.post("/staff/cantine/manual-reopen/{date_iso}")
+    async def manual_reopen(date_iso: str, staff=Depends(get_current_staff)):
+        """Réouverture exceptionnelle d'une journée (lève la fermeture manuelle)."""
+        await require_role(staff, CANTINE_ADMIN_ROLES)
+        if not date_iso or len(date_iso) != 10:
+            raise HTTPException(status_code=400, detail="invalid_date")
+        await db.canteen_settings.update_one(
+            {"_id": "global"},
+            {"$pull":    {"manual_closures": date_iso},
+             "$addToSet": {"manual_openings": date_iso},
+             "$set":     {"updated_at": _now_iso()}},
+            upsert=True,
+        )
+        return {"ok": True, "date": date_iso, "action": "reopened"}
+
+    @r.get("/staff/cantine/waitlist/{date_iso}")
+    async def list_waitlist(date_iso: str, staff=Depends(get_current_staff)):
+        """Liste des inscrits en liste d'attente pour une date donnée."""
+        await require_role(staff, CANTINE_STAFF_ROLES)
+        items = []
+        cursor = db.canteen_reservations.find(
+            {"meal_date": date_iso, "status": "waitlisted"},
+        ).sort("waitlist_position", 1)
+        async for d in cursor:
+            d.pop("_id", None)
+            items.append(d)
+        return {"items": items, "date": date_iso, "count": len(items)}
+
+    @r.post("/staff/cantine/waitlist/{reservation_id}/promote")
+    async def promote_from_waitlist(reservation_id: str, staff=Depends(get_current_staff)):
+        """Fait passer une réservation en liste d'attente au statut 'reserved'.
+        Décrémente le crédit de l'utilisateur correspondant."""
+        await require_role(staff, CANTINE_ADMIN_ROLES)
+        res = await db.canteen_reservations.find_one({"id": reservation_id})
+        if not res:
+            raise HTTPException(status_code=404, detail="reservation_not_found")
+        if res.get("status") != "waitlisted":
+            raise HTTPException(status_code=400, detail="not_waitlisted")
+        await db.canteen_reservations.update_one(
+            {"id": reservation_id},
+            {"$set": {"status": "reserved", "promoted_at": _now_iso()},
+             "$unset": {"waitlist_position": ""}},
+        )
+        await db.canteen_users.update_one(
+            {"id": res["user_id"]},
+            {"$inc": {"credits_consumed": 1},
+             "$set": {"updated_at": _now_iso()}},
+        )
+        return {"ok": True, "reservation_id": reservation_id, "new_status": "reserved"}
 
     return r
 

@@ -2,7 +2,34 @@
 
 ## Latest update — 2026-06-22
 
-### Prompt 2 — Booking engine prix-driven uniforme (iteration 49) — TERMINÉ
+### Prompt 3 — Cantine fermeture auto J-1 + capacité + liste d'attente (iteration 50) — TERMINÉ
+
+**Backend (cantine.py)** :
+- **Nouveaux champs settings** : `max_capacity_per_day` (0 = illimité), `waitlist_enabled`, `manual_closures` (array dates ISO), `manual_openings` (override)
+- **Logique réservation** : si capacité atteinte → `status="waitlisted"` + `waitlist_position` calculé ; sinon `status="reserved"`. Crédit utilisateur décrémenté **uniquement** quand `reserved` (pas en waitlist).
+- **Fermeture auto J-1 23h59** : déjà géré par le cron `_job_close_yesterday` (00:01) + fenêtre `reservation_open_hhmm/close_hhmm` (00:00 → 23:59). Plus blocage explicite dans `reserve_tomorrow` si la date est dans `manual_closures`.
+- **4 nouveaux endpoints** :
+  - `POST /api/staff/cantine/manual-close/{date}` — ajoute à `manual_closures`
+  - `POST /api/staff/cantine/manual-reopen/{date}` — retire de `manual_closures`
+  - `GET /api/staff/cantine/waitlist/{date}` — liste les inscrits en attente
+  - `POST /api/staff/cantine/waitlist/{id}/promote` — promeut un waitlisté en `reserved`
+- **Public window enrichi** : `/api/cantine/public/window` retourne maintenant `is_open`, `manually_closed`, `capacity_reached`, `reserved_count`, `waitlist_count`, `max_capacity`
+- **Exports Excel + PDF** : déjà présents (vérifiés inchangés)
+
+**Frontend (StaffCantine.jsx)** :
+- Modal Paramètres : section "Capacité & liste d'attente" avec input capacité max + toggle waitlist
+- Dashboard : boutons "Clôturer" (rouge) + "Rouvrir" (vert) qui ciblent la date du scope sélectionné (demain/aujourd'hui)
+- Exports XLSX + PDF déjà présents
+
+**Validé live** : settings GET/PUT avec nouveaux champs, manual-close/reopen retournent ok, public window expose tous les champs (cap_reached, manually_closed, etc.).
+
+### Pending / Future
+- Brancher FAQ + Témoignages dans la Vitrine publique
+- Connecter `OfferPriceOverride` à `crossing_fee` + `room_tiers` (free-flow Le Kaai/Hôtel)
+- Activation production SiteMinder
+- Refactor `server.py` (12 000+ lignes)
+
+### Prompt 2 — Booking engine prix-driven (iteration 49)
 
 **Règle métier** : si `total_amount <= 0` à la création de réservation → auto-confirmation immédiate (skip paiement, QR + email + WhatsApp générés instantanément). Si `total_amount > 0` → flow paiement classique (FineoPay) inchangé.
 
