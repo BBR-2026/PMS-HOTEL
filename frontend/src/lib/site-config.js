@@ -55,4 +55,9 @@ export const sel = {
   footer: (cfg) => cfg?.footer || {},
   instagram: (cfg) => cfg?.instagram || { posts: [] },
   tracking: (cfg) => cfg?.tracking || {},
+  faq: (cfg) => cfg?.faq || { section_title: "Questions fréquentes", items: [] },
+  testimonials: (cfg) => cfg?.testimonials || { section_title: "Ils en parlent", items: [] },
+  mentionsLegales: (cfg) => cfg?.mentions_legales || {},
+  menusNav: (cfg) => cfg?.menus_nav || { primary: [], cta_label: "", cta_to: "" },
+  seo: (cfg) => cfg?.seo || { default: {}, pages: {} },
 };

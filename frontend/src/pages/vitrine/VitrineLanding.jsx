@@ -84,6 +84,8 @@ export default function VitrineLanding() {
   const hero = sel.hero(cfg);
   const universCfg = sel.univers(cfg);
   const instagramCfg = sel.instagram(cfg);
+  const testimonialsCfg = sel.testimonials(cfg);
+  const faqCfg = sel.faq(cfg);
 
   // Merge CMS univers list with the hardcoded routing map (bookOfferId).
   const universList = (universCfg.items && universCfg.items.length > 0
@@ -286,6 +288,91 @@ export default function VitrineLanding() {
           </Link>
         </div>
       </section>
+
+      {/* ─── TÉMOIGNAGES ─────────────────────────────────── */}
+      {(testimonialsCfg.items || []).length > 0 && (
+        <section className="py-24 md:py-32 bg-[#FAF7F2]" data-testid="vitrine-testimonials">
+          <div className="max-w-6xl mx-auto px-6">
+            <div className="text-center mb-12 md:mb-16">
+              <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-5">
+                · Témoignages ·
+              </div>
+              <h2 className="font-serif font-light text-3xl sm:text-4xl md:text-5xl leading-[1.15] text-[#0A0A0A]">
+                {testimonialsCfg.section_title || "Ils en parlent"}
+              </h2>
+              <div className="w-12 h-px bg-[#B8922A] mx-auto mt-8" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {(testimonialsCfg.items || []).map((t, i) => (
+                <figure
+                  key={i}
+                  className="bg-white border border-[#0A0A0A]/8 p-7 md:p-8 flex flex-col"
+                  data-testid={`testimonial-${i}`}
+                >
+                  <div className="text-[#B8922A] tracking-widest text-sm mb-4">
+                    {"★".repeat(Math.max(0, Math.min(5, Number(t.rating ?? 5))))}
+                    {"☆".repeat(5 - Math.max(0, Math.min(5, Number(t.rating ?? 5))))}
+                  </div>
+                  <blockquote className="font-serif italic text-[#0A0A0A]/85 text-base leading-relaxed flex-1">
+                    « {t.quote} »
+                  </blockquote>
+                  <figcaption className="mt-6 pt-5 border-t border-[#0A0A0A]/10 flex items-center gap-3">
+                    {t.image ? (
+                      <img
+                        src={t.image.startsWith("/") ? `${process.env.REACT_APP_BACKEND_URL}${t.image}` : t.image}
+                        alt={t.author}
+                        className="w-10 h-10 rounded-full object-cover border border-[#B8922A]/30"
+                      />
+                    ) : null}
+                    <div>
+                      <div className="text-sm font-medium text-[#0A0A0A]">{t.author}</div>
+                      {t.role && (
+                        <div className="text-[0.65rem] uppercase tracking-[0.2em] text-[#0A0A0A]/55 mt-0.5">
+                          {t.role}
+                        </div>
+                      )}
+                    </div>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ─── FAQ ─────────────────────────────────────────── */}
+      {(faqCfg.items || []).length > 0 && (
+        <section className="py-24 md:py-32 bg-white" data-testid="vitrine-faq">
+          <div className="max-w-3xl mx-auto px-6">
+            <div className="text-center mb-12 md:mb-16">
+              <div className="text-[0.6rem] tracking-[0.55em] uppercase text-[#B8922A] mb-5">
+                · FAQ ·
+              </div>
+              <h2 className="font-serif font-light text-3xl sm:text-4xl md:text-5xl leading-[1.15] text-[#0A0A0A]">
+                {faqCfg.section_title || "Questions fréquentes"}
+              </h2>
+              <div className="w-12 h-px bg-[#B8922A] mx-auto mt-8" />
+            </div>
+            <div className="space-y-3">
+              {(faqCfg.items || []).map((it, i) => (
+                <details
+                  key={i}
+                  className="group border border-[#0A0A0A]/10 bg-white open:border-[#B8922A]/40 transition-colors"
+                  data-testid={`faq-item-${i}`}
+                >
+                  <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between gap-3 text-sm md:text-base font-medium text-[#0A0A0A] hover:text-[#B8922A]">
+                    <span>{it.q}</span>
+                    <span className="text-[#B8922A] text-xl font-light leading-none transition-transform group-open:rotate-45">+</span>
+                  </summary>
+                  <div className="px-5 pb-5 -mt-1 text-sm text-[#0A0A0A]/75 leading-relaxed">
+                    {it.a}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ─── INSTAGRAM FEED ──────────────────────────────── */}
       <section className="py-24 md:py-32 bg-white" data-testid="vitrine-instagram">
