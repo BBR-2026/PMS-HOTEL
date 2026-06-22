@@ -1739,7 +1739,8 @@ function PaymentView({ booking, onPay, paying, t, isOvernight }) {
                 {t.booking.payDepositDesc}
               </p>
               <div className="space-y-2.5">
-                {[10, 30, 70].map((pct) => {
+                {/* iter-50d: only 50% acompte exposed publicly. Solder = colonne FineoPay (100%). */}
+                {[50].map((pct) => {
                   const amount = Math.round((booking.total_amount * pct) / 100);
                   const balance = booking.total_amount - amount;
                   const tracker = `deposit-${pct}`;

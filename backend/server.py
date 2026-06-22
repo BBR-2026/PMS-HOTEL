@@ -456,7 +456,7 @@ class PayBooking(BaseModel):
     reference_token: str
     payment_method: Optional[Literal["fineo", "card", "mobile_money", "cash", "deposit"]] = "fineo"
     # When payment_method = "deposit" (Hébergement only): % of total paid as deposit.
-    deposit_pct: Optional[Literal[10, 30, 70]] = None
+    deposit_pct: Optional[Literal[10, 30, 50, 70]] = None
 
 
 class EventPrivatization(BaseModel):
@@ -2834,8 +2834,8 @@ async def pay_booking(booking_id: str, body: PayBooking):
     if body.payment_method == "deposit":
         if not offer.get("is_overnight"):
             raise HTTPException(status_code=400, detail="Deposit only available for overnight stays")
-        if body.deposit_pct not in (10, 30, 70):
-            raise HTTPException(status_code=400, detail="deposit_pct must be 10, 30 or 70")
+        if body.deposit_pct not in (10, 30, 50, 70):
+            raise HTTPException(status_code=400, detail="deposit_pct must be 10, 30, 50 or 70")
         deposit_pct = int(body.deposit_pct)
         paid_amount = int(round(total_amount * deposit_pct / 100))
     else:
@@ -8290,7 +8290,7 @@ class StaffBookingCreate(BaseModel):
     # Payment: manager picks the method directly. For 'deposit', supply deposit_pct.
     # 'online' creates a pending booking and emails a payment link to the client.
     payment_method: Literal["card", "mobile_money", "cash", "deposit", "online"] = "cash"
-    deposit_pct: Optional[Literal[10, 30, 70]] = None
+    deposit_pct: Optional[Literal[10, 30, 50, 70]] = None
 
 
 @api.post("/staff/bookings")
