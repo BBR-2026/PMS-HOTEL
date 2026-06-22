@@ -2936,6 +2936,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "qr_payload": payload_str,
             "qr_code": make_qr(compact_qr, styled=styled_qr),
             "children_attached": children_count if is_booker else 0,
+            "scans": [],
             # iter-30: explicit composition shown on scan & manifest.
             "composition": {
                 "adults": 1,
@@ -3003,6 +3004,7 @@ async def pay_booking(booking_id: str, body: PayBooking):
             "qr_payload": pinasse_payload,
             "qr_code": make_qr(pinasse_payload, styled=styled_qr),
             "crossing_fee_xof": crossing_fee_amount,
+            "scans": [],
         }
         if styled_qr:
             try:
@@ -5479,49 +5481,86 @@ async def _resolve_qr_token(raw: str):
         return None, None
     raw = raw.strip()
     # 0. Defensive JSON extraction — supports clients that forward the full QR
-    #    payload without parsing it first.
+    #    payload without parsing it first. Accepts every known token field
+    #    variant emitted by the platform (ticket / pinasse / wallet / registration
+    #    / legacy guest_token JSON).
     if raw.startswith("{"):
         try:
             obj = json.loads(raw)
-            token_from_json = (obj.get("token") or obj.get("qr_token")
-                               or obj.get("guest_token") or "").strip()
+            token_from_json = (
+                obj.get("token")
+                or obj.get("qr_token")
+                or obj.get("guest_token")
+                or obj.get("pass_token")
+                or ""
+            ).strip()
             if token_from_json:
                 raw = token_from_json
         except Exception:
             pass  # not valid JSON — fall through to the legacy paths
+    # iter-50: tolerate URI-style prefixes such as
+    # ``bbr://ticket/<token>`` or ``https://…/ticket?token=…`` that
+    # some QR generators emit, and accept booking_id (UUID with dashes).
+    if "://" in raw or "?" in raw:
+        # Take the token-looking portion after the last '/' or '=', whichever
+        # is later. Conservatively keep only hex+dash chars.
+        candidate = raw.rsplit("=", 1)[-1].rsplit("/", 1)[-1]
+        if candidate:
+            raw = candidate.strip()
     # 1. Exact
     booking = await db.bookings.find_one({"qr_codes.qr_token": raw}, {"_id": 0})
     if booking:
         return booking, raw
-    # 2. Lowercase exact
+    # 2. Lowercase exact (handles ref code printed in UPPER on the styled ticket).
     low = raw.lower()
     if low != raw:
         booking = await db.bookings.find_one({"qr_codes.qr_token": low}, {"_id": 0})
         if booking:
             return booking, low
+    # 2b. iter-50: strip dashes (UUID-with-dashes booking_id pasted by hand
+    #     resolves to the booker's qr_token via the booking-id prefix path).
+    no_dashes = low.replace("-", "")
     # 3. Prefix match (only if user typed >=8 hex chars, to avoid ambiguity)
     import re as _re
-    if _re.fullmatch(r"[0-9a-f]{8,}", low):
-        pattern = _re.compile(f"^{_re.escape(low)}")
+    if _re.fullmatch(r"[0-9a-f]{8,}", no_dashes):
+        pattern = _re.compile(f"^{_re.escape(no_dashes)}")
         booking = await db.bookings.find_one({"qr_codes.qr_token": {"$regex": pattern}}, {"_id": 0})
         if booking:
             real = next(
-                (q.get("qr_token") for q in booking.get("qr_codes", []) if q.get("qr_token", "").startswith(low)),
+                (q.get("qr_token") for q in booking.get("qr_codes", []) if q.get("qr_token", "").startswith(no_dashes)),
                 None,
             )
             if real:
                 return booking, real
     # 4. iter-41: fall back to booking-id prefix (the "ref" portion printed on the
     #    ticket: ``booking_id[:8].upper()``). Useful if a 3rd-party scanner app
-    #    only forwards the ref code.
-    if _re.fullmatch(r"[0-9a-f]{6,}", low):
+    #    only forwards the ref code, OR if the operator pastes the full booking
+    #    UUID (with or without dashes) from the admin UI.
+    if _re.fullmatch(r"[0-9a-f]{6,}", no_dashes):
+        # Match against booking_id treating dashes as optional: rebuild a regex
+        # that accepts the standard 8-4-4-4-12 UUID dashes.
+        if len(no_dashes) >= 8 and "-" not in low:
+            chunks = [no_dashes[:8], no_dashes[8:12], no_dashes[12:16], no_dashes[16:20], no_dashes[20:32]]
+            chunks = [c for c in chunks if c]
+            id_re = "^" + "-?".join(_re.escape(c) for c in chunks)
+        else:
+            id_re = f"^{_re.escape(low)}"
         booking = await db.bookings.find_one(
-            {"id": {"$regex": f"^{_re.escape(low)}", "$options": "i"},
+            {"id": {"$regex": id_re, "$options": "i"},
              "qr_codes.0": {"$exists": True}},
             {"_id": 0},
         )
         if booking and booking.get("qr_codes"):
             # Return the booker's qr_token (the first entry is conventionally the booker)
+            return booking, booking["qr_codes"][0].get("qr_token")
+    # 5. iter-50: as a final defense, try to match the booking by the 5-6 digit
+    #    booking_code (typed by phone-call clients or printed on receipts).
+    if _re.fullmatch(r"\d{4,8}", raw):
+        booking = await db.bookings.find_one(
+            {"booking_code": raw, "qr_codes.0": {"$exists": True}},
+            {"_id": 0},
+        )
+        if booking and booking.get("qr_codes"):
             return booking, booking["qr_codes"][0].get("qr_token")
     return None, None
 
@@ -6278,6 +6317,7 @@ async def confirm_cash_payment(booking_id: str, staff=Depends(get_current_staff)
                 hero_url=offer.get("image_url") or None,
             ),
             "children_attached": children_count if is_booker else 0,
+            "scans": [],
         })
 
     paid_at = now_iso()
@@ -10284,6 +10324,7 @@ async def companion_register(code: str, body: CompanionRegisterBody):
         "qr_token": token, "qr_payload": compact_qr,
         "qr_code": make_qr(compact_qr, styled=True),
         "children_attached": 0, "companion_added_at": now_iso(),
+        "scans": [],
     }
     try:
         entry["ticket_image"] = make_ticket_image(

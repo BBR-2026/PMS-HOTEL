@@ -1,5 +1,31 @@
 # Boulay Beach Resort (BBr) — Product Requirements Document
 
+
+## Latest update — 2026-06-22 (iter-50b)
+
+### Scanner QR — robustesse globale + Footer CMS & cookies — TERMINÉ
+
+**1) Scanner QR hardening (`server.py:_resolve_qr_token`)**
+- Extraction JSON élargie : reconnaît `token`, `qr_token`, `guest_token`, `pass_token`
+- Tolérance URI : `bbr://ticket/<token>` / `?token=<...>` → extraction automatique
+- Strip dashes : booking_id UUID complet (avec ou sans tirets) résout désormais
+- Fallback `booking_code` 4-8 chiffres (réception téléphonique)
+- Init explicite `scans: []` pour toutes les entrées QR (booker, pinasse, companion, cash-confirm)
+- 12 cas de résolution couverts (tests `/app/backend/tests/test_qr_resolve_robustness.py`)
+
+**2) VitrineFooter.jsx — pilotage CMS complet**
+- Liens "Mentions légales" / "CGV" / "Confidentialité" tirés de `sel.mentionsLegales(cfg)`
+- Modal Mentions légales : Éditeur · RCCM · Siège · Directeur publication · Hébergement
+- CGV / Privacy s'ouvrent en lien externe si `cgv_url` / `privacy_url` configurés (sinon modal)
+- Copyright dynamique avec `company_name` du CMS
+
+**3) Bandeau cookies**
+- Affiche `mentions_legales.cookies_text` (CMS)
+- Position fixed bottom-right (md+) / bottom inset-x-4 (mobile)
+- Consentement persisté en localStorage (`bbr_cookies_ack`)
+- Bouton "En savoir plus" → `privacy_url` si présent
+
+
 ## Latest update — 2026-06-22
 
 ### Prompt 3 — Cantine fermeture auto J-1 + capacité + liste d'attente (iteration 50) — TERMINÉ

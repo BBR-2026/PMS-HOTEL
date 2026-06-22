@@ -2,16 +2,24 @@
  * Vitrine — Editorial footer (Nikki-Beach inspired).
  *
  * White / cream tone, generous whitespace, serif accents, minimal links.
+ * Legal links (Mentions légales, CGV, Confidentialité) come from the
+ * headless CMS (`sel.mentionsLegales(cfg)`); the cookies banner uses
+ * `cookies_text` from the same source. Banner consent persists in
+ * localStorage under the key `bbr_cookies_ack`.
  */
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Instagram, Facebook, MessageCircle, Youtube } from "lucide-react";
+import { Instagram, Facebook, MessageCircle, Youtube, Cookie, X } from "lucide-react";
 import { useSiteConfig, sel } from "../../lib/site-config";
+
+const COOKIE_ACK_KEY = "bbr_cookies_ack";
 
 export default function VitrineFooter() {
   const year = new Date().getFullYear();
   const cfg = useSiteConfig();
   const footer = sel.footer(cfg);
   const contact = sel.contact(cfg);
+  const ml = sel.mentionsLegales(cfg);
   const phone = contact.phone || "+225 07 04 60 06 00";
   const phoneTel = phone.replace(/\s+/g, "");
   const email = contact.email || "reservations@boulaybeachresort.com";
@@ -19,6 +27,20 @@ export default function VitrineFooter() {
   const fb = footer.social_facebook;
   const yt = footer.social_youtube;
   const wa = contact.whatsapp ? `https://wa.me/${contact.whatsapp.replace(/\D+/g, "")}` : "https://wa.me/2250704600600";
+  const [legalOpen, setLegalOpen] = useState(false);
+  const [cookieAck, setCookieAck] = useState(true); // start as ack=true to avoid flash; set to false in effect
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(COOKIE_ACK_KEY);
+      if (!v) setCookieAck(false);
+    } catch { /* ignore */ }
+  }, []);
+  const dismissCookies = () => {
+    try { window.localStorage.setItem(COOKIE_ACK_KEY, new Date().toISOString()); } catch { /* ignore */ }
+    setCookieAck(true);
+  };
+  const cgvHref = (ml.cgv_url || "").trim() || null;
+  const privacyHref = (ml.privacy_url || "").trim() || null;
   return (
     <footer className="bg-[#FAF7F2] text-[#0A0A0A] pt-24 pb-10" data-testid="vitrine-footer">
       <div className="max-w-7xl mx-auto px-6">
@@ -108,14 +130,173 @@ export default function VitrineFooter() {
 
         {/* Bottom — legal */}
         <div className="pt-8 border-t border-[#0A0A0A]/8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-[#0A0A0A]/50">
-          <div>© {year} Boulay Beach Resort. Tous droits réservés.</div>
+          <div data-testid="footer-copyright">
+            © {year} {ml.company_name || "Boulay Beach Resort"}. Tous droits réservés.
+          </div>
           <div className="flex items-center gap-6">
-            <a href="#" className="hover:text-[#B8922A]">Mentions légales</a>
-            <a href="#" className="hover:text-[#B8922A]">CGV</a>
-            <a href="#" className="hover:text-[#B8922A]">Confidentialité</a>
+            <button
+              type="button"
+              onClick={() => setLegalOpen(true)}
+              className="hover:text-[#B8922A] transition-colors"
+              data-testid="footer-mentions-legales"
+            >
+              Mentions légales
+            </button>
+            {cgvHref ? (
+              <a
+                href={cgvHref}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-[#B8922A] transition-colors"
+                data-testid="footer-cgv"
+              >
+                CGV
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setLegalOpen(true)}
+                className="hover:text-[#B8922A] transition-colors"
+                data-testid="footer-cgv"
+              >
+                CGV
+              </button>
+            )}
+            {privacyHref ? (
+              <a
+                href={privacyHref}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-[#B8922A] transition-colors"
+                data-testid="footer-privacy"
+              >
+                Confidentialité
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setLegalOpen(true)}
+                className="hover:text-[#B8922A] transition-colors"
+                data-testid="footer-privacy"
+              >
+                Confidentialité
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Mentions légales modal */}
+      {legalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
+          onClick={() => setLegalOpen(false)}
+          data-testid="mentions-legales-modal"
+        >
+          <div
+            className="bg-white text-[#0A0A0A] w-full max-w-lg p-6 sm:p-8 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setLegalOpen(false)}
+              className="absolute top-3 right-3 p-1.5 text-[#0A0A0A]/55 hover:text-[#0A0A0A]"
+              data-testid="mentions-legales-close"
+              aria-label="Fermer"
+            >
+              <X size={18} />
+            </button>
+            <div className="text-[0.6rem] tracking-[0.4em] uppercase text-[#B8922A] mb-2">
+              Informations légales
+            </div>
+            <h2 className="font-display-serif text-2xl sm:text-3xl mb-5">
+              Mentions légales
+            </h2>
+            <dl className="space-y-3 text-sm text-[#0A0A0A]/80">
+              {ml.company_name && (
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Éditeur</dt>
+                  <dd className="mt-0.5">{ml.company_name}</dd>
+                </div>
+              )}
+              {ml.rccm && (
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">RCCM</dt>
+                  <dd className="mt-0.5">{ml.rccm}</dd>
+                </div>
+              )}
+              {ml.siege_social && (
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Siège social</dt>
+                  <dd className="mt-0.5">{ml.siege_social}</dd>
+                </div>
+              )}
+              {ml.publication_director && (
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Directeur de la publication</dt>
+                  <dd className="mt-0.5">{ml.publication_director}</dd>
+                </div>
+              )}
+              {ml.hosting && (
+                <div>
+                  <dt className="text-[0.6rem] uppercase tracking-[0.22em] text-[#0A0A0A]/55">Hébergement</dt>
+                  <dd className="mt-0.5">{ml.hosting}</dd>
+                </div>
+              )}
+            </dl>
+            {(cgvHref || privacyHref) && (
+              <div className="mt-6 pt-5 border-t border-[#0A0A0A]/8 flex flex-wrap gap-4 text-sm">
+                {cgvHref && (
+                  <a href={cgvHref} target="_blank" rel="noreferrer" className="text-[#B8922A] hover:underline">
+                    Conditions générales de vente →
+                  </a>
+                )}
+                {privacyHref && (
+                  <a href={privacyHref} target="_blank" rel="noreferrer" className="text-[#B8922A] hover:underline">
+                    Politique de confidentialité →
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Cookies banner (one-line, dismissible, persistent) */}
+      {!cookieAck && (
+        <div
+          className="fixed bottom-4 inset-x-4 md:inset-x-auto md:right-6 md:bottom-6 md:max-w-md z-50 bg-[#0A0A0A] text-white shadow-xl border border-[#B8922A]/30"
+          data-testid="cookie-banner"
+        >
+          <div className="p-4 sm:p-5 flex items-start gap-3">
+            <Cookie size={18} className="text-[#B8922A] flex-shrink-0 mt-0.5" />
+            <p className="text-xs sm:text-sm text-white/85 leading-relaxed flex-1">
+              {ml.cookies_text || "Ce site utilise des cookies à des fins de mesure d'audience et de personnalisation."}
+            </p>
+          </div>
+          <div className="px-4 sm:px-5 pb-4 flex items-center justify-end gap-2">
+            {privacyHref && (
+              <a
+                href={privacyHref}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[0.65rem] uppercase tracking-[0.22em] text-white/65 hover:text-white px-3 py-2"
+                data-testid="cookie-banner-learn-more"
+              >
+                En savoir plus
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={dismissCookies}
+              className="text-[0.65rem] uppercase tracking-[0.22em] bg-[#B8922A] hover:bg-[#a37e1f] text-white px-4 py-2 transition-colors"
+              data-testid="cookie-banner-accept"
+            >
+              J&apos;accepte
+            </button>
+          </div>
+        </div>
+      )}
     </footer>
   );
 }
