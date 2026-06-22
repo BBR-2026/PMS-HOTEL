@@ -1,6 +1,26 @@
 # Boulay Beach Resort (BBr) — Product Requirements Document
 
-## Latest update — 2026-06-18
+## Latest update — 2026-06-22
+
+### Prompt 1 — CMS Complet (iteration 49) — TERMINÉ
+
+**Backend (site_settings.py)** :
+- `offers` schema enrichi : chaque offre a maintenant `name, subtitle, price_xof, old_price_xof, description, description_long, conditions_reservation, conditions_annulation, places_available, date_start, date_end, image_url, gallery (array), video_url, badge`
+- `univers` enrichi : ajout de `Membership` (6e carte) + champs `highlighted, order, cta_label, cta_url`
+- **5 nouvelles sections seedées** : `faq`, `testimonials`, `mentions_legales`, `menus_nav`, `seo` (avec defaults + per-page meta sur 9 pages)
+
+**Frontend (StaffSiteSettings.jsx)** :
+- 12 onglets dans le CMS (vs 7 avant) — Hero, Univers, Offres, Menus Nav, FAQ, Témoignages, Contact, Footer, Instagram, Mentions Légales, SEO, Tracking
+- **OfferCard structuré** : tous les nouveaux champs en formulaire éditable (au lieu du JSON brut)
+- **ImageField + GalleryField + MediaPickerModal** : composants réutilisables avec intégration Médiathèque (upload direct ou pick existant). Aperçu en temps réel.
+- **FAQ/Testimonials/Mentions/Menus/SEO Editors** : 5 nouveaux éditeurs structurés
+- **SEO par page** : Meta Title + Description + OG Image + Keywords pour 9 pages + défauts globaux
+
+**Pending — Prompts 2 & 3 (P0)** :
+- **Prompt 2** : Booking engine prix-driven uniforme (price=0 → flow gratuit sans paiement)
+- **Prompt 3** : Cantine fermeture automatique 23h59 J-1 + dashboard cantine enrichi
+
+## Previous update — 2026-06-18
 
 ### Phase C Revenue Engine — Vague 4 + Forecast Simulator (iteration 48 + enhancement)
 
