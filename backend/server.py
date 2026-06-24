@@ -2164,6 +2164,19 @@ async def availability(offer_id: str, when: str):
     if offer_id not in OFFERS:
         raise HTTPException(status_code=404, detail="Offer not found")
     max_cap = OFFERS[offer_id]["max_capacity"]
+    # iter-50f: respect admin-set blocked_dates (hotel-full / blackouts).
+    override = await db.offer_overrides.find_one({"offer_id": offer_id}, {"_id": 0})
+    blocked = set((override or {}).get("blocked_dates") or [])
+    if when in blocked:
+        return {
+            "offer_id": offer_id,
+            "date": when,
+            "max_capacity": max_cap,
+            "booked": max_cap,
+            "remaining": 0,
+            "blocked": True,
+            "blocked_reason": (override or {}).get("blocked_reason") or "Date non disponible",
+        }
     cursor = db.bookings.find(
         {"offer_type": offer_id, "date": when, "status": {"$ne": "cancelled"}},
         {"_id": 0, "adults": 1, "children": 1},
@@ -2177,6 +2190,23 @@ async def availability(offer_id: str, when: str):
         "max_capacity": max_cap,
         "booked": booked,
         "remaining": max(max_cap - booked, 0),
+        "blocked": False,
+    }
+
+
+@api.get("/offers/{offer_id}/blocked-dates")
+async def offer_blocked_dates(offer_id: str):
+    """iter-50f: exposes the admin-set blocked_dates so the booking calendar
+    can grey them out before the user even tries to pick them. Returns an
+    empty list when no override exists."""
+    if offer_id not in OFFERS and offer_id != "special_event":
+        raise HTTPException(status_code=404, detail="Offer not found")
+    override = await db.offer_overrides.find_one({"offer_id": offer_id}, {"_id": 0})
+    blocked = (override or {}).get("blocked_dates") or []
+    return {
+        "offer_id": offer_id,
+        "blocked_dates": sorted(blocked),
+        "blocked_reason": (override or {}).get("blocked_reason") or "",
     }
 
 
@@ -2348,6 +2378,36 @@ async def create_booking(body: BookingCreate):
                 raise HTTPException(status_code=400, detail="Email et téléphone obligatoires pour le réservant")
 
     # capacity check
+    # iter-50f: blocked_dates guard — admin can mark hotel-full / blackout
+    # nights, which must reject any new booking touching those dates.
+    if not is_special:
+        ov = await db.offer_overrides.find_one({"offer_id": body.offer_type}, {"_id": 0})
+        blocked = set((ov or {}).get("blocked_dates") or [])
+        if blocked:
+            # Build the list of dates this booking would consume.
+            # Overnight: every night between arrival (incl.) and checkout (excl.).
+            # Day offer: only the arrival date.
+            dates_to_check = [body.date]
+            if body.checkout_date:
+                try:
+                    arr = datetime.strptime(body.date, "%Y-%m-%d").date()
+                    out = datetime.strptime(body.checkout_date, "%Y-%m-%d").date()
+                    dates_to_check = [
+                        (arr + timedelta(days=i)).isoformat()
+                        for i in range(max((out - arr).days, 1))
+                    ]
+                except ValueError:
+                    pass
+            conflicts = sorted(d for d in dates_to_check if d in blocked)
+            if conflicts:
+                reason = (ov or {}).get("blocked_reason") or "Hôtel complet"
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{reason} — dates indisponibles : {', '.join(conflicts)}. "
+                        f"Veuillez choisir une autre période."
+                    ),
+                )
     cap_filter = {"offer_type": body.offer_type, "date": body.date, "status": {"$ne": "cancelled"}}
     if is_special:
         cap_filter["special_event_id"] = offer["event_id"]

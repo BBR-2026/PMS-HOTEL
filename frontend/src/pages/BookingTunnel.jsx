@@ -197,6 +197,21 @@ export default function BookingTunnel() {
   const isOvernight = !!offer?.is_overnight;
   const roomTiers = offer?.room_tiers || [];
   const hasTiers = roomTiers.length > 0;
+
+  // iter-50f: fetch admin-set blocked_dates once per offer and disable them
+  // in the calendar (greyed-out), preventing the user from picking a date
+  // the hotel has marked as full / blackout.
+  const [blockedDates, setBlockedDates] = useState({ set: new Set(), reason: "" });
+  useEffect(() => {
+    if (!offerId || isSpecialEvent) return;
+    api.get(`/offers/${offerId}/blocked-dates`)
+      .then((r) => setBlockedDates({
+        set: new Set(r.data?.blocked_dates || []),
+        reason: r.data?.blocked_reason || "",
+      }))
+      .catch(() => setBlockedDates({ set: new Set(), reason: "" }));
+  }, [offerId, isSpecialEvent]);
+  const isDateBlocked = (d) => blockedDates.set.has(format(d, "yyyy-MM-dd"));
   // iter-50e: when the client lands from /univers/hebergement, the tier is
   // pre-selected via ?tier=<id>. We bypass the in-tunnel "Room Type" step
   // entirely so the funnel becomes: Offer → Dates → Guests → Payment.

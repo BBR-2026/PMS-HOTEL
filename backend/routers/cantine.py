@@ -99,8 +99,9 @@ class CanteenSettingsUpdate(BaseModel):
     default_credits_prestataire: Optional[int] = Field(default=None, ge=0, le=62)
     auto_renew_enabled: Optional[bool] = None
     # iter-45: reservation-window controls
-    meal_offset_days: Optional[int] = Field(default=None, ge=0, le=7,
-        description="0 = today's lunch, 1 = tomorrow, 2 = day after…")
+    # iter-50f: enforce minimum J+1 — admins can no longer set offset=0
+    meal_offset_days: Optional[int] = Field(default=None, ge=1, le=7,
+        description="1 = tomorrow, 2 = day after, etc.")
     reservation_open_hhmm: Optional[str] = Field(default=None,
         pattern=r"^([0-1]\d|2[0-3]):[0-5]\d$",
         description="Heure d'ouverture des inscriptions (HH:MM, fuseau Abidjan)")
@@ -400,7 +401,12 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
             )
 
         offset = int(settings.get("meal_offset_days", 1) or 0)
-        meal_date = (_today_abidjan() + timedelta(days=max(0, offset))).isoformat()
+        # iter-50f: enforce minimum J+1 — the public endpoint must always
+        # reserve at least for tomorrow ("repas du lendemain") regardless
+        # of how an admin may have configured the override.
+        if offset < 1:
+            offset = 1
+        meal_date = (_today_abidjan() + timedelta(days=offset)).isoformat()
 
         # Prompt 3 — manual closure override (closes that specific date even
         # if the daily window would otherwise be open).
@@ -504,7 +510,11 @@ def build_router(db, get_current_staff, require_role) -> APIRouter:
     async def public_window():
         settings = await _get_settings(db)
         offset = int(settings.get("meal_offset_days", 1) or 0)
-        meal_date = (_today_abidjan() + timedelta(days=max(0, offset))).isoformat()
+        # iter-50f: same floor as the reserve endpoint — the window status
+        # MUST advertise the same meal date that the reserve call will use.
+        if offset < 1:
+            offset = 1
+        meal_date = (_today_abidjan() + timedelta(days=offset)).isoformat()
         manual_closures = settings.get("manual_closures") or []
         manually_closed = meal_date in manual_closures
         is_open_window = _within_window(

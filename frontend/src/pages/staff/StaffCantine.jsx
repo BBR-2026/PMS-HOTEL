@@ -428,10 +428,9 @@ function SettingsModal({ onClose }) {
               <label className="text-[0.62rem] uppercase tracking-[0.18em] text-[#0A0A0A]/55 block mb-1.5">
                 Jour du repas réservé
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {[
-                  { v: 0, l: "Aujourd'hui" },
-                  { v: 1, l: "Demain" },
+                  { v: 1, l: "Demain (recommandé)" },
                   { v: 2, l: "J+2" },
                 ].map((o) => (
                   <button
@@ -449,7 +448,7 @@ function SettingsModal({ onClose }) {
                 ))}
               </div>
               <p className="text-[0.7rem] text-[#0A0A0A]/45 mt-2">
-                Les employés s&apos;inscrivent pour le repas du jour sélectionné.
+                Les employés s&apos;inscrivent toujours au minimum pour le lendemain.
               </p>
             </div>
 
